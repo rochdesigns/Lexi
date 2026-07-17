@@ -2,24 +2,129 @@
 
 namespace Database\Seeders;
 
+use App\Models\Account;
+use App\Models\BudgetMonth;
+use App\Models\Event;
+use App\Models\Habit;
+use App\Models\HabitLog;
+use App\Models\HealthMetric;
+use App\Models\HealthWeek;
+use App\Models\Setting;
+use App\Models\Task;
 use App\Models\User;
-use Illuminate\Database\Console\Seeds\WithoutModelEvents;
 use Illuminate\Database\Seeder;
+use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\Hash;
 
 class DatabaseSeeder extends Seeder
 {
-    use WithoutModelEvents;
-
-    /**
-     * Seed the application's database.
-     */
     public function run(): void
     {
-        // User::factory(10)->create();
+        $user = User::create([
+            'name' => 'Elle Domingo',
+            'email' => 'elle@example.com',
+            'password' => Hash::make('password'),
+            'email_verified_at' => now(),
+        ]);
 
-        User::factory()->create([
-            'name' => 'Test User',
-            'email' => 'test@example.com',
+        Setting::create(['user_id' => $user->id, 'theme' => 'ocean']);
+
+        // Events — today only (July 17 2026)
+        $today = Carbon::parse('2026-07-17');
+        foreach ([
+            ['title' => 'Team standup', 'time' => '11:00 PM', 'tag' => 'Work', 'color' => '#7d4bd0'],
+            ['title' => 'Lunch with Mia', 'time' => '12:30 PM', 'tag' => 'Personal', 'color' => '#c0512c'],
+            ['title' => 'Yoga class', 'time' => '6:00 PM', 'tag' => 'Health', 'color' => '#2f7d5b'],
+        ] as $event) {
+            Event::create(array_merge($event, ['user_id' => $user->id, 'date' => $today->toDateString()]));
+        }
+
+        // Tasks
+        foreach ([
+            ['label' => 'Reply to the landlord', 'group' => 'today', 'done' => false],
+            ['label' => 'Book a dentist appointment', 'group' => 'today', 'done' => false],
+            ['label' => 'Pay the electric bill', 'group' => 'today', 'done' => false],
+            ['label' => 'Grocery run', 'group' => 'today', 'done' => true],
+            ['label' => 'Finish the Q3 deck', 'group' => 'week', 'done' => false],
+            ['label' => 'Renew car insurance quote', 'group' => 'week', 'done' => false],
+            ['label' => 'Clean out the garage', 'group' => 'week', 'done' => false],
+            ['label' => 'Learn to make sourdough', 'group' => 'someday', 'done' => false],
+            ['label' => 'Plan Batangas trip', 'group' => 'someday', 'done' => false],
+        ] as $task) {
+            Task::create(array_merge($task, ['user_id' => $user->id]));
+        }
+
+        // Health metrics
+        foreach ([
+            ['name' => 'Steps', 'value' => '7,420', 'sub' => 'of 10,000', 'pct' => 74, 'color' => '#2f7d5b', 'icon' => 'directions_walk'],
+            ['name' => 'Sleep', 'value' => '7h 10m', 'sub' => 'of 8h', 'pct' => 90, 'color' => '#3f7fb0', 'icon' => 'bedtime'],
+            ['name' => 'Active energy', 'value' => '480', 'sub' => 'of 600 cal', 'pct' => 80, 'color' => '#d98a2b', 'icon' => 'local_fire_department'],
+            ['name' => 'Resting HR', 'value' => '58', 'sub' => 'bpm · steady', 'pct' => 0, 'color' => '#c0512c', 'icon' => 'favorite'],
+        ] as $metric) {
+            HealthMetric::create(array_merge($metric, ['user_id' => $user->id]));
+        }
+
+        // Health week (Mon–Sun steps)
+        foreach ([
+            ['day' => 'Mon', 'steps' => 9200],
+            ['day' => 'Tue', 'steps' => 6800],
+            ['day' => 'Wed', 'steps' => 11400],
+            ['day' => 'Thu', 'steps' => 7900],
+            ['day' => 'Fri', 'steps' => 7420],
+            ['day' => 'Sat', 'steps' => 0],
+            ['day' => 'Sun', 'steps' => 0],
+        ] as $row) {
+            HealthWeek::create(array_merge($row, ['user_id' => $user->id]));
+        }
+
+        // Habits + logs
+        $habitsData = [
+            ['name' => 'Drink water', 'icon' => 'water_drop', 'color' => '#3f7fb0',
+                'done_days' => ['Sun', 'Mon', 'Tue', 'Wed']],
+            ['name' => 'Read 20 min', 'icon' => 'menu_book', 'color' => '#7d4bd0',
+                'done_days' => ['Sun', 'Mon', 'Tue', 'Wed', 'Thu']],
+            ['name' => 'Move 30 min', 'icon' => 'directions_run', 'color' => '#d98a2b',
+                'done_days' => ['Sun', 'Tue', 'Wed']],
+            ['name' => 'Meditate', 'icon' => 'self_improvement', 'color' => '#2f7d5b',
+                'done_days' => ['Sun', 'Mon']],
+        ];
+
+        // Week starts Sun Jul 13 2026
+        $weekStart = Carbon::parse('2026-07-13');
+        $dayOffsets = ['Sun' => 0, 'Mon' => 1, 'Tue' => 2, 'Wed' => 3, 'Thu' => 4, 'Fri' => 5, 'Sat' => 6];
+
+        foreach ($habitsData as $data) {
+            $habit = Habit::create([
+                'user_id' => $user->id,
+                'name' => $data['name'],
+                'icon' => $data['icon'],
+                'color' => $data['color'],
+            ]);
+            foreach ($data['done_days'] as $dayName) {
+                HabitLog::create([
+                    'habit_id' => $habit->id,
+                    'date' => $weekStart->copy()->addDays($dayOffsets[$dayName])->toDateString(),
+                    'done' => true,
+                ]);
+            }
+        }
+
+        // Accounts
+        foreach ([
+            ['name' => 'Checking', 'institution' => 'BDO', 'last4' => '4821', 'balance' => 2480.00, 'type' => 'cash'],
+            ['name' => 'Savings', 'institution' => 'BDO', 'last4' => '3392', 'balance' => 8120.00, 'type' => 'cash'],
+            ['name' => 'Credit card', 'institution' => 'BPI', 'last4' => '7714', 'balance' => -612.00, 'type' => 'credit'],
+        ] as $account) {
+            Account::create(array_merge($account, ['user_id' => $user->id]));
+        }
+
+        // Budget month — July 2026
+        BudgetMonth::create([
+            'user_id' => $user->id,
+            'year' => 2026,
+            'month' => 7,
+            'budget' => 3200.00,
+            'base_spent' => 1970.00,
         ]);
     }
 }
