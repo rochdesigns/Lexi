@@ -12,7 +12,8 @@ Route::middleware(['auth', 'verified'])->group(function (): void {
 
     // Stub routes — content added in future sprints
     Route::inertia('/calendar', 'Stub')->name('calendar');
-    Route::inertia('/tasks', 'Stub')->name('tasks');
+    Route::get('/tasks', [TaskController::class, 'index'])->name('tasks.index');
+    Route::post('/tasks', [TaskController::class, 'store'])->name('tasks.store');
     Route::inertia('/health', 'Stub')->name('health');
     Route::inertia('/habits', 'Stub')->name('habits');
     Route::inertia('/notes', 'Stub')->name('notes');
