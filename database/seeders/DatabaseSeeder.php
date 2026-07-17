@@ -84,9 +84,9 @@ class DatabaseSeeder extends Seeder
             ['name' => 'Read 20 min', 'icon' => 'menu_book', 'color' => '#7d4bd0',
                 'done_days' => ['Sun', 'Mon', 'Tue', 'Wed', 'Thu']],
             ['name' => 'Move 30 min', 'icon' => 'directions_run', 'color' => '#d98a2b',
-                'done_days' => ['Sun', 'Tue', 'Wed']],
+                'done_days' => ['Sun', 'Tue', 'Wed', 'Fri']],
             ['name' => 'Meditate', 'icon' => 'self_improvement', 'color' => '#2f7d5b',
-                'done_days' => ['Sun', 'Mon']],
+                'done_days' => ['Sun', 'Mon', 'Tue', 'Thu']],
         ];
 
         // Week starts Sun Jul 13 2026
