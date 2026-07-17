@@ -67,7 +67,7 @@ const navSections: HabitatNavSection[] = [
             <div class="flex items-center gap-3">
                 <!-- Logo mark -->
                 <div
-                    class="flex h-8 w-8 items-center justify-center rounded-lg"
+                    class="flex h-7 w-7 items-center justify-center rounded-lg"
                     :style="{ background: 'var(--hab-brand)' }"
                 >
                     <span
@@ -106,7 +106,7 @@ const navSections: HabitatNavSection[] = [
                         v-for="item in section.items"
                         :key="item.href"
                         :href="item.href"
-                        class="flex items-center gap-3 rounded-lg px-3 py-2 text-[13.5px] font-medium transition-colors"
+                        :class="['flex items-center gap-3 rounded-lg px-3 py-2 text-[13.5px] transition-colors', isCurrentUrl(item.href) ? 'font-semibold' : 'font-medium']"
                         :style="isCurrentUrl(item.href)
                             ? { background: 'var(--hab-brand)', color: 'var(--hab-brand-ink)' }
                             : { color: '#c3d1c9' }"
