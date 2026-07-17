@@ -16,6 +16,6 @@ class TaskController extends Controller
 
         $task->update($validated);
 
-        return response()->json(['ok' => true]);
+        return response()->json(['done' => $task->done]);
     }
 }
