@@ -18,6 +18,7 @@ test('today page loads for authenticated user', function (): void {
         ->assertOk()
         ->assertInertia(fn ($page) => $page
             ->component('Today')
+            ->has('user')
             ->has('todayEvents')
             ->has('todayTasks')
             ->has('moneySummary')
