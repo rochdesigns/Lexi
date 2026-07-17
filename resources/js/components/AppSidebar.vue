@@ -1,66 +1,153 @@
 <script setup lang="ts">
-import { Link } from '@inertiajs/vue3';
-import { BookOpen, FolderGit2, LayoutGrid } from '@lucide/vue';
-import AppLogo from '@/components/AppLogo.vue';
-import NavFooter from '@/components/NavFooter.vue';
-import NavMain from '@/components/NavMain.vue';
-import NavUser from '@/components/NavUser.vue';
+import { Link, usePage } from '@inertiajs/vue3';
+import { computed } from 'vue';
+import {
+    DropdownMenu,
+    DropdownMenuContent,
+    DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 import {
     Sidebar,
     SidebarContent,
     SidebarFooter,
     SidebarHeader,
-    SidebarMenu,
-    SidebarMenuButton,
-    SidebarMenuItem,
 } from '@/components/ui/sidebar';
-import { dashboard } from '@/routes';
-import type { NavItem } from '@/types';
+import UserMenuContent from '@/components/UserMenuContent.vue';
+import { useCurrentUrl } from '@/composables/useCurrentUrl';
+import { getInitials } from '@/composables/useInitials';
+import type { HabitatNavSection } from '@/types';
 
-const mainNavItems: NavItem[] = [
-    {
-        title: 'Dashboard',
-        href: dashboard(),
-        icon: LayoutGrid,
-    },
-];
+const page = usePage();
+const user = computed(() => page.props.auth?.user as any);
+const { isCurrentUrl } = useCurrentUrl();
 
-const footerNavItems: NavItem[] = [
+const navSections: HabitatNavSection[] = [
     {
-        title: 'Repository',
-        href: 'https://github.com/laravel/vue-starter-kit',
-        icon: FolderGit2,
+        label: 'Day',
+        items: [
+            { title: 'Today', href: '/today', icon: 'wb_sunny' },
+            { title: 'Calendar', href: '/calendar', icon: 'calendar_month' },
+            { title: 'Tasks', href: '/tasks', icon: 'check_circle' },
+        ],
     },
     {
-        title: 'Documentation',
-        href: 'https://laravel.com/docs/starter-kits#vue',
-        icon: BookOpen,
+        label: 'Life',
+        items: [
+            { title: 'Health', href: '/health', icon: 'favorite' },
+            { title: 'Habits', href: '/habits', icon: 'loop' },
+            { title: 'Notes', href: '/notes', icon: 'sticky_note_2' },
+            { title: 'Journal', href: '/journal', icon: 'auto_stories' },
+            { title: 'Meals', href: '/meals', icon: 'restaurant' },
+            { title: 'Groceries', href: '/groceries', icon: 'shopping_cart' },
+            { title: 'Pets', href: '/pets', icon: 'pets' },
+        ],
+    },
+    {
+        label: 'Money',
+        items: [
+            { title: 'Goals', href: '/goals', icon: 'flag' },
+            { title: 'Accounts', href: '/accounts', icon: 'account_balance' },
+            { title: 'Budgets', href: '/budgets', icon: 'account_balance_wallet' },
+            { title: 'Set-asides', href: '/set-asides', icon: 'savings' },
+            { title: 'Debt', href: '/debt', icon: 'credit_card' },
+            { title: 'Photos', href: '/photos', icon: 'photo_library' },
+        ],
     },
 ];
 </script>
 
 <template>
-    <Sidebar collapsible="icon" variant="inset">
-        <SidebarHeader>
-            <SidebarMenu>
-                <SidebarMenuItem>
-                    <SidebarMenuButton size="lg" as-child>
-                        <Link :href="dashboard()">
-                            <AppLogo />
-                        </Link>
-                    </SidebarMenuButton>
-                </SidebarMenuItem>
-            </SidebarMenu>
+    <Sidebar
+        collapsible="none"
+        class="border-r-0"
+        :style="{ background: 'var(--hab-sidebar-bg)', width: '248px', flexShrink: '0' }"
+    >
+        <!-- Brand row -->
+        <SidebarHeader class="px-4 py-5">
+            <div class="flex items-center gap-3">
+                <!-- Logo mark -->
+                <div
+                    class="flex h-8 w-8 items-center justify-center rounded-lg"
+                    :style="{ background: 'var(--hab-brand)' }"
+                >
+                    <span
+                        class="material-symbols-rounded filled text-[18px]"
+                        :style="{ color: 'var(--hab-brand-ink)', fontSize: '18px' }"
+                    >cottage</span>
+                </div>
+                <!-- Wordmark -->
+                <span
+                    class="font-['Bricolage_Grotesque'] text-[17px] font-bold text-white"
+                >Habitat</span>
+                <!-- User pill -->
+                <span
+                    v-if="user"
+                    class="ml-auto rounded-full px-2.5 py-0.5 text-[11px] font-medium text-white/80"
+                    style="background: rgba(255,255,255,.15)"
+                >
+                    {{ user.name.split(' ')[0] }}
+                </span>
+            </div>
         </SidebarHeader>
 
-        <SidebarContent>
-            <NavMain :items="mainNavItems" />
+        <!-- Nav sections -->
+        <SidebarContent class="px-2 py-0 overflow-y-auto">
+            <div v-for="section in navSections" :key="section.label" class="mb-4">
+                <!-- Group label -->
+                <p
+                    class="px-3 py-1.5 text-[10px] font-semibold uppercase tracking-widest"
+                    style="color: #8a978f"
+                >
+                    {{ section.label }}
+                </p>
+                <!-- Nav items -->
+                <nav>
+                    <Link
+                        v-for="item in section.items"
+                        :key="item.href"
+                        :href="item.href"
+                        class="flex items-center gap-3 rounded-lg px-3 py-2 text-[13.5px] font-medium transition-colors"
+                        :style="isCurrentUrl(item.href)
+                            ? { background: 'var(--hab-brand)', color: 'var(--hab-brand-ink)' }
+                            : { color: '#c3d1c9' }"
+                    >
+                        <span
+                            class="material-symbols-rounded text-[18px]"
+                            :style="{ color: isCurrentUrl(item.href) ? 'var(--hab-brand-ink)' : '#94a89d', fontSize: '18px' }"
+                        >{{ item.icon }}</span>
+                        <span>{{ item.title }}</span>
+                    </Link>
+                </nav>
+            </div>
         </SidebarContent>
 
-        <SidebarFooter>
-            <NavFooter :items="footerNavItems" />
-            <NavUser />
+        <!-- User tile -->
+        <SidebarFooter class="px-2 pb-4">
+            <DropdownMenu>
+                <DropdownMenuTrigger as-child>
+                    <button
+                        class="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left transition-colors hover:bg-white/10"
+                    >
+                        <!-- Avatar -->
+                        <div
+                            class="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-[13px] font-semibold"
+                            :style="{ background: 'var(--hab-brand)', color: 'var(--hab-brand-ink)' }"
+                        >
+                            {{ user ? getInitials(user.name) : '?' }}
+                        </div>
+                        <div class="min-w-0 flex-1">
+                            <p class="truncate text-[13px] font-medium text-white">
+                                {{ user?.name }}
+                            </p>
+                            <p class="text-[11px]" style="color: #8a978f">Free plan</p>
+                        </div>
+                        <span class="material-symbols-rounded text-[16px]" style="color: #8a978f; font-size: 16px">chevron_right</span>
+                    </button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" side="right" class="w-56">
+                    <UserMenuContent :user="user" />
+                </DropdownMenuContent>
+            </DropdownMenu>
         </SidebarFooter>
     </Sidebar>
-    <slot />
 </template>
