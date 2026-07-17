@@ -19,7 +19,6 @@ class TodayController extends Controller
     {
         $user = $request->user();
         $today = Carbon::today();
-        $weekStart = $today->copy()->startOfWeek(Carbon::SUNDAY);
 
         $todayEvents = Event::where('user_id', $user->id)
             ->whereDate('date', $today)
@@ -43,20 +42,29 @@ class TodayController extends Controller
             'spent' => (float) $budgetMonth->base_spent,
         ] : ['safeToSpend' => 0, 'budget' => 0, 'spent' => 0];
 
-        $habits = Habit::where('user_id', $user->id)->get()->map(function (Habit $habit) use ($weekStart): array {
-            $logsThisWeek = HabitLog::where('habit_id', $habit->id)
-                ->whereBetween('date', [$weekStart->toDateString(), $weekStart->copy()->addDays(6)->toDateString()])
-                ->where('done', true)
-                ->count();
+        $habits = Habit::where('user_id', $user->id)->get();
 
-            $pct = (int) round(($logsThisWeek / 7) * 100);
+        $allDoneLogs = HabitLog::whereIn('habit_id', $habits->pluck('id'))
+            ->where('done', true)
+            ->orderBy('date', 'desc')
+            ->get(['habit_id', 'date'])
+            ->groupBy('habit_id');
 
-            // Streak: consecutive days done ending today (working backwards)
+        $habits = $habits->map(function (Habit $habit) use ($today, $allDoneLogs): array {
+            $logs = $allDoneLogs->get($habit->id, collect());
+
+            // pct: done days in last 7
+            $weekAgo = $today->copy()->subDays(6);
+            $doneDays = $logs->filter(fn ($l) => $l->date >= $weekAgo->toDateString() && $l->date <= $today->toDateString())->count();
+            $pct = (int) round($doneDays / 7 * 100);
+
+            // streak: consecutive done days ending today
+            $doneDates = $logs->pluck('date')->map(fn ($d) => (string) $d)->flip();
             $streak = 0;
-            $checkDate = Carbon::today();
-            while (HabitLog::where('habit_id', $habit->id)->whereDate('date', $checkDate)->where('done', true)->exists()) {
+            $check = $today->copy();
+            while ($doneDates->has($check->toDateString())) {
                 $streak++;
-                $checkDate->subDay();
+                $check->subDay();
             }
 
             return [

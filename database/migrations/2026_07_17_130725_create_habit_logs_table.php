@@ -15,7 +15,7 @@ return new class extends Migration
             $table->id();
             $table->foreignId('habit_id')->constrained()->cascadeOnDelete();
             $table->date('date');
-            $table->boolean('done')->default(true);
+            $table->boolean('done')->default(false);
             $table->timestamps();
         });
     }

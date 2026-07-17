@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { Head, Link, router } from '@inertiajs/vue3';
 import { computed, ref } from 'vue';
+import type { HabitatTheme } from '@/types';
 
 type TodayEvent = { id: number; title: string; time: string; tag: string; color: string };
 type TodayTask = { id: number; label: string; group: string; done: boolean };
@@ -9,7 +10,7 @@ type Habit = { id: number; name: string; icon: string; color: string; pct: numbe
 type HealthMetric = { name: string; value: string; sub: string; pct: number; color: string; icon: string };
 
 const props = defineProps<{
-    user: { name: string; firstName: string; theme: string };
+    user: { name: string; firstName: string; theme: HabitatTheme };
     todayEvents: TodayEvent[];
     todayTasks: TodayTask[];
     moneySummary: MoneySummary;

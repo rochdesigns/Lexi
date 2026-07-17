@@ -29,8 +29,8 @@ class DatabaseSeeder extends Seeder
 
         Setting::create(['user_id' => $user->id, 'theme' => 'ocean']);
 
-        // Events — today only (July 17 2026)
-        $today = Carbon::parse('2026-07-17');
+        // Events — today only
+        $today = Carbon::today();
         foreach ([
             ['title' => 'Team standup', 'time' => '11:00 PM', 'tag' => 'Work', 'color' => '#7d4bd0'],
             ['title' => 'Lunch with Mia', 'time' => '12:30 PM', 'tag' => 'Personal', 'color' => '#c0512c'],
@@ -89,8 +89,7 @@ class DatabaseSeeder extends Seeder
                 'done_days' => ['Sun', 'Mon', 'Tue', 'Thu']],
         ];
 
-        // Week starts Sun Jul 13 2026
-        $weekStart = Carbon::parse('2026-07-13');
+        $weekStart = $today->copy()->startOfWeek(Carbon::SUNDAY);
         $dayOffsets = ['Sun' => 0, 'Mon' => 1, 'Tue' => 2, 'Wed' => 3, 'Thu' => 4, 'Fri' => 5, 'Sat' => 6];
 
         foreach ($habitsData as $data) {
@@ -118,11 +117,10 @@ class DatabaseSeeder extends Seeder
             Account::create(array_merge($account, ['user_id' => $user->id]));
         }
 
-        // Budget month — July 2026
         BudgetMonth::create([
             'user_id' => $user->id,
-            'year' => 2026,
-            'month' => 7,
+            'year' => $today->year,
+            'month' => $today->month,
             'budget' => 3200.00,
             'base_spent' => 1970.00,
         ]);
