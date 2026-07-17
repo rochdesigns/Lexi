@@ -170,3 +170,100 @@
         @apply bg-background text-foreground;
     }
 }
+
+/* ── Habitat static tokens ───────────────────────────── */
+:root {
+    --hab-app-bg: #efece4;
+    --hab-card-bg: #fffdf8;
+    --hab-card-border: #e0dacd;
+    --hab-hairline: #efe9dc;
+    --hab-ink: #211d17;
+    --hab-ink-secondary: #4a4436;
+    --hab-muted: #8a8172;
+    --hab-faint: #a49b8a;
+    --hab-chip-fill: #f1ede3;
+    --hab-btn-dark-bg: #211d17;
+    --hab-btn-dark-ink: #fdfbf5;
+    --hab-progress-track: #efe9dc;
+    --hab-spend-fill: linear-gradient(90deg, #ffd27a, #ffe9a8);
+}
+
+/* ── Habitat theme palettes ──────────────────────────── */
+body[data-theme="ocean"] {
+    --hab-sidebar-bg: #142731;
+    --hab-brand: #67c7e0;
+    --hab-brand-ink: #0e2630;
+    --hab-accent: #2f83aa;
+    --hab-accent-deep: #28688a;
+    --hab-grad-a: #2f83aa;
+    --hab-grad-b: #286b8c;
+    --hab-grad-c: #1e4f6b;
+}
+
+body[data-theme="forest"] {
+    --hab-sidebar-bg: #1c2b23;
+    --hab-brand: #5fce97;
+    --hab-brand-ink: #12241a;
+    --hab-accent: #2f7d5b;
+    --hab-accent-deep: #276448;
+    --hab-grad-a: #2f7d5b;
+    --hab-grad-b: #276448;
+    --hab-grad-c: #1f5138;
+}
+
+body[data-theme="plum"] {
+    --hab-sidebar-bg: #241d2e;
+    --hab-brand: #c39bf0;
+    --hab-brand-ink: #231539;
+    --hab-accent: #7d4bd0;
+    --hab-accent-deep: #5e37a3;
+    --hab-grad-a: #7d4bd0;
+    --hab-grad-b: #653aad;
+    --hab-grad-c: #4a2a82;
+}
+
+body[data-theme="clay"] {
+    --hab-sidebar-bg: #2c211b;
+    --hab-brand: #f0a878;
+    --hab-brand-ink: #33200f;
+    --hab-accent: #bd6537;
+    --hab-accent-deep: #a5562d;
+    --hab-grad-a: #c26a3c;
+    --hab-grad-b: #a5562d;
+    --hab-grad-c: #823f1f;
+}
+
+body[data-theme="slate"] {
+    --hab-sidebar-bg: #22262e;
+    --hab-brand: #9db2d6;
+    --hab-brand-ink: #161d29;
+    --hab-accent: #4d5f86;
+    --hab-accent-deep: #3f4f70;
+    --hab-grad-a: #4d5f86;
+    --hab-grad-b: #3f4f70;
+    --hab-grad-c: #2f3c57;
+}
+
+/* ── Habitat Material Symbols config ─────────────────── */
+.material-symbols-rounded {
+    font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+    font-size: 20px;
+    line-height: 1;
+    display: inline-flex;
+    align-items: center;
+    user-select: none;
+}
+
+.material-symbols-rounded.filled {
+    font-variation-settings: 'FILL' 1, 'wght' 500, 'GRAD' 0, 'opsz' 24;
+}
+
+/* ── Habitat body background (authenticated pages) ───── */
+body[data-theme] {
+    background-color: var(--hab-app-bg);
+}
+
+/* ── Habitat progress bar transition ─────────────────── */
+.hab-progress-fill {
+    transition: width 0.5s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
