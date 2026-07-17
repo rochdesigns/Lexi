@@ -221,7 +221,7 @@ function tagStyle(tag: string): { bg: string; text: string } {
                     <div class="h-[9px] w-full rounded-full" style="background: var(--hab-progress-track)">
                         <div
                             class="hab-progress-fill h-full rounded-full"
-                            :style="{ width: spentPct + '%', background: 'linear-gradient(90deg,#ffd27a,#ffe9a8)' }"
+                            :style="{ width: spentPct + '%', background: 'var(--hab-spend-fill)' }"
                         ></div>
                     </div>
                 </Link>
@@ -240,7 +240,7 @@ function tagStyle(tag: string): { bg: string; text: string } {
                             <div
                                 class="flex h-10 w-10 shrink-0 items-center justify-center rounded-full"
                                 :style="{
-                                    background: `conic-gradient(${habit.color} ${habit.pct}%, #efe9dc ${habit.pct}%)`,
+                                    background: `conic-gradient(${habit.color} ${habit.pct}%, var(--hab-progress-track) ${habit.pct}%)`,
                                 }"
                             >
                                 <div
