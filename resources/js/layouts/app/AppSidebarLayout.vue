@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { usePage } from '@inertiajs/vue3';
+import { computed, onMounted, onUnmounted } from 'vue';
 import AppContent from '@/components/AppContent.vue';
 import AppShell from '@/components/AppShell.vue';
 import AppSidebar from '@/components/AppSidebar.vue';
@@ -12,6 +14,17 @@ type Props = {
 
 withDefaults(defineProps<Props>(), {
     breadcrumbs: () => [],
+});
+
+const page = usePage();
+const theme = computed(() => (page.props.auth?.user as any)?.theme ?? 'ocean');
+
+onMounted(() => {
+    document.body.dataset.theme = theme.value;
+});
+
+onUnmounted(() => {
+    delete document.body.dataset.theme;
 });
 </script>
 
