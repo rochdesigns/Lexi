@@ -4,6 +4,7 @@ namespace App\Actions\Fortify;
 
 use App\Concerns\PasswordValidationRules;
 use App\Concerns\ProfileValidationRules;
+use App\Models\Setting;
 use App\Models\TaskSection;
 use App\Models\User;
 use Illuminate\Support\Facades\Validator;
@@ -29,6 +30,13 @@ class CreateNewUser implements CreatesNewUsers
             'name' => $input['name'],
             'email' => $input['email'],
             'password' => $input['password'],
+        ]);
+
+        Setting::create([
+            'user_id' => $user->id,
+            'theme' => 'ocean',
+            'budget_cycle_days' => 30,
+            'budget_cycle_anchor' => now()->toDateString(),
         ]);
 
         foreach ([['label' => 'Today', 'position' => 1], ['label' => 'This Week', 'position' => 2], ['label' => 'Someday', 'position' => 3]] as $section) {
