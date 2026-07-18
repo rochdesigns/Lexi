@@ -90,7 +90,7 @@ const groupOptions: Array<{ key: Task['group']; label: string }> = [
                 v-for="group in localGroups"
                 :key="group.key"
                 class="rounded-[22px] p-6"
-                style="background: var(--hab-card-bg); border: 1px solid var(--hab-card-border); box-shadow: 0 8px 24px -20px rgba(60,48,20,.5)"
+                style="background: var(--hab-card-bg); border: 1px solid var(--hab-card-border); box-shadow: 0 8px 24px -20px var(--hab-card-shadow)"
             >
                 <div class="mb-4 flex items-center justify-between">
                     <h2

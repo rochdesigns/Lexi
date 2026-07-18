@@ -111,7 +111,7 @@ function tagStyle(tag: string): { bg: string; text: string } {
                 <!-- Today's schedule -->
                 <div
                     class="rounded-[22px] p-6"
-                    style="background: var(--hab-card-bg); border: 1px solid var(--hab-card-border); box-shadow: 0 8px 24px -20px rgba(60,48,20,.5)"
+                    style="background: var(--hab-card-bg); border: 1px solid var(--hab-card-border); box-shadow: 0 8px 24px -20px var(--hab-card-shadow)"
                 >
                     <div class="mb-4 flex items-center justify-between">
                         <h2 class="font-['Bricolage_Grotesque'] text-[18px] font-bold" style="color: var(--hab-ink)">
@@ -156,7 +156,7 @@ function tagStyle(tag: string): { bg: string; text: string } {
                 <!-- Tasks -->
                 <div
                     class="rounded-[22px] p-6"
-                    style="background: var(--hab-card-bg); border: 1px solid var(--hab-card-border); box-shadow: 0 8px 24px -20px rgba(60,48,20,.5)"
+                    style="background: var(--hab-card-bg); border: 1px solid var(--hab-card-border); box-shadow: 0 8px 24px -20px var(--hab-card-shadow)"
                 >
                     <div class="mb-4 flex items-center justify-between">
                         <h2 class="font-['Bricolage_Grotesque'] text-[18px] font-bold" style="color: var(--hab-ink)">
@@ -208,7 +208,7 @@ function tagStyle(tag: string): { bg: string; text: string } {
                 <Link
                     href="/budgets"
                     class="block rounded-[22px] p-5 transition-opacity hover:opacity-90"
-                    style="background: var(--hab-card-bg); border: 1px solid var(--hab-card-border); box-shadow: 0 8px 24px -20px rgba(60,48,20,.5)"
+                    style="background: var(--hab-card-bg); border: 1px solid var(--hab-card-border); box-shadow: 0 8px 24px -20px var(--hab-card-shadow)"
                 >
                     <div class="mb-3 flex items-center justify-between">
                         <h2 class="font-['Bricolage_Grotesque'] text-[16px] font-bold" style="color: var(--hab-ink)">Money</h2>
@@ -230,7 +230,7 @@ function tagStyle(tag: string): { bg: string; text: string } {
                 <!-- Habits -->
                 <div
                     class="rounded-[22px] p-5"
-                    style="background: var(--hab-card-bg); border: 1px solid var(--hab-card-border); box-shadow: 0 8px 24px -20px rgba(60,48,20,.5)"
+                    style="background: var(--hab-card-bg); border: 1px solid var(--hab-card-border); box-shadow: 0 8px 24px -20px var(--hab-card-shadow)"
                 >
                     <h2 class="mb-4 font-['Bricolage_Grotesque'] text-[16px] font-bold" style="color: var(--hab-ink)">Habits</h2>
 
@@ -269,7 +269,7 @@ function tagStyle(tag: string): { bg: string; text: string } {
                 <!-- Health -->
                 <div
                     class="rounded-[22px] p-5"
-                    style="background: var(--hab-card-bg); border: 1px solid var(--hab-card-border); box-shadow: 0 8px 24px -20px rgba(60,48,20,.5)"
+                    style="background: var(--hab-card-bg); border: 1px solid var(--hab-card-border); box-shadow: 0 8px 24px -20px var(--hab-card-shadow)"
                 >
                     <h2 class="mb-4 font-['Bricolage_Grotesque'] text-[16px] font-bold" style="color: var(--hab-ink)">Health</h2>
 
@@ -306,7 +306,7 @@ function tagStyle(tag: string): { bg: string; text: string } {
                 <!-- On this day -->
                 <div
                     class="rounded-[22px] p-5"
-                    style="background: var(--hab-card-bg); border: 1px solid var(--hab-card-border); box-shadow: 0 8px 24px -20px rgba(60,48,20,.5)"
+                    style="background: var(--hab-card-bg); border: 1px solid var(--hab-card-border); box-shadow: 0 8px 24px -20px var(--hab-card-shadow)"
                 >
                     <h2 class="mb-3 font-['Bricolage_Grotesque'] text-[16px] font-bold" style="color: var(--hab-ink)">On this day</h2>
                     <!-- Photo placeholder -->
