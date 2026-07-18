@@ -13,7 +13,7 @@ beforeEach(function (): void {
 
 test('task can be marked done', function (): void {
     $user = User::where('email', 'elle@example.com')->first();
-    $task = Task::where('user_id', $user->id)->where('group', 'today')->where('done', false)->first();
+    $task = Task::where('user_id', $user->id)->where('done', false)->first();
 
     $this->actingAs($user)
         ->patch("/tasks/{$task->id}", ['done' => true])

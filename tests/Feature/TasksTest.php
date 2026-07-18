@@ -1,6 +1,7 @@
 <?php
 
 use App\Models\Task;
+use App\Models\TaskSection;
 use App\Models\User;
 use Database\Seeders\DatabaseSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -20,7 +21,7 @@ test('authenticated user can view tasks page', function (): void {
         ->assertInertia(fn ($page) => $page
             ->component('Tasks')
             ->has('groups', 3)
-            ->has('groups.0.key')
+            ->has('groups.0.id')
             ->has('groups.0.label')
             ->has('groups.0.tasks')
         );
@@ -32,9 +33,10 @@ test('guest is redirected from tasks index', function (): void {
 
 test('authenticated user can add a task', function (): void {
     $user = User::where('email', 'elle@example.com')->first();
+    $section = TaskSection::where('user_id', $user->id)->first();
 
     $this->actingAs($user)
-        ->post('/tasks', ['label' => 'Buy oat milk', 'group' => 'today'])
+        ->post('/tasks', ['label' => 'Buy oat milk', 'section_id' => $section->id])
         ->assertRedirect(route('tasks.index'));
 
     expect(
@@ -44,29 +46,43 @@ test('authenticated user can add a task', function (): void {
 
 test('store validates label is required', function (): void {
     $user = User::where('email', 'elle@example.com')->first();
+    $section = TaskSection::where('user_id', $user->id)->first();
 
     $this->actingAs($user)
-        ->post('/tasks', ['group' => 'today'])
+        ->post('/tasks', ['section_id' => $section->id])
         ->assertSessionHasErrors('label');
 });
 
-test('store validates group must be valid', function (): void {
+test('store validates section_id is required', function (): void {
     $user = User::where('email', 'elle@example.com')->first();
 
     $this->actingAs($user)
-        ->post('/tasks', ['label' => 'Buy oat milk', 'group' => 'invalid'])
-        ->assertSessionHasErrors('group');
+        ->post('/tasks', ['label' => 'Buy oat milk'])
+        ->assertSessionHasErrors('section_id');
+});
+
+test('store rejects section belonging to another user', function (): void {
+    $user = User::where('email', 'elle@example.com')->first();
+    $other = User::factory()->create();
+    $otherSection = TaskSection::create(['user_id' => $other->id, 'label' => 'Theirs', 'position' => 1]);
+
+    $this->actingAs($user)
+        ->post('/tasks', ['label' => 'Sneaky task', 'section_id' => $otherSection->id])
+        ->assertForbidden();
 });
 
 test('unauthenticated store request is redirected', function (): void {
-    $this->post('/tasks', ['label' => 'Buy oat milk', 'group' => 'today'])
+    $section = TaskSection::first();
+
+    $this->post('/tasks', ['label' => 'Buy oat milk', 'section_id' => $section->id])
         ->assertRedirect('/login');
 });
 
 test('index only returns the authenticated users tasks', function (): void {
     $user = User::where('email', 'elle@example.com')->first();
     $other = User::factory()->create();
-    Task::create(['user_id' => $other->id, 'label' => 'Other user task', 'group' => 'today', 'done' => false]);
+    $otherSection = TaskSection::create(['user_id' => $other->id, 'label' => 'Work', 'position' => 1]);
+    Task::create(['user_id' => $other->id, 'label' => 'Other user task', 'section_id' => $otherSection->id, 'done' => false]);
 
     $response = $this->actingAs($user)->get('/tasks');
 

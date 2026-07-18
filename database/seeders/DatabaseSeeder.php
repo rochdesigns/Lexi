@@ -11,6 +11,7 @@ use App\Models\HealthMetric;
 use App\Models\HealthWeek;
 use App\Models\Setting;
 use App\Models\Task;
+use App\Models\TaskSection;
 use App\Models\User;
 use Illuminate\Database\Seeder;
 use Illuminate\Support\Carbon;
@@ -39,17 +40,22 @@ class DatabaseSeeder extends Seeder
             Event::create(array_merge($event, ['user_id' => $user->id, 'date' => $today->toDateString()]));
         }
 
+        // Task sections
+        $todaySection = TaskSection::create(['user_id' => $user->id, 'label' => 'Today', 'position' => 1]);
+        $weekSection = TaskSection::create(['user_id' => $user->id, 'label' => 'This Week', 'position' => 2]);
+        $somedaySection = TaskSection::create(['user_id' => $user->id, 'label' => 'Someday', 'position' => 3]);
+
         // Tasks
         foreach ([
-            ['label' => 'Reply to the landlord', 'group' => 'today', 'done' => false],
-            ['label' => 'Book a dentist appointment', 'group' => 'today', 'done' => false],
-            ['label' => 'Pay the electric bill', 'group' => 'today', 'done' => false],
-            ['label' => 'Grocery run', 'group' => 'today', 'done' => true],
-            ['label' => 'Finish the Q3 deck', 'group' => 'week', 'done' => false],
-            ['label' => 'Renew car insurance quote', 'group' => 'week', 'done' => false],
-            ['label' => 'Clean out the garage', 'group' => 'week', 'done' => false],
-            ['label' => 'Learn to make sourdough', 'group' => 'someday', 'done' => false],
-            ['label' => 'Plan Batangas trip', 'group' => 'someday', 'done' => false],
+            ['label' => 'Reply to the landlord', 'section_id' => $todaySection->id, 'done' => false],
+            ['label' => 'Book a dentist appointment', 'section_id' => $todaySection->id, 'done' => false],
+            ['label' => 'Pay the electric bill', 'section_id' => $todaySection->id, 'done' => false],
+            ['label' => 'Grocery run', 'section_id' => $todaySection->id, 'done' => true],
+            ['label' => 'Finish the Q3 deck', 'section_id' => $weekSection->id, 'done' => false],
+            ['label' => 'Renew car insurance quote', 'section_id' => $weekSection->id, 'done' => false],
+            ['label' => 'Clean out the garage', 'section_id' => $weekSection->id, 'done' => false],
+            ['label' => 'Learn to make sourdough', 'section_id' => $somedaySection->id, 'done' => false],
+            ['label' => 'Plan Batangas trip', 'section_id' => $somedaySection->id, 'done' => false],
         ] as $task) {
             Task::create(array_merge($task, ['user_id' => $user->id]));
         }

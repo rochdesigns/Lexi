@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\TaskController;
+use App\Http\Controllers\TaskSectionController;
 use App\Http\Controllers\TodayController;
 use Illuminate\Support\Facades\Route;
 
@@ -11,6 +12,11 @@ Route::middleware(['auth', 'verified'])->group(function (): void {
     Route::patch('/tasks/{task}', [TaskController::class, 'update'])->name('tasks.update');
     Route::get('/tasks', [TaskController::class, 'index'])->name('tasks.index');
     Route::post('/tasks', [TaskController::class, 'store'])->name('tasks.store');
+
+    Route::post('/task-sections', [TaskSectionController::class, 'store'])->name('task-sections.store');
+    Route::post('/task-sections/reorder', [TaskSectionController::class, 'reorder'])->name('task-sections.reorder');
+    Route::patch('/task-sections/{taskSection}', [TaskSectionController::class, 'update'])->name('task-sections.update');
+    Route::delete('/task-sections/{taskSection}', [TaskSectionController::class, 'destroy'])->name('task-sections.destroy');
 
     // Stub routes — content added in future sprints
     Route::inertia('/calendar', 'Stub')->name('calendar');

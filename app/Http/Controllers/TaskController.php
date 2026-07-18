@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\Task;
+use App\Models\TaskSection;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
@@ -12,31 +13,22 @@ class TaskController extends Controller
 {
     public function index(Request $request): Response
     {
-        $tasks = Task::where('user_id', $request->user()->id)
-            ->orderBy('done')
-            ->orderBy('created_at')
+        $sections = TaskSection::where('user_id', $request->user()->id)
+            ->orderBy('position')
+            ->with(['tasks' => fn ($q) => $q->orderBy('done')->orderBy('created_at')])
             ->get();
 
-        $buckets = [
-            ['key' => 'today', 'label' => 'Today'],
-            ['key' => 'week', 'label' => 'This week'],
-            ['key' => 'someday', 'label' => 'Someday'],
-        ];
-
-        $groups = collect($buckets)->map(function (array $bucket) use ($tasks): array {
-            $grouped = $tasks->where('group', $bucket['key'])->values();
-
-            return [
-                'key' => $bucket['key'],
-                'label' => $bucket['label'],
-                'tasks' => $grouped->map(fn (Task $task): array => [
-                    'id' => $task->id,
-                    'label' => $task->label,
-                    'group' => $task->group,
-                    'done' => $task->done,
-                ])->values(),
-            ];
-        })->values();
+        $groups = $sections->map(fn (TaskSection $section): array => [
+            'id' => $section->id,
+            'label' => $section->label,
+            'position' => $section->position,
+            'tasks' => $section->tasks->map(fn (Task $task): array => [
+                'id' => $task->id,
+                'label' => $task->label,
+                'section_id' => $task->section_id,
+                'done' => $task->done,
+            ])->values()->all(),
+        ])->values();
 
         return Inertia::render('Tasks', ['groups' => $groups]);
     }
@@ -45,8 +37,15 @@ class TaskController extends Controller
     {
         $validated = $request->validate([
             'label' => ['required', 'string', 'max:255'],
-            'group' => ['required', 'in:today,week,someday'],
+            'section_id' => ['required', 'integer'],
         ]);
+
+        abort_if(
+            ! TaskSection::where('id', $validated['section_id'])
+                ->where('user_id', $request->user()->id)
+                ->exists(),
+            403
+        );
 
         Task::create([...$validated, 'user_id' => $request->user()->id]);
 

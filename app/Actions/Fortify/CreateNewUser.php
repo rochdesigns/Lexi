@@ -4,6 +4,7 @@ namespace App\Actions\Fortify;
 
 use App\Concerns\PasswordValidationRules;
 use App\Concerns\ProfileValidationRules;
+use App\Models\TaskSection;
 use App\Models\User;
 use Illuminate\Support\Facades\Validator;
 use Laravel\Fortify\Contracts\CreatesNewUsers;
@@ -24,10 +25,16 @@ class CreateNewUser implements CreatesNewUsers
             'password' => $this->passwordRules(),
         ])->validate();
 
-        return User::create([
+        $user = User::create([
             'name' => $input['name'],
             'email' => $input['email'],
             'password' => $input['password'],
         ]);
+
+        foreach ([['label' => 'Today', 'position' => 1], ['label' => 'This Week', 'position' => 2], ['label' => 'Someday', 'position' => 3]] as $section) {
+            TaskSection::create(['user_id' => $user->id, ...$section]);
+        }
+
+        return $user;
     }
 }
