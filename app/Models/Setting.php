@@ -25,6 +25,9 @@ class Setting extends Model
         return $this->belongsTo(User::class);
     }
 
+    /**
+     * @return array{start: Carbon, end: Carbon, index: int}
+     */
     public function cycleForDate(Carbon $date): array
     {
         $anchor = ($this->budget_cycle_anchor ?? Carbon::parse($this->created_at))->copy()->startOfDay();
