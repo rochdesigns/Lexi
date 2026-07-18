@@ -17,7 +17,7 @@ test('task can be marked done', function (): void {
 
     $this->actingAs($user)
         ->patch("/tasks/{$task->id}", ['done' => true])
-        ->assertOk();
+        ->assertRedirect();
 
     expect($task->fresh()->done)->toBeTrue();
 });
@@ -28,7 +28,7 @@ test('task can be marked undone', function (): void {
 
     $this->actingAs($user)
         ->patch("/tasks/{$task->id}", ['done' => false])
-        ->assertOk();
+        ->assertRedirect();
 
     expect($task->fresh()->done)->toBeFalse();
 });

@@ -3,7 +3,6 @@
 namespace App\Http\Controllers;
 
 use App\Models\Task;
-use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
@@ -54,7 +53,7 @@ class TaskController extends Controller
         return redirect()->route('tasks.index');
     }
 
-    public function update(Request $request, Task $task): JsonResponse
+    public function update(Request $request, Task $task): RedirectResponse
     {
         abort_if($task->user_id !== $request->user()->id, 403);
 
@@ -62,6 +61,6 @@ class TaskController extends Controller
 
         $task->update($validated);
 
-        return response()->json(['done' => $task->done]);
+        return back();
     }
 }
