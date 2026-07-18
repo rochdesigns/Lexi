@@ -19,7 +19,7 @@ test('accounts index returns grouped accounts and net worth', function () {
         ->get(route('accounts.index'))
         ->assertInertia(fn ($page) => $page
             ->component('Accounts')
-            ->where('netWorth', 6500.0)
+            ->where('netWorth', 6500)
             ->has('groups', 3)
         );
 });
@@ -32,7 +32,7 @@ test('net worth is correct sum including negative credit balances', function () 
 
     $this->actingAs($user)
         ->get(route('accounts.index'))
-        ->assertInertia(fn ($page) => $page->where('netWorth', 7000.0));
+        ->assertInertia(fn ($page) => $page->where('netWorth', 7000));
 });
 
 test('store creates account for authenticated user', function () {
