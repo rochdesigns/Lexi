@@ -23,7 +23,6 @@ test('authenticated user can view tasks page', function (): void {
             ->has('groups.0.key')
             ->has('groups.0.label')
             ->has('groups.0.tasks')
-            ->has('groups.0.leftCount')
         );
 });
 
@@ -62,4 +61,18 @@ test('store validates group must be valid', function (): void {
 test('unauthenticated store request is redirected', function (): void {
     $this->post('/tasks', ['label' => 'Buy oat milk', 'group' => 'today'])
         ->assertRedirect('/login');
+});
+
+test('index only returns the authenticated users tasks', function (): void {
+    $user = User::where('email', 'elle@example.com')->first();
+    $other = User::factory()->create();
+    Task::create(['user_id' => $other->id, 'label' => 'Other user task', 'group' => 'today', 'done' => false]);
+
+    $response = $this->actingAs($user)->get('/tasks');
+
+    $groups = $response->original->getData()['page']['props']['groups'];
+    $allTaskIds = collect($groups)->flatMap(fn ($g) => collect($g['tasks'])->pluck('id'));
+    $userTaskIds = Task::where('user_id', $user->id)->pluck('id');
+
+    expect($allTaskIds->diff($userTaskIds)->isEmpty())->toBeTrue();
 });

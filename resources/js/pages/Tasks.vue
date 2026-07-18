@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 
 type Task = { id: number; label: string; group: 'today' | 'week' | 'someday'; done: boolean };
-type TaskGroup = { key: 'today' | 'week' | 'someday'; label: string; tasks: Task[]; leftCount: number };
+type TaskGroup = { key: 'today' | 'week' | 'someday'; label: string; tasks: Task[] };
 
 const props = defineProps<{ groups: TaskGroup[] }>();
 
@@ -151,40 +151,40 @@ const groupOptions: Array<{ key: Task['group']; label: string }> = [
                 </template>
             </div>
         </div>
-    </div>
 
-    <!-- Add task modal -->
-    <Dialog v-model:open="showModal">
-        <DialogContent>
-            <DialogHeader>
-                <DialogTitle>Add task</DialogTitle>
-            </DialogHeader>
-            <form class="flex flex-col gap-4 pt-2" @submit.prevent="submitTask">
-                <Input
-                    v-model="form.label"
-                    autofocus
-                    placeholder="What needs doing?"
-                    required
-                />
-                <div class="flex gap-2">
-                    <button
-                        v-for="opt in groupOptions"
-                        :key="opt.key"
-                        type="button"
-                        class="rounded-full px-3 py-1.5 text-[13px] font-medium transition-colors"
-                        :style="form.group === opt.key
-                            ? 'background: var(--hab-accent); color: white'
-                            : 'background: var(--hab-surface); color: var(--hab-muted)'"
-                        @click="form.group = opt.key"
-                    >
-                        {{ opt.label }}
-                    </button>
-                </div>
-                <div class="flex justify-end gap-2">
-                    <Button type="button" variant="outline" @click="showModal = false">Cancel</Button>
-                    <Button type="submit">Add task</Button>
-                </div>
-            </form>
-        </DialogContent>
-    </Dialog>
+        <!-- Add task modal -->
+        <Dialog v-model:open="showModal">
+            <DialogContent>
+                <DialogHeader>
+                    <DialogTitle>Add task</DialogTitle>
+                </DialogHeader>
+                <form class="flex flex-col gap-4 pt-2" @submit.prevent="submitTask">
+                    <Input
+                        v-model="form.label"
+                        autofocus
+                        placeholder="What needs doing?"
+                        required
+                    />
+                    <div class="flex gap-2">
+                        <button
+                            v-for="opt in groupOptions"
+                            :key="opt.key"
+                            type="button"
+                            class="rounded-full px-3 py-1.5 text-[13px] font-medium transition-colors"
+                            :style="form.group === opt.key
+                                ? 'background: var(--hab-accent); color: white'
+                                : 'background: var(--hab-surface); color: var(--hab-muted)'"
+                            @click="form.group = opt.key"
+                        >
+                            {{ opt.label }}
+                        </button>
+                    </div>
+                    <div class="flex justify-end gap-2">
+                        <Button type="button" variant="outline" @click="showModal = false">Cancel</Button>
+                        <Button type="submit">Add task</Button>
+                    </div>
+                </form>
+            </DialogContent>
+        </Dialog>
+    </div>
 </template>

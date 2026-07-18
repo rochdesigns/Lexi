@@ -36,7 +36,6 @@ class TaskController extends Controller
                     'group' => $task->group,
                     'done' => $task->done,
                 ])->values(),
-                'leftCount' => $grouped->where('done', false)->count(),
             ];
         })->values();
 

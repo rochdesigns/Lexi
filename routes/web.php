@@ -9,11 +9,11 @@ Route::inertia('/', 'Welcome')->name('home');
 Route::middleware(['auth', 'verified'])->group(function (): void {
     Route::get('/today', TodayController::class)->name('today');
     Route::patch('/tasks/{task}', [TaskController::class, 'update'])->name('tasks.update');
+    Route::get('/tasks', [TaskController::class, 'index'])->name('tasks.index');
+    Route::post('/tasks', [TaskController::class, 'store'])->name('tasks.store');
 
     // Stub routes — content added in future sprints
     Route::inertia('/calendar', 'Stub')->name('calendar');
-    Route::get('/tasks', [TaskController::class, 'index'])->name('tasks.index');
-    Route::post('/tasks', [TaskController::class, 'store'])->name('tasks.store');
     Route::inertia('/health', 'Stub')->name('health');
     Route::inertia('/habits', 'Stub')->name('habits');
     Route::inertia('/notes', 'Stub')->name('notes');
