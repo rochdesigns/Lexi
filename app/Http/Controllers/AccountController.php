@@ -54,13 +54,7 @@ class AccountController extends Controller
 
     public function store(Request $request): RedirectResponse
     {
-        $validated = $request->validate([
-            'name' => ['required', 'string', 'max:100'],
-            'institution' => ['nullable', 'string', 'max:100'],
-            'last4' => ['nullable', 'string', 'max:4', 'regex:/^\d{0,4}$/'],
-            'balance' => ['required', 'numeric'],
-            'type' => ['required', 'in:cash,credit,investment'],
-        ]);
+        $validated = $request->validate($this->accountRules());
 
         $request->user()->accounts()->create($validated);
 
@@ -71,17 +65,25 @@ class AccountController extends Controller
     {
         abort_if($account->user_id !== $request->user()->id, 403);
 
-        $validated = $request->validate([
+        $validated = $request->validate($this->accountRules());
+
+        $account->update($validated);
+
+        return back();
+    }
+
+    /**
+     * @return array<string, array<int, string>>
+     */
+    private function accountRules(): array
+    {
+        return [
             'name' => ['required', 'string', 'max:100'],
             'institution' => ['nullable', 'string', 'max:100'],
             'last4' => ['nullable', 'string', 'max:4', 'regex:/^\d{0,4}$/'],
             'balance' => ['required', 'numeric'],
             'type' => ['required', 'in:cash,credit,investment'],
-        ]);
-
-        $account->update($validated);
-
-        return back();
+        ];
     }
 
     public function destroy(Request $request, Account $account): RedirectResponse
