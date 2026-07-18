@@ -80,28 +80,28 @@ const notificationCount = 1;
             <span class="font-semibold" style="color: var(--hab-ink)">{{ pageLabel }}</span>
         </div>
 
-        <!-- Search -->
-        <div
-            class="mx-auto flex w-[250px] items-center gap-2 rounded-[11px] border px-3 py-1.5"
-            style="border-color: #e0dacd; background: var(--hab-card-bg)"
-        >
-            <span class="material-symbols-rounded" style="font-size: 16px; color: var(--hab-faint)">search</span>
-            <input
-                type="text"
-                placeholder="Search anything in your life…"
-                class="flex-1 bg-transparent text-[13px] outline-none"
-                style="color: var(--hab-ink)"
-                readonly
-            />
-            <kbd
-                class="rounded-[6px] px-1.5 py-0.5 text-[10px] font-medium"
-                style="background: var(--hab-chip-fill); color: var(--hab-faint)"
-                >⌘K</kbd
-            >
-        </div>
-
         <!-- Right actions -->
         <div class="ml-auto flex items-center gap-2">
+            <!-- Search -->
+            <div
+                class="flex w-[250px] items-center gap-2 rounded-[11px] border px-3 py-1.5"
+                style="border-color: #e0dacd; background: var(--hab-card-bg)"
+            >
+                <span class="material-symbols-rounded shrink-0" style="font-size: 16px; color: var(--hab-faint)">search</span>
+                <input
+                    type="text"
+                    placeholder="Search anything in your life…"
+                    class="min-w-0 flex-1 bg-transparent text-[13px] outline-none"
+                    style="color: var(--hab-ink)"
+                    readonly
+                />
+                <kbd
+                    class="rounded-[6px] px-1.5 py-0.5 text-[10px] font-medium"
+                    style="background: var(--hab-chip-fill); color: var(--hab-faint)"
+                    >⌘K</kbd
+                >
+            </div>
+
             <!-- Notification bell -->
             <button class="relative flex h-9 w-9 items-center justify-center rounded-lg hover:bg-black/5">
                 <span class="material-symbols-rounded" style="font-size: 20px; color: var(--hab-ink-secondary)">

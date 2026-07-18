@@ -60,7 +60,7 @@ const navSections: HabitatNavSection[] = [
     <Sidebar
         collapsible="none"
         class="border-r-0"
-        :style="{ background: 'var(--hab-sidebar-bg)', width: '248px', flexShrink: '0' }"
+        :style="{ background: 'var(--hab-sidebar-bg)', width: '248px', flexShrink: '0', height: '100vh', position: 'sticky', top: '0' }"
     >
         <!-- Brand row -->
         <SidebarHeader class="px-4 py-5">
