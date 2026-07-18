@@ -117,10 +117,16 @@ On hover, each section card header reveals:
 - `Enter` or blur with content → `POST /task-sections`, append to `localSections`
 - `Escape` or blur with empty → cancel, card disappears
 
-### Add task modal
+### Add task (inline per section)
 
-- Section picker renders from `localSections` (dynamic) instead of hardcoded `groupOptions`
-- Defaults to `localSections[0]`
+Each section card has a `+ Add task` row below its last task (or below the empty-state text).
+
+1. Click `+ Add task` → an inline `<input>` appears below the task list, auto-focused
+2. `Enter` with content → `POST /tasks` with `section_id` already set from the parent section, task appended to local list optimistically
+3. `Escape` or blur with empty → cancel, input disappears
+4. After submitting, the input stays open so the user can add another task immediately; blur or `Escape` closes it
+
+The header "Add task" button and modal are removed — all task creation is inline.
 
 ---
 
