@@ -160,7 +160,7 @@ function cancelDelete() {
                     </div>
                     <!-- Flat sparkline (phase 1 — no transaction history) -->
                     <div style="display: flex; align-items: flex-end; gap: 6px; height: 74px; padding-top: 6px">
-                        <div v-for="h in [30, 35, 28, 32, 30, 30]" :key="h"
+                        <div v-for="(h, i) in [30, 35, 28, 32, 30, 30]" :key="i"
                             style="width: 16px; border-radius: 5px; background: rgba(255,255,255,.25)"
                             :style="{ height: h + '%' }">
                         </div>
@@ -271,7 +271,6 @@ function cancelDelete() {
                 </div>
             </div>
         </div>
-    </div>
 
     <!-- Add / Edit modal -->
     <Dialog v-model:open="modalOpen">
@@ -331,4 +330,5 @@ function cancelDelete() {
             </form>
         </DialogContent>
     </Dialog>
+    </div>
 </template>
