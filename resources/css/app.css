@@ -260,6 +260,16 @@ body[data-theme="slate"] {
     font-variation-settings: 'FILL' 1, 'wght' 500, 'GRAD' 0, 'opsz' 24;
 }
 
+.msf {
+    font-family: 'Material Symbols Rounded';
+    font-variation-settings: 'FILL' 1, 'wght' 500, 'GRAD' 0, 'opsz' 24;
+    font-size: 20px;
+    line-height: 1;
+    display: inline-flex;
+    align-items: center;
+    user-select: none;
+}
+
 /* ── Habitat body background (authenticated pages) ───── */
 body[data-theme] {
     background-color: var(--hab-app-bg);
