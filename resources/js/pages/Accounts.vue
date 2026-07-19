@@ -128,7 +128,7 @@ function cancelDelete() {
 <template>
     <Head title="Accounts" />
 
-    <div style="padding: 24px 30px 46px; display: flex; flex-direction: column; gap: 20px; max-width: 1180px; width: 100%">
+    <div style="padding: 24px 30px 46px; display: flex; flex-direction: column; gap: 20px; max-width: 1180px; width: 100%; margin: 0 auto">
 
         <!-- Page header -->
         <div style="display: flex; align-items: flex-end; gap: 16px; flex-wrap: wrap">
