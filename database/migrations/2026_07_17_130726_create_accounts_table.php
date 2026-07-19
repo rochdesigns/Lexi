@@ -15,8 +15,8 @@ return new class extends Migration
             $table->id();
             $table->foreignId('user_id')->constrained()->cascadeOnDelete();
             $table->string('name');
-            $table->string('institution');
-            $table->string('last4');
+            $table->string('institution')->nullable();
+            $table->string('last4')->nullable();
             $table->decimal('balance', 10, 2)->default(0);
             $table->string('type')->default('cash'); // cash | credit | investment
             $table->timestamps();
