@@ -29,7 +29,7 @@ const props = defineProps<{
 }>();
 
 const typeIcons: Record<AccountType, string> = {
-    cash: 'savings',
+    cash: 'account_balance_wallet',
     credit: 'credit_card',
     investment: 'candlestick_chart',
 };
