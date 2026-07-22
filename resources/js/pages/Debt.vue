@@ -2,6 +2,7 @@
 import { Head, router, useForm } from '@inertiajs/vue3';
 import { ref, computed } from 'vue';
 import { evaluateArithmetic, hasArithmetic } from '@/utils/arithmetic';
+import { computeSnowball } from '@/utils/snowball';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { store, update, destroy, makePayment } from '@/actions/App/Http/Controllers/DebtController';
 
@@ -209,6 +210,20 @@ const perMonthEvaluated = computed(() => evaluateArithmetic(String(form.per_mont
 const perMonthHasExpr = computed(() => hasArithmetic(String(form.per_month)) && perMonthEvaluated.value !== null);
 const payAmountEvaluated = computed(() => evaluateArithmetic(payForm.amount));
 const payAmountHasExpr = computed(() => hasArithmetic(payForm.amount) && payAmountEvaluated.value !== null);
+
+// ── Snowball plan ──────────────────────────────────────────────────────────────
+
+const monthlyBudget = ref(
+    props.debts.filter(d => d.balance > 0).reduce((s, d) => s + d.per_month, 0)
+);
+
+const snowballPlan = computed(() =>
+    computeSnowball(props.debts, monthlyBudget.value)
+);
+
+const minimumsTotal = computed(() =>
+    props.debts.filter(d => d.balance > 0).reduce((s, d) => s + d.per_month, 0)
+);
 </script>
 
 <template>
@@ -332,6 +347,82 @@ const payAmountHasExpr = computed(() => hasArithmetic(payForm.amount) && payAmou
                         style="width: 100%; display: flex; align-items: center; justify-content: center; gap: 6px; height: 36px; border: 1.5px dashed #c8c0b0; border-radius: 10px; background: none; font-family: 'Instrument Sans'; font-size: 12.5px; font-weight: 600; color: #6b6355; cursor: pointer">
                         <span class="material-symbols-rounded" style="font-size: 15px">payments</span> Record payment
                     </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Payoff Plan -->
+        <div v-if="debts.length > 0" style="background: #fffdf8; border: 1px solid #e0dacd; border-radius: 22px; padding: 28px 30px; box-shadow: 0 8px 24px -20px rgba(60,48,20,.5)">
+
+            <!-- Header + budget input -->
+            <div style="display: flex; align-items: center; gap: 16px; flex-wrap: wrap; margin-bottom: 20px">
+                <div>
+                    <div style="font-family: 'Bricolage Grotesque'; font-weight: 700; font-size: 18px; letter-spacing: -.01em">Snowball Payoff Plan</div>
+                    <div style="font-size: 13px; color: #8a8172; margin-top: 2px">Pay off the smallest balance first, roll it into the next</div>
+                </div>
+                <div style="margin-left: auto; display: flex; align-items: center; gap: 8px; flex-wrap: wrap">
+                    <label style="font-size: 13px; font-weight: 600; color: #4a4436; white-space: nowrap">Monthly budget (₱)</label>
+                    <input v-model.number="monthlyBudget" type="number" min="0" step="100"
+                        style="width: 130px; height: 36px; border: 1px solid #e0dacd; border-radius: 10px; padding: 0 10px; font-family: 'Instrument Sans'; font-size: 14px; background: #fffdf8; outline: none" />
+                </div>
+            </div>
+
+            <!-- Budget too low warning -->
+            <div v-if="snowballPlan === null"
+                style="display: flex; align-items: center; gap: 8px; background: #fdf3ed; border: 1px solid #f5c9a8; border-radius: 12px; padding: 12px 16px; font-size: 13.5px; color: #8a3800">
+                <span class="material-symbols-rounded" style="font-size: 18px">warning</span>
+                Increase your budget to at least ₱{{ Math.ceil(minimumsTotal).toLocaleString('en-PH') }} to cover all minimum payments.
+            </div>
+
+            <!-- All debts paid -->
+            <div v-else-if="snowballPlan.length === 0"
+                style="text-align: center; padding: 24px 0">
+                <span class="msf" style="font-size: 36px; display: block; margin-bottom: 8px; color: #2f7d5b">celebration</span>
+                <div style="font-weight: 600; font-size: 15px; color: #2f7d5b">All debts paid off!</div>
+            </div>
+
+            <!-- Snowball ranked list -->
+            <div v-else style="display: flex; flex-direction: column; gap: 10px">
+                <div v-for="(item, index) in snowballPlan" :key="item.id"
+                    style="display: flex; align-items: center; gap: 12px; padding: 14px 16px; border: 1px solid #e0dacd; border-radius: 14px; background: #fdfbf5">
+
+                    <!-- Rank pill -->
+                    <div style="width: 28px; height: 28px; border-radius: 50%; background: #f1ede3; display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 700; color: #4a4436; flex: none">
+                        {{ index + 1 }}
+                    </div>
+
+                    <!-- Icon tile -->
+                    <span style="width: 36px; height: 36px; border-radius: 10px; display: flex; align-items: center; justify-content: center; flex: none"
+                        :style="{ background: item.bg }">
+                        <span class="msf" style="font-size: 19px" :style="{ color: item.color }">{{ item.icon }}</span>
+                    </span>
+
+                    <!-- Name + meta -->
+                    <div style="flex: 1; min-width: 0">
+                        <div style="display: flex; align-items: center; gap: 7px; flex-wrap: wrap">
+                            <span style="font-weight: 600; font-size: 14px">{{ item.name }}</span>
+                            <span v-if="index === 0"
+                                style="font-size: 11px; font-weight: 600; background: #dff3e6; color: #2f7d5b; padding: 2px 8px; border-radius: 20px">
+                                Snowball target
+                            </span>
+                        </div>
+                        <div style="font-size: 12.5px; color: #8a8172; margin-top: 2px">
+                            {{ formatMoney(item.startBalance) }} remaining
+                            <template v-if="item.totalInterest !== null">
+                                · ₱{{ Math.round(item.totalInterest).toLocaleString('en-PH') }} in interest
+                            </template>
+                        </div>
+                        <div style="margin-top: 8px; height: 5px; border-radius: 20px; background: #e0dacd; overflow: hidden">
+                            <div style="height: 100%; border-radius: 20px; transition: width .4s"
+                                :style="{ width: item.paidPct + '%', background: item.color }"></div>
+                        </div>
+                    </div>
+
+                    <!-- Payoff date -->
+                    <div style="text-align: right; flex: none">
+                        <div style="font-weight: 700; font-size: 14px; color: #211d17">{{ item.payoffDate }}</div>
+                        <div style="font-size: 12px; color: #8a8172">{{ item.payoffMonth }} mo</div>
+                    </div>
                 </div>
             </div>
         </div>
