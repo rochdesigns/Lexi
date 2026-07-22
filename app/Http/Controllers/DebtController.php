@@ -35,7 +35,7 @@ class DebtController extends Controller
                     'balance' => (float) $d->balance,
                     'original' => (float) $d->original,
                     'per_month' => (float) $d->per_month,
-                    'interest_rate' => $d->interest_rate ? (float) $d->interest_rate : null,
+                    'interest_rate' => $d->interest_rate !== null ? (float) $d->interest_rate : null,
                     'due_day' => $d->due_day,
                     'due_label' => $this->dueDateLabel($d->due_day, $today),
                     'months_left' => $monthsLeft,
