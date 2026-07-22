@@ -36,6 +36,7 @@ class DebtController extends Controller
                     'original' => (float) $d->original,
                     'per_month' => (float) $d->per_month,
                     'interest_rate' => $d->interest_rate !== null ? (float) $d->interest_rate : null,
+                    'interest_rate_period' => $d->interest_rate_period ?? 'annual',
                     'due_day' => $d->due_day,
                     'due_label' => $this->dueDateLabel($d->due_day, $today),
                     'months_left' => $monthsLeft,
@@ -169,6 +170,7 @@ class DebtController extends Controller
             'original' => ['required', 'numeric', 'min:0.01'],
             'per_month' => ['required', 'numeric', 'min:0.01'],
             'interest_rate' => ['nullable', 'numeric', 'min:0', 'max:100'],
+            'interest_rate_period' => ['nullable', 'string', 'in:monthly,annual'],
             'due_day' => ['nullable', 'integer', 'min:1', 'max:31'],
         ];
     }

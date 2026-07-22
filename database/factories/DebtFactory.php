@@ -24,6 +24,7 @@ class DebtFactory extends Factory
             'original' => $original,
             'per_month' => $this->faker->randomElement([100, 200, 300, 500]),
             'interest_rate' => null,
+            'interest_rate_period' => 'annual',
             'due_day' => $this->faker->numberBetween(1, 28),
             'position' => 0,
         ];
