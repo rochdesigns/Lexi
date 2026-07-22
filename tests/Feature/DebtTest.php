@@ -140,6 +140,20 @@ test('make-payment decrements debt balance and account balance, creates transact
     expect(Transaction::where('account_id', $account->id)->where('amount', 200)->exists())->toBeTrue();
 });
 
+test('make-payment rejects amount exceeding account balance', function (): void {
+    $account = Account::factory()->for($this->user)->create(['balance' => 100]);
+    $debt = Debt::factory()->for($this->user)->create(['balance' => 500]);
+
+    $this->post("/debts/{$debt->id}/payment", [
+        'amount' => 9999,
+        'account_id' => $account->id,
+        'transacted_at' => '2026-07-22',
+    ])->assertSessionHasErrors('amount');
+
+    expect((float) $account->fresh()->balance)->toBe(100.0);
+    expect((float) $debt->fresh()->balance)->toBe(500.0);
+});
+
 test('make-payment floors debt balance at zero', function (): void {
     $account = Account::factory()->for($this->user)->create(['balance' => 10000]);
     $debt = Debt::factory()->for($this->user)->create(['balance' => 100]);

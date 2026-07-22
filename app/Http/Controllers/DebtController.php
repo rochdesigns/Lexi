@@ -112,6 +112,10 @@ class DebtController extends Controller
 
         $account = $user->accounts()->findOrFail($validated['account_id']);
 
+        if ((float) $validated['amount'] > (float) $account->balance) {
+            return back()->withErrors(['amount' => 'Payment amount cannot exceed your account balance.']);
+        }
+
         Transaction::create([
             'user_id' => $user->id,
             'account_id' => $account->id,
