@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { Head, router } from '@inertiajs/vue3';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { ref, reactive, computed } from 'vue';
 import { evaluateArithmetic, hasArithmetic } from '@/utils/arithmetic';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
@@ -26,6 +27,8 @@ type AccountGroup = {
 
 const props = defineProps<{
     netWorth: number;
+    accountTotal: number;
+    debtTotal: number;
     netWorthChangePct: number;
     groups: AccountGroup[];
     cycleLabel: string;
@@ -290,6 +293,7 @@ function formatDate(iso: string): string {
 <template>
     <Head title="Accounts" />
 
+    <TooltipProvider :delay-duration="400">
     <div class="mx-auto w-full max-w-[1180px] px-4 sm:px-6 lg:px-[30px] pt-6 pb-[46px] flex flex-col gap-5">
 
         <!-- Page header -->
@@ -312,9 +316,16 @@ function formatDate(iso: string): string {
                 <div style="position: relative; display: flex; justify-content: space-between; align-items: flex-start; gap: 20px; flex-wrap: wrap">
                     <div>
                         <div style="font-size: 14px; font-weight: 500; color: rgba(255,255,255,.72)">Total net worth</div>
-                        <div style="font-family: 'Bricolage Grotesque'; font-weight: 800; font-size: 56px; line-height: .9; letter-spacing: -.03em; margin-top: 6px">
-                            {{ netWorthFormatted }}
-                        </div>
+                        <Tooltip>
+                            <TooltipTrigger as-child>
+                                <div style="cursor: help; font-family: 'Bricolage Grotesque'; font-weight: 800; font-size: 56px; line-height: .9; letter-spacing: -.03em; margin-top: 6px">
+                                    {{ netWorthFormatted }}
+                                </div>
+                            </TooltipTrigger>
+                            <TooltipContent side="bottom">
+                                {{ formatMoney(accountTotal) }} in accounts − {{ formatMoney(debtTotal) }} in debts
+                            </TooltipContent>
+                        </Tooltip>
                         <div style="margin-top: 14px; display: inline-flex; align-items: center; gap: 7px; background: rgba(255,255,255,.14); border: 1px solid rgba(255,255,255,.18); padding: 6px 12px; border-radius: 20px; font-size: 13px">
                             <span class="msf" style="font-size: 16px; color: #fff">{{ netWorthChangeIcon }}</span>
                             <span>{{ netWorthChangeBadge }}</span>
@@ -693,4 +704,5 @@ function formatDate(iso: string): string {
         </DialogContent>
     </Dialog>
     </div>
+    </TooltipProvider>
 </template>

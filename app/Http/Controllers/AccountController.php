@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\Account;
 use Carbon\Carbon;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
@@ -13,12 +14,15 @@ class AccountController extends Controller
 {
     public function index(Request $request): Response
     {
-        $accounts = $request->user()
-            ->accounts()
+        $user = $request->user();
+
+        $accounts = $user->accounts()
             ->orderBy('name')
             ->get();
 
-        $netWorth = (float) $accounts->sum('balance');
+        $accountTotal = (float) $accounts->sum('balance');
+        $debtTotal = (float) $user->debts()->sum('balance');
+        $netWorth = $accountTotal - $debtTotal;
 
         $typeOrder = ['cash' => 0, 'credit' => 1, 'investment' => 2];
 
@@ -38,17 +42,89 @@ class AccountController extends Controller
             ->sortBy(fn ($g) => $typeOrder[$g['type']] ?? 99)
             ->values();
 
-        $setting = $request->user()->setting;
-        $cycleLabel = Carbon::now()->format('F Y');
-        if ($setting?->budget_cycle_anchor) {
+        $setting = $user->setting;
+
+        if ($setting) {
             $cycle = $setting->cycleForDate(Carbon::now());
-            $cycleLabel = $cycle['start']->format('M j').' – '.$cycle['end']->format('M j');
+            $cycleStart = $cycle['start'];
+            $cycleEnd = $cycle['end'];
+            $isCalendarMonth = $cycleStart->day === 1 && $cycleEnd->isSameDay($cycleStart->copy()->endOfMonth());
+            $cycleLabel = $isCalendarMonth
+                ? $cycleStart->format('F Y')
+                : $cycleStart->format('M j').' – '.$cycleEnd->format('M j');
+        } else {
+            $cycleStart = Carbon::now()->startOfMonth();
+            $cycleEnd = Carbon::now()->endOfMonth();
+            $cycleLabel = Carbon::now()->format('F Y');
         }
+
+        $cycleTransactions = $user->transactions()
+            ->whereBetween('transacted_at', [$cycleStart->toDateString(), $cycleEnd->toDateString()])
+            ->get(['type', 'amount']);
+
+        $cashIn = (float) $cycleTransactions->where('type', 'income')->sum('amount');
+        $cashOut = (float) $cycleTransactions->where('type', 'expense')->sum('amount');
+        $cashNet = $cashIn - $cashOut;
+        $cashOutPct = $cashIn > 0 ? min(100, (int) round($cashOut / $cashIn * 100)) : 0;
+
+        $previousNetWorth = $netWorth - $cashNet;
+        $netWorthChangePct = $previousNetWorth != 0
+            ? round($cashNet / abs($previousNetWorth) * 100, 1)
+            : 0.0;
 
         return Inertia::render('Accounts', [
             'netWorth' => $netWorth,
+            'accountTotal' => $accountTotal,
+            'debtTotal' => $debtTotal,
+            'netWorthChangePct' => $netWorthChangePct,
             'groups' => $groups,
             'cycleLabel' => $cycleLabel,
+            'cashIn' => $cashIn,
+            'cashOut' => $cashOut,
+            'cashNet' => $cashNet,
+            'cashOutPct' => $cashOutPct,
+        ]);
+    }
+
+    public function transactions(Request $request, Account $account): JsonResponse
+    {
+        abort_if($account->user_id !== $request->user()->id, 403);
+
+        $user = $request->user();
+
+        $transactions = $user
+            ->transactions()
+            ->with(['budgetCategory', 'toAccount'])
+            ->where(fn ($q) => $q->where('account_id', $account->id)->orWhere('to_account_id', $account->id))
+            ->orderByDesc('transacted_at')
+            ->orderByDesc('id')
+            ->get()
+            ->map(fn ($tx) => [
+                'id' => $tx->id,
+                'type' => $tx->type,
+                'amount' => (float) $tx->amount,
+                'merchant' => $tx->merchant,
+                'transacted_at' => $tx->transacted_at->toDateString(),
+                'account_id' => $tx->account_id,
+                'to_account_id' => $tx->to_account_id,
+                'budget_category_id' => $tx->budget_category_id,
+                'is_destination' => $tx->to_account_id === $account->id,
+                'category' => $tx->budgetCategory ? [
+                    'id' => $tx->budgetCategory->id,
+                    'name' => $tx->budgetCategory->name,
+                    'icon' => $tx->budgetCategory->icon,
+                    'color' => $tx->budgetCategory->color,
+                ] : null,
+                'to_account' => $tx->toAccount ? ['id' => $tx->toAccount->id, 'name' => $tx->toAccount->name] : null,
+            ]);
+
+        $categories = $user->budgetCategories()
+            ->orderBy('name')
+            ->get(['id', 'name', 'icon', 'color']);
+
+        return response()->json([
+            'transactions' => $transactions,
+            'categories' => $categories,
         ]);
     }
 
