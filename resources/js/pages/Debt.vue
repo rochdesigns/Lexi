@@ -164,6 +164,7 @@ function createCategoryForDebt() {
         name: form.name,
         icon: form.icon,
         color: form.color,
+        group: 'Debt',
         limit_amount: parseFloat(String(form.per_month)) || 0,
     }, {
         preserveState: true,
