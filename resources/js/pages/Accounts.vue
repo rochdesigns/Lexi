@@ -1,8 +1,10 @@
 <script setup lang="ts">
 import { Head, router } from '@inertiajs/vue3';
 import { ref, reactive, computed } from 'vue';
+import { evaluateArithmetic, hasArithmetic } from '@/utils/arithmetic';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import { store, update, destroy } from '@/actions/App/Http/Controllers/AccountController';
+import { store, update, destroy, transactions as accountTransactionsUrl } from '@/actions/App/Http/Controllers/AccountController';
+import { destroy as destroyTransaction, update as updateTransaction } from '@/actions/App/Http/Controllers/TransactionController';
 
 type AccountType = 'cash' | 'credit' | 'investment';
 
@@ -24,8 +26,13 @@ type AccountGroup = {
 
 const props = defineProps<{
     netWorth: number;
+    netWorthChangePct: number;
     groups: AccountGroup[];
     cycleLabel: string;
+    cashIn: number;
+    cashOut: number;
+    cashNet: number;
+    cashOutPct: number;
 }>();
 
 const typeIcons: Record<AccountType, string> = {
@@ -51,16 +58,65 @@ const modalOpen = ref(false);
 const editingAccount = ref<Account | null>(null);
 const form = reactive({ name: '', institution: '', last4: '', balance: '', type: 'cash' as AccountType });
 
-// Two-step delete
+// Two-step delete (accounts)
 const deleteConfirmId = ref<number | null>(null);
 let deleteTimer: ReturnType<typeof setTimeout> | null = null;
 
+// Account transactions panel
+type AccountTransaction = {
+    id: number;
+    type: 'expense' | 'income' | 'transfer';
+    amount: number;
+    merchant: string | null;
+    transacted_at: string;
+    account_id: number;
+    to_account_id: number | null;
+    budget_category_id: number | null;
+    is_destination: boolean;
+    category: { id: number; name: string; icon: string; color: string } | null;
+    to_account: { id: number; name: string } | null;
+};
+
+type TxCategory = { id: number; name: string; icon: string; color: string };
+
+const txPanelOpen = ref(false);
+const txPanelAccount = ref<Account | null>(null);
+const txPanelList = ref<AccountTransaction[]>([]);
+const txPanelCategories = ref<TxCategory[]>([]);
+const txPanelLoading = ref(false);
+const deletingTxId = ref<number | null>(null);
+let deleteTxTimer: ReturnType<typeof setTimeout> | null = null;
+
+// Transaction edit form (within the panel)
+const txEditOpen = ref(false);
+const editingTx = ref<AccountTransaction | null>(null);
+const txEditForm = reactive({
+    type: 'expense' as 'expense' | 'income' | 'transfer',
+    amount: '',
+    merchant: '',
+    account_id: 0,
+    to_account_id: null as number | null,
+    budget_category_id: null as number | null,
+    transacted_at: '',
+});
+
+const allAccounts = computed(() => props.groups.flatMap(g => g.accounts));
+
 const netWorthFormatted = computed(() => formatMoney(props.netWorth));
+const netWorthChangeIcon = computed(() => {
+    if (props.cashNet > 0) return 'trending_up';
+    if (props.cashNet < 0) return 'trending_down';
+    return 'trending_flat';
+});
+const netWorthChangeBadge = computed(() => {
+    const pct = Math.abs(props.netWorthChangePct).toFixed(1) + '%';
+    return `${formatMoney(props.cashNet)} · ${pct} this cycle`;
+});
 
 function formatMoney(amount: string | number): string {
     const n = typeof amount === 'string' ? parseFloat(amount) : amount;
     const abs = Math.abs(n);
-    const formatted = '₱' + abs.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 });
+    const formatted = '₱' + abs.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
     return n < 0 ? '-' + formatted : formatted;
 }
 
@@ -91,7 +147,7 @@ function submit() {
         name: form.name,
         institution: form.institution || null,
         last4: form.last4 || null,
-        balance: parseFloat(form.balance),
+        balance: balanceEvaluated.value ?? parseFloat(form.balance),
         type: form.type,
     };
     if (editingAccount.value) {
@@ -123,12 +179,118 @@ function cancelDelete() {
     if (deleteTimer) { clearTimeout(deleteTimer); }
     deleteConfirmId.value = null;
 }
+
+async function openAccountTransactions(account: Account) {
+    txPanelAccount.value = account;
+    txPanelList.value = [];
+    txPanelCategories.value = [];
+    txPanelLoading.value = true;
+    txPanelOpen.value = true;
+    try {
+        const response = await fetch(accountTransactionsUrl({ account: account.id }).url, {
+            credentials: 'same-origin',
+            headers: { 'X-Requested-With': 'XMLHttpRequest', 'Accept': 'application/json' },
+        });
+        const data = await response.json();
+        txPanelList.value = data.transactions;
+        txPanelCategories.value = data.categories;
+    } finally {
+        txPanelLoading.value = false;
+    }
+}
+
+function openEditTx(tx: AccountTransaction) {
+    editingTx.value = tx;
+    Object.assign(txEditForm, {
+        type: tx.type,
+        amount: String(tx.amount),
+        merchant: tx.merchant ?? '',
+        account_id: tx.account_id,
+        to_account_id: tx.to_account_id,
+        budget_category_id: tx.budget_category_id,
+        transacted_at: tx.transacted_at,
+    });
+    txEditOpen.value = true;
+}
+
+const txEditAmountEvaluated = computed(() => evaluateArithmetic(txEditForm.amount));
+const txEditAmountHasExpr = computed(() => hasArithmetic(txEditForm.amount) && txEditAmountEvaluated.value !== null);
+
+const balanceField = computed(() => (form as any).balance as string);
+const balanceEvaluated = computed(() => evaluateArithmetic(balanceField.value));
+const balanceHasExpr = computed(() => hasArithmetic(balanceField.value) && balanceEvaluated.value !== null);
+
+function submitEditTx() {
+    if (!editingTx.value) { return; }
+    router.patch(updateTransaction({ transaction: editingTx.value.id }).url, {
+        type: txEditForm.type,
+        amount: txEditAmountEvaluated.value ?? parseFloat(txEditForm.amount),
+        merchant: txEditForm.merchant || null,
+        account_id: txEditForm.account_id,
+        to_account_id: txEditForm.type === 'transfer' ? txEditForm.to_account_id : null,
+        budget_category_id: txEditForm.type === 'expense' ? txEditForm.budget_category_id : null,
+        transacted_at: txEditForm.transacted_at,
+    }, {
+        preserveScroll: true,
+        onSuccess: () => {
+            txEditOpen.value = false;
+            openAccountTransactions(txPanelAccount.value!);
+        },
+    });
+}
+
+function txAmountColor(tx: AccountTransaction): string {
+    if (tx.type === 'income') { return '#2f7d5b'; }
+    if (tx.type === 'transfer') { return tx.is_destination ? '#2f7d5b' : '#211d17'; }
+    return '#211d17';
+}
+
+function txAmountSign(tx: AccountTransaction): string {
+    if (tx.type === 'income') { return '+'; }
+    if (tx.type === 'transfer' && tx.is_destination) { return '+'; }
+    return '';
+}
+
+function txSubline(tx: AccountTransaction): string {
+    if (tx.type === 'transfer') {
+        return tx.is_destination
+            ? `Transfer from ${txPanelAccount.value?.name ?? ''}`
+            : `Transfer to ${tx.to_account?.name ?? '—'}`;
+    }
+    return tx.category?.name ?? (tx.type === 'income' ? 'Income' : 'Uncategorized');
+}
+
+function startDeleteTx(id: number) {
+    if (deleteTxTimer) { clearTimeout(deleteTxTimer); }
+    deletingTxId.value = id;
+    deleteTxTimer = setTimeout(() => { deletingTxId.value = null; }, 3000);
+}
+
+function cancelDeleteTx() {
+    if (deleteTxTimer) { clearTimeout(deleteTxTimer); }
+    deletingTxId.value = null;
+}
+
+function confirmDeleteTx(id: number) {
+    if (deleteTxTimer) { clearTimeout(deleteTxTimer); }
+    deletingTxId.value = null;
+    router.delete(destroyTransaction({ transaction: id }).url, {
+        preserveScroll: true,
+        onSuccess: () => {
+            txPanelList.value = txPanelList.value.filter(t => t.id !== id);
+        },
+    });
+}
+
+function formatDate(iso: string): string {
+    return new Date(iso + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+}
 </script>
 
 <template>
     <Head title="Accounts" />
 
-    <div style="padding: 24px 30px 46px; display: flex; flex-direction: column; gap: 20px; max-width: 1180px; width: 100%; margin: 0 auto">
+    <div class="mx-auto w-full max-w-[1180px] px-4 sm:px-6 lg:px-[30px] pt-6 pb-[46px] flex flex-col gap-5">
 
         <!-- Page header -->
         <div style="display: flex; align-items: flex-end; gap: 16px; flex-wrap: wrap">
@@ -142,7 +304,7 @@ function cancelDelete() {
         </div>
 
         <!-- Net worth hero + cash flow row -->
-        <div style="display: grid; grid-template-columns: 1fr 340px; gap: 20px; align-items: start">
+        <div class="grid grid-cols-1 gap-5 lg:grid-cols-[1fr_340px] items-start">
 
             <!-- Net worth hero -->
             <div style="background: radial-gradient(120% 140% at 100% 0%, var(--hab-grad-a) 0%, var(--hab-grad-b) 55%, var(--hab-grad-c) 100%); border-radius: 24px; padding: 28px 30px; color: #fff; position: relative; overflow: hidden; box-shadow: 0 24px 40px -26px rgba(20,20,20,.7)">
@@ -154,8 +316,8 @@ function cancelDelete() {
                             {{ netWorthFormatted }}
                         </div>
                         <div style="margin-top: 14px; display: inline-flex; align-items: center; gap: 7px; background: rgba(255,255,255,.14); border: 1px solid rgba(255,255,255,.18); padding: 6px 12px; border-radius: 20px; font-size: 13px">
-                            <span class="msf" style="font-size: 16px; color: #fff">trending_flat</span>
-                            <span>₱0 · 0% this month</span>
+                            <span class="msf" style="font-size: 16px; color: #fff">{{ netWorthChangeIcon }}</span>
+                            <span>{{ netWorthChangeBadge }}</span>
                         </div>
                     </div>
                     <!-- Flat sparkline (phase 1 — no transaction history) -->
@@ -168,7 +330,7 @@ function cancelDelete() {
                 </div>
             </div>
 
-            <!-- Cash flow card (zero state) -->
+            <!-- Cash flow card -->
             <div style="background: #fffdf8; border: 1px solid #e0dacd; border-radius: 22px; padding: 20px; box-shadow: 0 8px 24px -20px rgba(60,48,20,.5)">
                 <div style="font-family: 'Bricolage Grotesque'; font-weight: 700; font-size: 16px; margin-bottom: 16px">
                     Cash flow · {{ cycleLabel }}
@@ -179,21 +341,23 @@ function cancelDelete() {
                             <span class="msf" style="font-size: 17px; color: #2f7d5b">south_west</span>
                         </span>
                         <span style="font-size: 13.5px; color: #6b6355">Money in</span>
-                        <span style="margin-left: auto; font-family: 'Bricolage Grotesque'; font-weight: 700; font-size: 15px; color: #2f7d5b">₱0</span>
+                        <span style="margin-left: auto; font-family: 'Bricolage Grotesque'; font-weight: 700; font-size: 15px; color: #2f7d5b">{{ formatMoney(cashIn) }}</span>
                     </div>
                     <div style="display: flex; align-items: center; gap: 10px">
                         <span style="width: 30px; height: 30px; border-radius: 9px; background: #f8ecd6; display: flex; align-items: center; justify-content: center; flex: none">
                             <span class="msf" style="font-size: 17px; color: #a06a2b">north_east</span>
                         </span>
                         <span style="font-size: 13.5px; color: #6b6355">Money out</span>
-                        <span style="margin-left: auto; font-family: 'Bricolage Grotesque'; font-weight: 700; font-size: 15px; color: #211d17">₱0</span>
+                        <span style="margin-left: auto; font-family: 'Bricolage Grotesque'; font-weight: 700; font-size: 15px; color: #211d17">{{ formatMoney(cashOut) }}</span>
                     </div>
                     <div style="height: 9px; border-radius: 20px; background: #efe9dc; overflow: hidden; margin-top: 2px">
-                        <div style="height: 100%; width: 0; background: #d98a2b; border-radius: 20px"></div>
+                        <div style="height: 100%; border-radius: 20px; background: #d98a2b; transition: width .5s cubic-bezier(.2,.8,.2,1)"
+                            :style="{ width: cashOutPct + '%' }"></div>
                     </div>
                     <div style="display: flex; align-items: center; justify-content: space-between; padding-top: 11px; border-top: 1px solid #efe9dc">
                         <span style="font-size: 13.5px; font-weight: 600">Net saved</span>
-                        <span style="font-family: 'Bricolage Grotesque'; font-weight: 700; font-size: 16px; color: var(--hab-accent)">₱0</span>
+                        <span style="font-family: 'Bricolage Grotesque'; font-weight: 700; font-size: 16px"
+                            :style="{ color: cashNet >= 0 ? 'var(--hab-accent)' : '#c0512c' }">{{ formatMoney(cashNet) }}</span>
                     </div>
                 </div>
             </div>
@@ -238,21 +402,30 @@ function cancelDelete() {
 
                     <!-- Normal state: balance + hover actions -->
                     <template v-if="deleteConfirmId !== account.id">
-                        <div style="font-family: 'Bricolage Grotesque'; font-weight: 700; font-size: 16px"
-                            :style="{ color: parseFloat(account.balance) < 0 ? '#c0512c' : '#211d17' }">
-                            {{ formatMoney(account.balance) }}
+                        <div class="flex items-center flex-none">
+                            <div style="font-family: 'Bricolage Grotesque'; font-weight: 700; font-size: 16px"
+                                :style="{ color: parseFloat(account.balance) < 0 ? '#c0512c' : '#211d17' }">
+                                {{ formatMoney(account.balance) }}
+                            </div>
+                            <span class="material-symbols-rounded" style="font-size: 20px; color: #c3bbab; margin-left: 8px">chevron_right</span>
+                            <div class="max-w-0 overflow-hidden transition-[max-width] duration-200 ease-out group-hover/account:max-w-[120px] flex-shrink-0">
+                                <div class="flex items-center gap-1" style="padding-left: 12px">
+                                    <button @click.stop="openAccountTransactions(account)"
+                                        title="View transactions"
+                                        style="width: 32px; height: 32px; border: 1px solid #dcebf5; background: #dcebf5; border-radius: 9px; cursor: pointer; display: flex; align-items: center; justify-content: center; color: #3f7fb0">
+                                        <span class="material-symbols-rounded" style="font-size: 17px">receipt_long</span>
+                                    </button>
+                                    <button @click.stop="openEdit(account)"
+                                        style="width: 32px; height: 32px; border: 1px solid #e0dacd; background: #fffdf8; border-radius: 9px; cursor: pointer; display: flex; align-items: center; justify-content: center; color: #6b6355">
+                                        <span class="material-symbols-rounded" style="font-size: 17px">edit</span>
+                                    </button>
+                                    <button @click.stop="startDelete(account.id)"
+                                        style="width: 32px; height: 32px; border: 1px solid #fbe2d6; background: #fbe2d6; border-radius: 9px; cursor: pointer; display: flex; align-items: center; justify-content: center; color: #c0512c">
+                                        <span class="material-symbols-rounded" style="font-size: 17px">delete</span>
+                                    </button>
+                                </div>
+                            </div>
                         </div>
-                        <div class="hidden group-hover/account:flex items-center gap-1">
-                            <button @click.stop="openEdit(account)"
-                                style="width: 32px; height: 32px; border: 1px solid #e0dacd; background: #fffdf8; border-radius: 9px; cursor: pointer; display: flex; align-items: center; justify-content: center; color: #6b6355">
-                                <span class="material-symbols-rounded" style="font-size: 17px">edit</span>
-                            </button>
-                            <button @click.stop="startDelete(account.id)"
-                                style="width: 32px; height: 32px; border: 1px solid #fbe2d6; background: #fbe2d6; border-radius: 9px; cursor: pointer; display: flex; align-items: center; justify-content: center; color: #c0512c">
-                                <span class="material-symbols-rounded" style="font-size: 17px">delete</span>
-                            </button>
-                        </div>
-                        <span class="material-symbols-rounded group-hover/account:hidden" style="font-size: 20px; color: #c3bbab">chevron_right</span>
                     </template>
 
                     <!-- Delete confirm state -->
@@ -271,6 +444,194 @@ function cancelDelete() {
                 </div>
             </div>
         </div>
+
+    <!-- Account transactions modal -->
+    <Dialog v-model:open="txPanelOpen">
+        <DialogContent style="max-width: 520px; max-height: 80vh; display: flex; flex-direction: column">
+            <DialogHeader>
+                <DialogTitle style="display: flex; align-items: center; gap: 10px">
+                    <span v-if="txPanelAccount" :style="{ background: typeColors[txPanelAccount.type].bg }"
+                        style="width: 32px; height: 32px; border-radius: 9px; display: flex; align-items: center; justify-content: center; flex: none">
+                        <span class="msf" :style="{ color: txPanelAccount ? typeColors[txPanelAccount.type].color : '' }" style="font-size: 17px">
+                            {{ txPanelAccount ? typeIcons[txPanelAccount.type] : '' }}
+                        </span>
+                    </span>
+                    {{ txPanelAccount?.name }} Transactions
+                </DialogTitle>
+            </DialogHeader>
+
+            <!-- Loading state -->
+            <div v-if="txPanelLoading" style="display: flex; align-items: center; justify-content: center; padding: 48px 0; gap: 10px; color: #8a8172; font-size: 13.5px">
+                <span class="material-symbols-rounded" style="font-size: 20px; animation: spin 1s linear infinite">progress_activity</span>
+                Loading transactions…
+            </div>
+
+            <!-- Empty state -->
+            <div v-else-if="!txPanelList.length" style="display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 48px 0; gap: 8px">
+                <span class="material-symbols-rounded" style="font-size: 36px; color: #c3bbab">receipt_long</span>
+                <div style="font-size: 13.5px; color: #8a8172">No transactions for this account yet</div>
+            </div>
+
+            <!-- Transaction list -->
+            <div v-else style="overflow-y: auto; margin: 0 -24px; padding: 0 24px">
+                <div v-for="(tx, i) in txPanelList" :key="tx.id" class="group/atx"
+                    style="display: flex; align-items: center; gap: 12px; padding: 12px 0"
+                    :style="{ borderTop: i > 0 ? '1px solid #efe9dc' : 'none' }">
+                    <!-- Icon -->
+                    <span v-if="tx.category" :style="{ background: tx.category.color + '22' }"
+                        style="width: 36px; height: 36px; border-radius: 10px; display: flex; align-items: center; justify-content: center; flex: none">
+                        <span class="msf" :style="{ color: tx.category.color }" style="font-size: 19px">{{ tx.category.icon }}</span>
+                    </span>
+                    <span v-else-if="tx.type === 'income'"
+                        style="width: 36px; height: 36px; border-radius: 10px; background: #dff3e6; display: flex; align-items: center; justify-content: center; flex: none">
+                        <span class="msf" style="font-size: 19px; color: #2f7d5b">south_west</span>
+                    </span>
+                    <span v-else-if="tx.type === 'transfer'"
+                        style="width: 36px; height: 36px; border-radius: 10px; background: #f1ede3; display: flex; align-items: center; justify-content: center; flex: none">
+                        <span class="material-symbols-rounded" style="font-size: 19px; color: #8a8172">swap_horiz</span>
+                    </span>
+                    <span v-else
+                        style="width: 36px; height: 36px; border-radius: 10px; background: #f1ede3; display: flex; align-items: center; justify-content: center; flex: none">
+                        <span class="material-symbols-rounded" style="font-size: 19px; color: #8a8172">receipt</span>
+                    </span>
+
+                    <!-- Info -->
+                    <div style="flex: 1; min-width: 0">
+                        <div style="font-weight: 600; font-size: 14px; color: #211d17">{{ tx.merchant || 'No description' }}</div>
+                        <div style="font-size: 12px; color: #8a8172; margin-top: 2px">
+                            {{ txSubline(tx) }} · {{ formatDate(tx.transacted_at) }}
+                        </div>
+                    </div>
+
+                    <!-- Amount + actions -->
+                    <template v-if="deletingTxId !== tx.id">
+                        <div class="flex items-center flex-none">
+                            <div style="font-family: 'Bricolage Grotesque'; font-weight: 700; font-size: 15px"
+                                :style="{ color: txAmountColor(tx) }">
+                                {{ txAmountSign(tx) }}{{ formatMoney(tx.amount) }}
+                            </div>
+                            <div class="max-w-0 overflow-hidden transition-[max-width] duration-200 ease-out group-hover/atx:max-w-[76px] flex-shrink-0">
+                                <div class="flex items-center gap-1" style="padding-left: 8px">
+                                    <button @click.stop="openEditTx(tx)"
+                                        style="width: 28px; height: 28px; border: 1px solid #e0dacd; background: #fffdf8; border-radius: 8px; cursor: pointer; display: flex; align-items: center; justify-content: center; color: #6b6355">
+                                        <span class="material-symbols-rounded" style="font-size: 15px">edit</span>
+                                    </button>
+                                    <button @click.stop="startDeleteTx(tx.id)"
+                                        style="width: 28px; height: 28px; border: 1px solid #fbe2d6; background: #fbe2d6; border-radius: 8px; cursor: pointer; display: flex; align-items: center; justify-content: center; color: #c0512c">
+                                        <span class="material-symbols-rounded" style="font-size: 15px">delete</span>
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </template>
+                    <template v-else>
+                        <div style="display: flex; align-items: center; gap: 5px; flex: none">
+                            <button @click="cancelDeleteTx"
+                                style="padding: 0 10px; height: 28px; border: 1px solid #e0dacd; background: #fffdf8; border-radius: 8px; cursor: pointer; font-family: 'Instrument Sans'; font-size: 12px; font-weight: 600; color: #6b6355">
+                                Cancel
+                            </button>
+                            <button @click="confirmDeleteTx(tx.id)"
+                                style="padding: 0 10px; height: 28px; border: none; background: #c0512c; border-radius: 8px; cursor: pointer; font-family: 'Instrument Sans'; font-size: 12px; font-weight: 600; color: #fff">
+                                Delete?
+                            </button>
+                        </div>
+                    </template>
+                </div>
+            </div>
+        </DialogContent>
+    </Dialog>
+
+    <!-- Edit transaction modal -->
+    <Dialog v-model:open="txEditOpen">
+        <DialogContent style="max-width: 460px">
+            <DialogHeader>
+                <DialogTitle>Edit transaction</DialogTitle>
+            </DialogHeader>
+            <form @submit.prevent="submitEditTx" style="display: flex; flex-direction: column; gap: 16px; margin-top: 8px">
+
+                <!-- Type -->
+                <div>
+                    <label style="font-size: 13px; font-weight: 600; color: #4a4436; display: block; margin-bottom: 8px">Type</label>
+                    <div style="display: flex; gap: 6px">
+                        <button v-for="t in (['expense', 'income', 'transfer'] as const)" :key="t" type="button" @click="txEditForm.type = t"
+                            style="flex: 1; height: 36px; border-radius: 10px; cursor: pointer; font-family: 'Instrument Sans'; font-size: 13px; border: 1px solid; text-transform: capitalize"
+                            :style="{
+                                borderColor: txEditForm.type === t ? 'var(--hab-accent)' : '#e0dacd',
+                                background: txEditForm.type === t ? 'color-mix(in srgb, var(--hab-accent) 12%, transparent)' : '#fffdf8',
+                                color: txEditForm.type === t ? 'var(--hab-accent-deep)' : '#6b6355',
+                                fontWeight: txEditForm.type === t ? 600 : 500,
+                            }">
+                            {{ t }}
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Amount + Date -->
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px">
+                    <div>
+                        <label style="font-size: 13px; font-weight: 600; color: #4a4436; display: block; margin-bottom: 6px">Amount *</label>
+                        <div style="position: relative">
+                            <span style="position: absolute; left: 12px; top: 50%; transform: translateY(-50%); font-size: 14px; color: #6b6355; font-weight: 600">₱</span>
+                            <input v-model="txEditForm.amount" type="text" inputmode="decimal" required
+                                style="width: 100%; height: 40px; border: 1px solid #e0dacd; border-radius: 10px; padding: 0 12px 0 24px; font-family: 'Bricolage Grotesque'; font-size: 16px; font-weight: 700; background: #fffdf8; outline: none; color: #211d17" />
+                            <div v-if="txEditAmountHasExpr" style="font-size: 12px; color: #8a8172; margin-top: 3px">= ₱{{ txEditAmountEvaluated?.toLocaleString('en-PH', { minimumFractionDigits: 2 }) }}</div>
+                        </div>
+                    </div>
+                    <div>
+                        <label style="font-size: 13px; font-weight: 600; color: #4a4436; display: block; margin-bottom: 6px">Date *</label>
+                        <input v-model="txEditForm.transacted_at" type="date" required
+                            style="width: 100%; height: 40px; border: 1px solid #e0dacd; border-radius: 10px; padding: 0 12px; font-family: 'Instrument Sans'; font-size: 14px; background: #fffdf8; outline: none; color: #211d17" />
+                    </div>
+                </div>
+
+                <!-- Merchant -->
+                <div v-if="txEditForm.type !== 'transfer'">
+                    <label style="font-size: 13px; font-weight: 600; color: #4a4436; display: block; margin-bottom: 6px">Merchant</label>
+                    <input v-model="txEditForm.merchant" placeholder="e.g. Jollibee"
+                        style="width: 100%; height: 40px; border: 1px solid #e0dacd; border-radius: 10px; padding: 0 12px; font-family: 'Instrument Sans'; font-size: 14px; background: #fffdf8; outline: none; color: #211d17" />
+                </div>
+
+                <!-- Account -->
+                <div>
+                    <label style="font-size: 13px; font-weight: 600; color: #4a4436; display: block; margin-bottom: 6px">{{ txEditForm.type === 'transfer' ? 'From account' : 'Account' }} *</label>
+                    <select v-model="txEditForm.account_id" required
+                        style="width: 100%; height: 40px; border: 1px solid #e0dacd; border-radius: 10px; padding: 0 12px; font-family: 'Instrument Sans'; font-size: 14px; background: #fffdf8; outline: none; color: #211d17; appearance: none">
+                        <option v-for="a in allAccounts" :key="a.id" :value="a.id">{{ a.name }}</option>
+                    </select>
+                </div>
+
+                <!-- To account (transfer) -->
+                <div v-if="txEditForm.type === 'transfer'">
+                    <label style="font-size: 13px; font-weight: 600; color: #4a4436; display: block; margin-bottom: 6px">To account *</label>
+                    <select v-model="txEditForm.to_account_id" required
+                        style="width: 100%; height: 40px; border: 1px solid #e0dacd; border-radius: 10px; padding: 0 12px; font-family: 'Instrument Sans'; font-size: 14px; background: #fffdf8; outline: none; color: #211d17; appearance: none">
+                        <option v-for="a in allAccounts.filter(a => a.id !== txEditForm.account_id)" :key="a.id" :value="a.id">{{ a.name }}</option>
+                    </select>
+                </div>
+
+                <!-- Category (expense only) -->
+                <div v-if="txEditForm.type === 'expense'">
+                    <label style="font-size: 13px; font-weight: 600; color: #4a4436; display: block; margin-bottom: 6px">Category *</label>
+                    <select v-model="txEditForm.budget_category_id" required
+                        style="width: 100%; height: 40px; border: 1px solid #e0dacd; border-radius: 10px; padding: 0 12px; font-family: 'Instrument Sans'; font-size: 14px; background: #fffdf8; outline: none; color: #211d17; appearance: none; box-sizing: border-box">
+                        <option :value="null" disabled>Select a category</option>
+                        <option v-for="c in txPanelCategories" :key="c.id" :value="c.id">{{ c.name }}</option>
+                    </select>
+                </div>
+
+                <div style="display: flex; gap: 8px; justify-content: flex-end; margin-top: 4px">
+                    <button type="button" @click="txEditOpen = false"
+                        style="padding: 0 16px; height: 40px; border: 1px solid #e0dacd; background: #fffdf8; border-radius: 10px; cursor: pointer; font-family: 'Instrument Sans'; font-weight: 600; font-size: 13.5px; color: #6b6355">
+                        Cancel
+                    </button>
+                    <button type="submit"
+                        style="padding: 0 16px; height: 40px; border: none; background: #211d17; border-radius: 10px; cursor: pointer; font-family: 'Instrument Sans'; font-weight: 600; font-size: 13.5px; color: #fdfbf5">
+                        Save changes
+                    </button>
+                </div>
+            </form>
+        </DialogContent>
+    </Dialog>
 
     <!-- Add / Edit modal -->
     <Dialog v-model:open="modalOpen">
@@ -298,8 +659,9 @@ function cancelDelete() {
                 </div>
                 <div>
                     <label style="font-size: 13px; font-weight: 600; color: #4a4436; display: block; margin-bottom: 6px">Balance *</label>
-                    <input v-model="form.balance" type="number" step="0.01" required placeholder="e.g. 15000 (or -612 for debt)"
+                    <input v-model="form.balance" type="text" inputmode="decimal" required placeholder="e.g. 15000 (or -612 for debt)"
                         style="width: 100%; height: 40px; border: 1px solid #e0dacd; border-radius: 10px; padding: 0 12px; font-family: 'Instrument Sans'; font-size: 14px; background: #fffdf8; outline: none; color: #211d17" />
+                    <div v-if="balanceHasExpr" style="font-size: 12px; color: #8a8172; margin-top: 3px">= {{ balanceEvaluated !== null && balanceEvaluated < 0 ? '-' : '' }}₱{{ Math.abs(balanceEvaluated ?? 0).toLocaleString('en-PH', { minimumFractionDigits: 2 }) }}</div>
                     <div style="font-size: 12px; color: #8a8172; margin-top: 4px">Enter a negative number for debt you owe</div>
                 </div>
                 <div>

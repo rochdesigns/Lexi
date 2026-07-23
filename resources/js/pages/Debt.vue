@@ -567,7 +567,7 @@ const calcResult = computed((): CalcResult | null => {
                             <span style="font-weight: 400; color: #8a8172">(optional — payments will count toward this category)</span>
                         </label>
                         <select v-if="budgetCategories.length > 0" v-model="form.budget_category_id"
-                            style="height: 40px; border: 1px solid #e0dacd; border-radius: 10px; padding: 0 12px; font-family: 'Instrument Sans'; font-size: 14px; background: #fffdf8; width: 100%; box-sizing: border-box; outline: none; appearance: none">
+                            style="width: 100%; height: 40px; border: 1px solid #e0dacd; border-radius: 10px; padding: 0 12px; font-family: 'Instrument Sans'; font-size: 14px; background: #fffdf8; outline: none; color: #211d17; appearance: none; box-sizing: border-box">
                             <option :value="null">— None —</option>
                             <option v-for="cat in budgetCategories" :key="cat.id" :value="cat.id">{{ cat.name }}</option>
                         </select>
