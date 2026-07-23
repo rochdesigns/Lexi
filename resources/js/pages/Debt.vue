@@ -12,8 +12,16 @@ type Account = {
     type: string;
 };
 
+type BudgetCategory = {
+    id: number;
+    name: string;
+    icon: string;
+    color: string;
+};
+
 type Debt = {
     id: number;
+    budget_category_id: number | null;
     name: string;
     icon: string;
     color: string;
@@ -38,6 +46,7 @@ const props = defineProps<{
     debtPaidPct: number;
     debtFreeDate: string | null;
     accounts: Account[];
+    budgetCategories: BudgetCategory[];
 }>();
 
 const COLOR_PAIRS = [
@@ -87,6 +96,7 @@ const modalOpen = ref(false);
 const editingDebt = ref<Debt | null>(null);
 
 const form = useForm({
+    budget_category_id: null as number | null,
     name: '',
     icon: 'credit_card',
     color: '#3f7fb0',
@@ -110,6 +120,7 @@ function openCreate() {
 
 function openEdit(debt: Debt) {
     editingDebt.value = debt;
+    form.budget_category_id = debt.budget_category_id;
     form.name = debt.name;
     form.icon = debt.icon;
     form.color = debt.color;
@@ -526,6 +537,19 @@ const calcResult = computed((): CalcResult | null => {
                         <input v-model="form.name" type="text" placeholder="Car loan" required
                             style="height: 40px; border: 1px solid #e0dacd; border-radius: 10px; padding: 0 12px; font-family: 'Instrument Sans'; font-size: 14px; background: #fffdf8; width: 100%; box-sizing: border-box; outline: none" />
                         <div v-if="form.errors.name" style="font-size: 12px; color: #c0512c">{{ form.errors.name }}</div>
+                    </div>
+
+                    <!-- Budget category -->
+                    <div v-if="budgetCategories.length > 0" style="display: flex; flex-direction: column; gap: 6px">
+                        <label style="font-size: 13px; font-weight: 600; color: #4a4436">
+                            Budget category
+                            <span style="font-weight: 400; color: #8a8172">(optional — payments will count toward this category)</span>
+                        </label>
+                        <select v-model="form.budget_category_id"
+                            style="height: 40px; border: 1px solid #e0dacd; border-radius: 10px; padding: 0 12px; font-family: 'Instrument Sans'; font-size: 14px; background: #fffdf8; width: 100%; box-sizing: border-box; outline: none; appearance: none">
+                            <option :value="null">— None —</option>
+                            <option v-for="cat in budgetCategories" :key="cat.id" :value="cat.id">{{ cat.name }}</option>
+                        </select>
                     </div>
 
                     <!-- Color pair + preview -->

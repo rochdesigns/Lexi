@@ -1,6 +1,7 @@
 <?php
 
 use App\Models\Account;
+use App\Models\BudgetCategory;
 use App\Models\Debt;
 use App\Models\Transaction;
 use App\Models\User;
@@ -210,6 +211,79 @@ test('destroy returns 403 for another user\'s debt', function (): void {
 
     $this->delete("/debts/{$debt->id}")->assertForbidden();
     expect(Debt::find($debt->id))->not->toBeNull();
+});
+
+test('budget_category_id is stored when creating a debt', function (): void {
+    $category = BudgetCategory::factory()->for($this->user)->create();
+
+    $this->post('/debts', [
+        'budget_category_id' => $category->id,
+        'name' => 'Car loan',
+        'icon' => 'directions_car',
+        'color' => '#3f7fb0',
+        'bg' => '#dcebf5',
+        'balance' => 100000,
+        'original' => 200000,
+        'per_month' => 5000,
+    ])->assertRedirect();
+
+    $debt = Debt::where('name', 'Car loan')->first();
+    expect($debt->budget_category_id)->toBe($category->id);
+});
+
+test('budget_category_id is nullable when creating a debt', function (): void {
+    $this->post('/debts', [
+        'name' => 'Car loan',
+        'icon' => 'directions_car',
+        'color' => '#3f7fb0',
+        'bg' => '#dcebf5',
+        'balance' => 100000,
+        'original' => 200000,
+        'per_month' => 5000,
+    ])->assertRedirect();
+
+    expect(Debt::where('name', 'Car loan')->first()->budget_category_id)->toBeNull();
+});
+
+test('budget_category_id is returned in the debts index', function (): void {
+    $category = BudgetCategory::factory()->for($this->user)->create();
+    Debt::factory()->for($this->user)->create(['budget_category_id' => $category->id]);
+
+    $this->get('/debt')->assertInertia(
+        fn ($page) => $page->where('debts.0.budget_category_id', $category->id)
+    );
+});
+
+test('make-payment stamps budget_category_id on the transaction', function (): void {
+    $category = BudgetCategory::factory()->for($this->user)->create();
+    $account = Account::factory()->for($this->user)->create(['balance' => 10000]);
+    $debt = Debt::factory()->for($this->user)->create([
+        'balance' => 500,
+        'budget_category_id' => $category->id,
+    ]);
+
+    $this->post("/debts/{$debt->id}/payment", [
+        'amount' => 200,
+        'account_id' => $account->id,
+        'transacted_at' => '2026-07-23',
+    ])->assertRedirect();
+
+    $tx = Transaction::where('account_id', $account->id)->where('amount', 200)->first();
+    expect($tx->budget_category_id)->toBe($category->id);
+});
+
+test('make-payment transaction has null budget_category_id when debt has no category', function (): void {
+    $account = Account::factory()->for($this->user)->create(['balance' => 10000]);
+    $debt = Debt::factory()->for($this->user)->create(['balance' => 500, 'budget_category_id' => null]);
+
+    $this->post("/debts/{$debt->id}/payment", [
+        'amount' => 200,
+        'account_id' => $account->id,
+        'transacted_at' => '2026-07-23',
+    ])->assertRedirect();
+
+    $tx = Transaction::where('account_id', $account->id)->where('amount', 200)->first();
+    expect($tx->budget_category_id)->toBeNull();
 });
 
 test('debt page includes accounts prop', function (): void {

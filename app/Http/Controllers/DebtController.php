@@ -28,6 +28,7 @@ class DebtController extends Controller
 
                 return [
                     'id' => $d->id,
+                    'budget_category_id' => $d->budget_category_id,
                     'name' => $d->name,
                     'icon' => $d->icon,
                     'color' => $d->color,
@@ -64,6 +65,13 @@ class DebtController extends Controller
             'type' => $a->type,
         ]);
 
+        $budgetCategories = $user->budgetCategories()->orderBy('name')->get()->map(fn ($c) => [
+            'id' => $c->id,
+            'name' => $c->name,
+            'icon' => $c->icon,
+            'color' => $c->color,
+        ]);
+
         return Inertia::render('Debt', [
             'debts' => $debts,
             'debtTotal' => $debtTotal,
@@ -73,6 +81,7 @@ class DebtController extends Controller
             'debtPaidPct' => $debtPaidPct,
             'debtFreeDate' => $debtFreeDate,
             'accounts' => $accounts,
+            'budgetCategories' => $budgetCategories,
         ]);
     }
 
@@ -120,6 +129,7 @@ class DebtController extends Controller
         Transaction::create([
             'user_id' => $user->id,
             'account_id' => $account->id,
+            'budget_category_id' => $debt->budget_category_id,
             'type' => 'expense',
             'amount' => $validated['amount'],
             'merchant' => $validated['merchant'] ?? $debt->name,
@@ -162,6 +172,7 @@ class DebtController extends Controller
     private function rules(): array
     {
         return [
+            'budget_category_id' => ['nullable', 'integer', 'exists:budget_categories,id'],
             'name' => ['required', 'string', 'max:100'],
             'icon' => ['required', 'string', 'max:50'],
             'color' => ['required', 'string', 'regex:/^#[0-9a-fA-F]{6}$/'],

@@ -16,6 +16,7 @@ class DebtFactory extends Factory
         $balance = $this->faker->numberBetween(500, $original);
 
         return [
+            'budget_category_id' => null,
             'name' => $this->faker->words(3, true),
             'icon' => $this->faker->randomElement(['credit_card', 'directions_car', 'smartphone', 'chair']),
             'color' => $this->faker->randomElement(['#3f7fb0', '#a85fc0', '#d98a2b', '#c0512c']),

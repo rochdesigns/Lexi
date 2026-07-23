@@ -12,7 +12,7 @@ class Debt extends Model
     /** @use HasFactory<DebtFactory> */
     use HasFactory;
 
-    protected $fillable = ['user_id', 'name', 'icon', 'color', 'bg', 'balance', 'original', 'per_month', 'interest_rate', 'interest_rate_period', 'due_day', 'position'];
+    protected $fillable = ['user_id', 'budget_category_id', 'name', 'icon', 'color', 'bg', 'balance', 'original', 'per_month', 'interest_rate', 'interest_rate_period', 'due_day', 'position'];
 
     protected $casts = [
         'balance' => 'decimal:2',
