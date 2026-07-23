@@ -235,6 +235,25 @@ const calcDebt = ref<Debt | null>(null);
 const calcMode = ref<'months' | 'payment'>('months');
 const calcInput = ref('');
 
+function applyCalcPayment() {
+    if (!calcDebt.value || !calcResult.value?.valid) return;
+    const debt = calcDebt.value;
+    router.patch(update(debt.id).url, {
+        name: debt.name,
+        icon: debt.icon,
+        color: debt.color,
+        bg: debt.bg,
+        balance: debt.balance,
+        original: debt.original,
+        per_month: Math.round(calcResult.value.payment * 100) / 100,
+        due_day: debt.due_day,
+        interest_rate: debt.interest_rate,
+        interest_rate_period: debt.interest_rate_period,
+    }, {
+        onSuccess: () => { calcModalOpen.value = false; },
+    });
+}
+
 function openCalc(debt: Debt) {
     calcDebt.value = debt;
     calcMode.value = 'months';
@@ -749,27 +768,34 @@ const calcResult = computed((): CalcResult | null => {
                         <div v-if="!calcResult.valid" style="background: #fdf3ed; border: 1px solid #f5c9a8; border-radius: 12px; padding: 12px 16px; font-size: 13px; color: #8a3800">
                             {{ calcResult.error }}
                         </div>
-                        <div v-else style="background: #f5f2ea; border-radius: 16px; padding: 18px 20px; display: flex; flex-direction: column; gap: 12px">
-                            <div style="display: flex; justify-content: space-between; align-items: baseline">
-                                <span style="font-size: 13px; color: #6b6355">
-                                    <template v-if="calcMode === 'months'">Months to pay off</template>
-                                    <template v-else>Monthly payment</template>
-                                </span>
-                                <span style="font-family: 'Bricolage Grotesque'; font-weight: 700; font-size: 22px; color: #211d17">
-                                    <template v-if="calcMode === 'months'">{{ calcResult.months }} mo</template>
-                                    <template v-else>{{ formatMoney(calcResult.payment) }}</template>
-                                </span>
+                        <template v-else>
+                            <div style="background: #f5f2ea; border-radius: 16px; padding: 18px 20px; display: flex; flex-direction: column; gap: 12px">
+                                <div style="display: flex; justify-content: space-between; align-items: baseline">
+                                    <span style="font-size: 13px; color: #6b6355">
+                                        <template v-if="calcMode === 'months'">Months to pay off</template>
+                                        <template v-else>Monthly payment</template>
+                                    </span>
+                                    <span style="font-family: 'Bricolage Grotesque'; font-weight: 700; font-size: 22px; color: #211d17">
+                                        <template v-if="calcMode === 'months'">{{ calcResult.months }} mo</template>
+                                        <template v-else>{{ formatMoney(calcResult.payment) }}</template>
+                                    </span>
+                                </div>
+                                <div style="height: 1px; background: #e0dacd"></div>
+                                <div style="display: flex; justify-content: space-between; font-size: 13px">
+                                    <span style="color: #6b6355">Total interest</span>
+                                    <span style="font-weight: 600; color: #c0512c">{{ formatMoney(calcResult.totalInterest) }}</span>
+                                </div>
+                                <div style="display: flex; justify-content: space-between; font-size: 13px">
+                                    <span style="color: #6b6355">Total paid</span>
+                                    <span style="font-weight: 600; color: #211d17">{{ formatMoney(calcResult.totalPaid) }}</span>
+                                </div>
                             </div>
-                            <div style="height: 1px; background: #e0dacd"></div>
-                            <div style="display: flex; justify-content: space-between; font-size: 13px">
-                                <span style="color: #6b6355">Total interest</span>
-                                <span style="font-weight: 600; color: #c0512c">{{ formatMoney(calcResult.totalInterest) }}</span>
-                            </div>
-                            <div style="display: flex; justify-content: space-between; font-size: 13px">
-                                <span style="color: #6b6355">Total paid</span>
-                                <span style="font-weight: 600; color: #211d17">{{ formatMoney(calcResult.totalPaid) }}</span>
-                            </div>
-                        </div>
+                            <button type="button" @click="applyCalcPayment"
+                                style="margin-top: 12px; width: 100%; height: 40px; background: #211d17; color: #fdfbf5; border: none; border-radius: 10px; font-family: 'Instrument Sans'; font-weight: 600; font-size: 13.5px; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 7px">
+                                <span class="material-symbols-rounded" style="font-size: 16px">check</span>
+                                Set monthly to {{ formatMoney(calcResult.payment) }}
+                            </button>
+                        </template>
                     </template>
                 </div>
             </DialogContent>
