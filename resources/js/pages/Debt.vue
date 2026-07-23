@@ -1,10 +1,11 @@
 <script setup lang="ts">
-import { Head, router, useForm } from '@inertiajs/vue3';
+import { Head, router, useForm, usePage } from '@inertiajs/vue3';
 import { ref, computed } from 'vue';
 import { evaluateArithmetic, hasArithmetic } from '@/utils/arithmetic';
 import { computeSnowball } from '@/utils/snowball';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { store, update, destroy, makePayment } from '@/actions/App/Http/Controllers/DebtController';
+import { store as storeBudgetCategory } from '@/actions/App/Http/Controllers/BudgetCategoryController';
 
 type Account = {
     id: number;
@@ -90,6 +91,8 @@ function debtStatusStyle(debt: Debt): object {
     };
 }
 
+const page = usePage();
+
 // ── CRUD modal ─────────────────────────────────────────────────────────────────
 
 const modalOpen = ref(false);
@@ -153,6 +156,23 @@ function submitForm() {
             onSuccess: () => { modalOpen.value = false; form.reset(); },
         });
     }
+}
+
+function createCategoryForDebt() {
+    if (!form.name) return;
+    router.post(storeBudgetCategory().url, {
+        name: form.name,
+        icon: form.icon,
+        color: form.color,
+        limit_amount: parseFloat(String(form.per_month)) || 0,
+    }, {
+        preserveState: true,
+        preserveScroll: true,
+        onSuccess: () => {
+            const newId = (page.props as Record<string, any>).flash?.newCategoryId;
+            if (newId) { form.budget_category_id = newId; }
+        },
+    });
 }
 
 function selectColorPair(pair: { color: string; bg: string }) {
@@ -540,16 +560,21 @@ const calcResult = computed((): CalcResult | null => {
                     </div>
 
                     <!-- Budget category -->
-                    <div v-if="budgetCategories.length > 0" style="display: flex; flex-direction: column; gap: 6px">
+                    <div style="display: flex; flex-direction: column; gap: 6px">
                         <label style="font-size: 13px; font-weight: 600; color: #4a4436">
                             Budget category
                             <span style="font-weight: 400; color: #8a8172">(optional — payments will count toward this category)</span>
                         </label>
-                        <select v-model="form.budget_category_id"
+                        <select v-if="budgetCategories.length > 0" v-model="form.budget_category_id"
                             style="height: 40px; border: 1px solid #e0dacd; border-radius: 10px; padding: 0 12px; font-family: 'Instrument Sans'; font-size: 14px; background: #fffdf8; width: 100%; box-sizing: border-box; outline: none; appearance: none">
                             <option :value="null">— None —</option>
                             <option v-for="cat in budgetCategories" :key="cat.id" :value="cat.id">{{ cat.name }}</option>
                         </select>
+                        <button v-if="!form.budget_category_id && form.name" type="button" @click="createCategoryForDebt"
+                            style="display: inline-flex; align-items: center; gap: 6px; align-self: flex-start; background: none; border: none; padding: 0; font-family: 'Instrument Sans'; font-size: 13px; font-weight: 600; color: #3f7fb0; cursor: pointer">
+                            <span class="material-symbols-rounded" style="font-size: 15px">add_circle</span>
+                            Create a budget category for this debt
+                        </button>
                     </div>
 
                     <!-- Color pair + preview -->
