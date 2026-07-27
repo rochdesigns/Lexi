@@ -251,9 +251,10 @@ function deleteEvent() {
 </script>
 
 <template>
-    <Head title="Calendar" />
+    <div>
+        <Head title="Calendar" />
 
-    <!-- Page header -->
+        <!-- Page header -->
     <div class="flex items-end gap-4 flex-wrap">
         <div>
             <h1 style="font-family:'Bricolage Grotesque';font-weight:700;font-size:28px;letter-spacing:-.02em;line-height:1">Calendar</h1>
@@ -300,7 +301,7 @@ function deleteEvent() {
 
             <!-- Weekday headers -->
             <div style="display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:6px;margin-bottom:6px">
-                <div v-for="w in WEEKDAYS_SHORT" :key="w" style="text-align:center;font-size:11px;font-weight:600;color:#a49b8a">{{ w }}</div>
+                <div v-for="(w, i) in WEEKDAYS_SHORT" :key="i" style="text-align:center;font-size:11px;font-weight:600;color:#a49b8a">{{ w }}</div>
             </div>
 
             <!-- Day cells -->
@@ -323,7 +324,7 @@ function deleteEvent() {
         </div>
 
         <!-- Agenda panel -->
-        <div style="background:#fffdf8;border:1px solid #e0dacd;border-radius:22px;padding:20px 20px 8px;box-shadow:0 8px 24px -20px rgba(60,48,20,.5)">
+        <div style="background:#fffdf8;border:1px solid #e0dacd;border-radius:24px;padding:20px 20px 8px;box-shadow:0 8px 24px -20px rgba(60,48,20,.5)">
             <div style="font-family:'Bricolage Grotesque';font-weight:700;font-size:16px;margin-bottom:6px">Agenda</div>
             <div style="font-size:11.5px;font-weight:600;letter-spacing:.03em;text-transform:uppercase;color:#a49b8a;margin-bottom:4px">
                 {{ agendaLabel }}
@@ -539,4 +540,5 @@ function deleteEvent() {
             </div>
         </DialogContent>
     </Dialog>
+    </div>
 </template>
