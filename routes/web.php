@@ -1,9 +1,17 @@
 <?php
 
 use App\Http\Controllers\AccountController;
+use App\Http\Controllers\BudgetCategoryController;
+use App\Http\Controllers\BudgetController;
+use App\Http\Controllers\CalendarController;
+use App\Http\Controllers\DebtController;
+use App\Http\Controllers\GoalController;
+use App\Http\Controllers\RecurringBillController;
+use App\Http\Controllers\SinkingFundController;
 use App\Http\Controllers\TaskController;
 use App\Http\Controllers\TaskSectionController;
 use App\Http\Controllers\TodayController;
+use App\Http\Controllers\TransactionController;
 use Illuminate\Support\Facades\Route;
 
 Route::inertia('/', 'Welcome')->name('home');
@@ -21,7 +29,7 @@ Route::middleware(['auth', 'verified'])->group(function (): void {
     Route::delete('/task-sections/{taskSection}', [TaskSectionController::class, 'destroy'])->name('task-sections.destroy');
 
     // Stub routes — content added in future sprints
-    Route::inertia('/calendar', 'Stub')->name('calendar');
+    Route::get('/calendar', [CalendarController::class, 'index'])->name('calendar.index');
     Route::inertia('/health', 'Stub')->name('health');
     Route::inertia('/habits', 'Stub')->name('habits');
     Route::inertia('/notes', 'Stub')->name('notes');
@@ -29,14 +37,36 @@ Route::middleware(['auth', 'verified'])->group(function (): void {
     Route::inertia('/meals', 'Stub')->name('meals');
     Route::inertia('/groceries', 'Stub')->name('groceries');
     Route::inertia('/pets', 'Stub')->name('pets');
-    Route::inertia('/goals', 'Stub')->name('goals');
+    Route::get('/goals', [GoalController::class, 'index'])->name('goals');
+    Route::post('/goals', [GoalController::class, 'store'])->name('goals.store');
+    Route::patch('/goals/{goal}', [GoalController::class, 'update'])->name('goals.update');
+    Route::delete('/goals/{goal}', [GoalController::class, 'destroy'])->name('goals.destroy');
+    Route::post('/goals/{goal}/top-up', [GoalController::class, 'topUp'])->name('goals.top-up');
     Route::get('/accounts', [AccountController::class, 'index'])->name('accounts.index');
     Route::post('/accounts', [AccountController::class, 'store'])->name('accounts.store');
     Route::patch('/accounts/{account}', [AccountController::class, 'update'])->name('accounts.update');
     Route::delete('/accounts/{account}', [AccountController::class, 'destroy'])->name('accounts.destroy');
-    Route::inertia('/budgets', 'Stub')->name('budgets');
-    Route::inertia('/set-asides', 'Stub')->name('set-asides');
-    Route::inertia('/debt', 'Stub')->name('debt');
+    Route::get('/accounts/{account}/transactions', [AccountController::class, 'transactions'])->name('accounts.transactions');
+    Route::get('/budgets', [BudgetController::class, 'index'])->name('budgets');
+    Route::post('/transactions', [TransactionController::class, 'store'])->name('transactions.store');
+    Route::patch('/transactions/{transaction}', [TransactionController::class, 'update'])->name('transactions.update');
+    Route::delete('/transactions/{transaction}', [TransactionController::class, 'destroy'])->name('transactions.destroy');
+    Route::post('/budget-categories', [BudgetCategoryController::class, 'store'])->name('budget-categories.store');
+    Route::patch('/budget-categories/{budgetCategory}', [BudgetCategoryController::class, 'update'])->name('budget-categories.update');
+    Route::delete('/budget-categories/{budgetCategory}', [BudgetCategoryController::class, 'destroy'])->name('budget-categories.destroy');
+    Route::post('/recurring-bills', [RecurringBillController::class, 'store'])->name('recurring-bills.store');
+    Route::patch('/recurring-bills/{recurringBill}', [RecurringBillController::class, 'update'])->name('recurring-bills.update');
+    Route::delete('/recurring-bills/{recurringBill}', [RecurringBillController::class, 'destroy'])->name('recurring-bills.destroy');
+    Route::get('/set-asides', [SinkingFundController::class, 'index'])->name('set-asides');
+    Route::post('/sinking-funds', [SinkingFundController::class, 'store'])->name('sinking-funds.store');
+    Route::patch('/sinking-funds/{sinkingFund}', [SinkingFundController::class, 'update'])->name('sinking-funds.update');
+    Route::delete('/sinking-funds/{sinkingFund}', [SinkingFundController::class, 'destroy'])->name('sinking-funds.destroy');
+    Route::post('/sinking-funds/{sinkingFund}/top-up', [SinkingFundController::class, 'topUp'])->name('sinking-funds.top-up');
+    Route::get('/debt', [DebtController::class, 'index'])->name('debt');
+    Route::post('/debts', [DebtController::class, 'store'])->name('debts.store');
+    Route::patch('/debts/{debt}', [DebtController::class, 'update'])->name('debts.update');
+    Route::delete('/debts/{debt}', [DebtController::class, 'destroy'])->name('debts.destroy');
+    Route::post('/debts/{debt}/payment', [DebtController::class, 'makePayment'])->name('debts.payment');
     Route::inertia('/photos', 'Stub')->name('photos');
 
     // Legacy redirect — keeps old dashboard links working
