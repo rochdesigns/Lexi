@@ -2,30 +2,38 @@
 
 namespace Database\Factories;
 
-use App\Models\Event;
 use App\Models\User;
 use Illuminate\Database\Eloquent\Factories\Factory;
 
-/**
- * @extends Factory<Event>
- */
 class EventFactory extends Factory
 {
-    /** @return array<string, mixed> */
     public function definition(): array
     {
+        $colors = ['#2f7d5b', '#3f7fb0', '#a85fc0', '#d98a2b', '#c0512c', '#6b6355'];
+        $tags = ['Work', 'Personal', 'Health', 'Family', 'Other'];
+
         return [
             'user_id' => User::factory(),
-            'title' => fake()->words(3, true),
-            'date' => fake()->dateTimeBetween('-1 month', '+1 month')->format('Y-m-d'),
+            'title' => fake()->sentence(3),
+            'date' => fake()->dateTimeBetween('now', '+30 days')->format('Y-m-d'),
             'time' => fake()->time('H:i'),
-            'tag' => fake()->randomElement(['work', 'personal', 'health', 'finance']),
-            'color' => fake()->randomElement(['#2f7d5b', '#3f7fb0', '#a85fc0', '#d98a2b', '#c0512c']),
+            'tag' => fake()->randomElement($tags),
+            'color' => fake()->randomElement($colors),
             'recurrence_type' => null,
             'recurrence_interval' => 1,
             'recurrence_days' => null,
             'recurrence_ends_on' => null,
         ];
+    }
+
+    public function recurring(): static
+    {
+        return $this->state(fn (array $attributes) => [
+            'recurrence_type' => 'weekly',
+            'recurrence_interval' => 1,
+            'recurrence_days' => ['Mon', 'Wed', 'Fri'],
+            'recurrence_ends_on' => null,
+        ]);
     }
 
     public function daily(int $interval = 1): static
