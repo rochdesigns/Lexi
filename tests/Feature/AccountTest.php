@@ -2,6 +2,7 @@
 
 use App\Models\Account;
 use App\Models\Setting;
+use App\Models\Transaction;
 use App\Models\User;
 
 test('guest is redirected from accounts index', function () {
@@ -117,4 +118,55 @@ test('destroy returns 403 for another users account', function () {
     $this->actingAs($user)
         ->delete(route('accounts.destroy', $account))
         ->assertForbidden();
+});
+
+test('transactions endpoint returns transactions and categories for the account', function () {
+    $user = User::factory()->create();
+    $account = Account::factory()->create(['user_id' => $user->id]);
+    $other = Account::factory()->create(['user_id' => $user->id]);
+
+    Transaction::factory()->create(['user_id' => $user->id, 'account_id' => $account->id, 'type' => 'expense', 'amount' => 100, 'merchant' => 'Jollibee']);
+    Transaction::factory()->create(['user_id' => $user->id, 'account_id' => $account->id, 'type' => 'income', 'amount' => 500]);
+    Transaction::factory()->create(['user_id' => $user->id, 'account_id' => $other->id, 'to_account_id' => $account->id, 'type' => 'transfer', 'amount' => 200]);
+
+    $response = $this->actingAs($user)
+        ->getJson(route('accounts.transactions', $account))
+        ->assertOk()
+        ->assertJsonStructure(['transactions', 'categories'])
+        ->assertJsonCount(3, 'transactions');
+
+    $response->assertJsonFragment(['merchant' => 'Jollibee', 'type' => 'expense']);
+    $response->assertJsonFragment(['type' => 'income', 'is_destination' => false]);
+    $response->assertJsonFragment(['type' => 'transfer', 'is_destination' => true]);
+});
+
+test('transactions endpoint excludes transactions from other accounts', function () {
+    $user = User::factory()->create();
+    $account = Account::factory()->create(['user_id' => $user->id]);
+    $other = Account::factory()->create(['user_id' => $user->id]);
+
+    Transaction::factory()->create(['user_id' => $user->id, 'account_id' => $account->id]);
+    Transaction::factory()->create(['user_id' => $user->id, 'account_id' => $other->id]);
+
+    $this->actingAs($user)
+        ->getJson(route('accounts.transactions', $account))
+        ->assertOk()
+        ->assertJsonCount(1, 'transactions');
+});
+
+test('transactions endpoint returns 403 for another users account', function () {
+    $user = User::factory()->create();
+    $other = User::factory()->create();
+    $account = Account::factory()->create(['user_id' => $other->id]);
+
+    $this->actingAs($user)
+        ->getJson(route('accounts.transactions', $account))
+        ->assertForbidden();
+});
+
+test('transactions endpoint redirects guests', function () {
+    $account = Account::factory()->create();
+
+    $this->get(route('accounts.transactions', $account))
+        ->assertRedirect(route('login'));
 });

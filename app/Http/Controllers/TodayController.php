@@ -2,12 +2,12 @@
 
 namespace App\Http\Controllers;
 
-use App\Models\BudgetMonth;
 use App\Models\Event;
 use App\Models\Habit;
 use App\Models\HabitLog;
 use App\Models\HealthMetric;
 use App\Models\Task;
+use App\Models\TaskSection;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
 use Inertia\Inertia;
@@ -25,22 +25,38 @@ class TodayController extends Controller
             ->orderBy('time')
             ->get(['id', 'title', 'time', 'tag', 'color']);
 
-        $todayTasks = Task::where('user_id', $user->id)
-            ->where('group', 'today')
-            ->orderBy('done')
-            ->orderBy('id')
-            ->get(['id', 'label', 'group', 'done']);
-
-        $budgetMonth = BudgetMonth::where('user_id', $user->id)
-            ->where('year', $today->year)
-            ->where('month', $today->month)
+        $firstSection = TaskSection::where('user_id', $user->id)
+            ->orderBy('position')
             ->first();
 
-        $moneySummary = $budgetMonth ? [
-            'safeToSpend' => (float) ($budgetMonth->budget - $budgetMonth->base_spent),
-            'budget' => (float) $budgetMonth->budget,
-            'spent' => (float) $budgetMonth->base_spent,
-        ] : ['safeToSpend' => 0, 'budget' => 0, 'spent' => 0];
+        $todayTasks = $firstSection
+            ? Task::where('section_id', $firstSection->id)
+                ->orderBy('done')
+                ->orderBy('id')
+                ->get(['id', 'label', 'section_id', 'done'])
+            : collect();
+
+        $setting = $user->setting;
+        $cycle = $setting?->cycleForDate($today) ?? [
+            'start' => $today->copy()->startOfMonth(),
+            'end' => $today->copy()->endOfMonth(),
+        ];
+
+        $cycleStart = $cycle['start'];
+        $cycleEnd = $cycle['end'];
+
+        $cycleBudget = (float) $user->budgetCategories()->sum('limit_amount');
+        $saPerMonth = (float) $user->sinkingFunds()->sum('per_month');
+        $totalSpent = (float) $user->transactions()
+            ->whereBetween('transacted_at', [$cycleStart->toDateString(), $cycleEnd->toDateString()])
+            ->where('type', 'expense')
+            ->sum('amount');
+
+        $moneySummary = [
+            'safeToSpend' => $cycleBudget - $totalSpent - $saPerMonth,
+            'budget' => $cycleBudget,
+            'spent' => $totalSpent,
+        ];
 
         $habits = Habit::where('user_id', $user->id)->get();
 

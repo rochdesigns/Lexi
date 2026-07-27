@@ -37,10 +37,16 @@ const WEEKDAYS_SHORT = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
 const WEEKDAYS_FULL = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 const DOW_LABELS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 
+// ── helpers ────────────────────────────────────────────────────────────────
+
+function toLocalDateStr(d: Date): string {
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
 // ── state ──────────────────────────────────────────────────────────────────
 
 const today = new Date();
-const todayStr = today.toISOString().slice(0, 10);
+const todayStr = toLocalDateStr(today);
 
 const view = ref<'month' | 'week'>((localStorage.getItem('cal-view') as 'month' | 'week') ?? 'month');
 const selectedDate = ref(todayStr);
@@ -116,7 +122,7 @@ const weekColumns = computed(() => {
     return Array.from({ length: 7 }, (_, i) => {
         const d = new Date(sundayOfWeek);
         d.setDate(sundayOfWeek.getDate() + i);
-        const dateStr = d.toISOString().slice(0, 10);
+        const dateStr = toLocalDateStr(d);
         return {
             dow: WEEKDAYS_FULL[i],
             dateNum: d.getDate(),
@@ -147,7 +153,7 @@ function navigateMonth(delta: number) {
 function navigateWeek(delta: number) {
     const sel = new Date(selectedDate.value + 'T00:00:00');
     sel.setDate(sel.getDate() + delta * 7);
-    const newDateStr = sel.toISOString().slice(0, 10);
+    const newDateStr = toLocalDateStr(sel);
     const newMonth = newDateStr.slice(0, 7);
     selectedDate.value = newDateStr;
     if (newMonth !== props.currentMonth) {

@@ -190,6 +190,12 @@
     --hab-spend-fill: linear-gradient(90deg, #ffd27a, #ffe9a8);
 }
 
+/* Remap shadcn sidebar color to Habitat theme */
+body[data-theme] {
+    --sidebar-background: var(--hab-sidebar-bg);
+    --sidebar: var(--hab-sidebar-bg);
+}
+
 /* ── Habitat theme palettes ──────────────────────────── */
 body[data-theme="ocean"] {
     --hab-sidebar-bg: #142731;

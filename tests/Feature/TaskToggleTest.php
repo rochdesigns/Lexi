@@ -42,3 +42,24 @@ test('user cannot toggle another users task', function (): void {
         ->patch("/tasks/{$task->id}", ['done' => true])
         ->assertForbidden();
 });
+
+test('user can delete a task', function (): void {
+    $user = User::where('email', 'elle@example.com')->first();
+    $task = Task::where('user_id', $user->id)->first();
+
+    $this->actingAs($user)
+        ->delete("/tasks/{$task->id}")
+        ->assertRedirect();
+
+    expect(Task::find($task->id))->toBeNull();
+});
+
+test('user cannot delete another users task', function (): void {
+    $otherUser = User::factory()->create();
+    $user = User::where('email', 'elle@example.com')->first();
+    $task = Task::where('user_id', $user->id)->first();
+
+    $this->actingAs($otherUser)
+        ->delete("/tasks/{$task->id}")
+        ->assertForbidden();
+});

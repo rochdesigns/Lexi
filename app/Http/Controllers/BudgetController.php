@@ -1,0 +1,277 @@
+<?php
+
+namespace App\Http\Controllers;
+
+use Carbon\Carbon;
+use Carbon\CarbonInterface;
+use Illuminate\Http\Request;
+use Inertia\Inertia;
+use Inertia\Response;
+
+class BudgetController extends Controller
+{
+    public function index(Request $request): Response
+    {
+        $user = $request->user();
+        $setting = $user->setting;
+
+        $cycleDate = $request->query('cycle_start')
+            ? Carbon::parse($request->query('cycle_start'))
+            : Carbon::now();
+
+        $cycle = $setting?->cycleForDate($cycleDate) ?? [
+            'start' => Carbon::now()->startOfMonth(),
+            'end' => Carbon::now()->endOfMonth(),
+            'index' => 0,
+        ];
+
+        $cycleStart = $cycle['start'];
+        $cycleEnd = $cycle['end'];
+
+        $cycleDays = $setting?->budget_cycle_days ?? 30;
+
+        $cycleBudget = (float) $user->budgetCategories()->sum('limit_amount');
+        $saPerMonth = (float) $user->sinkingFunds()->sum('per_month');
+        $saCount = $user->sinkingFunds()->count();
+        $totalAccountBalance = (float) $user->accounts()->sum('balance');
+        $totalSaSaved = (float) $user->sinkingFunds()->sum('saved');
+
+        $prevCycleStartDate = $cycleStart->copy()->subDays($cycleDays);
+        $prevCycleSpent = (float) $user->transactions()
+            ->where('transacted_at', '>=', $prevCycleStartDate->toDateString())
+            ->where('transacted_at', '<', $cycleStart->toDateString())
+            ->where('type', 'expense')
+            ->sum('amount');
+        $prevCycleLeftover = $prevCycleSpent > 0
+            ? max(0.0, $cycleBudget - $prevCycleSpent - $saPerMonth)
+            : 0.0;
+
+        $readyToAssign = $totalAccountBalance - $totalSaSaved - $cycleBudget + $prevCycleLeftover;
+
+        $transactions = $user->transactions()
+            ->with(['budgetCategory', 'account'])
+            ->whereBetween('transacted_at', [$cycleStart->toDateString(), $cycleEnd->toDateString()])
+            ->orderByDesc('transacted_at')
+            ->get();
+
+        $allTransactions = $user->transactions()
+            ->with(['budgetCategory', 'account'])
+            ->orderByDesc('transacted_at')
+            ->get();
+
+        $totalSpent = (float) $transactions->where('type', 'expense')->sum('amount');
+        $safeToSpend = $cycleBudget - $totalSpent - $saPerMonth;
+
+        $today = Carbon::now()->startOfDay();
+        $daysLeft = max(0, (int) $today->diffInDays($cycleEnd->copy()->startOfDay(), false) + 1);
+        $dailyBudget = $daysLeft > 0 ? max(0, round($safeToSpend / $daysLeft)) : 0;
+
+        $categories = $user->budgetCategories()
+            ->orderBy('name')
+            ->get()
+            ->map(function ($cat) use ($cycleStart, $cycleEnd) {
+                $spent = (float) $cat->transactions()
+                    ->whereBetween('transacted_at', [$cycleStart->toDateString(), $cycleEnd->toDateString()])
+                    ->where('type', 'expense')
+                    ->sum('amount');
+
+                return [
+                    'id' => $cat->id,
+                    'name' => $cat->name,
+                    'group' => $cat->group,
+                    'icon' => $cat->icon,
+                    'color' => $cat->color,
+                    'limit_amount' => (float) $cat->limit_amount,
+                    'spent' => $spent,
+                ];
+            });
+
+        $accounts = $user->accounts()->orderBy('name')->get()->map(fn ($a) => [
+            'id' => $a->id,
+            'name' => $a->name,
+            'institution' => $a->institution,
+            'balance' => (float) $a->balance,
+            'type' => $a->type,
+        ]);
+
+        $makeDueLabel = function (CarbonInterface $dueDate) use ($today): array {
+            $daysUntil = (int) $today->diffInDays($dueDate, false);
+            if ($daysUntil < 0) {
+                $label = 'Past due';
+            } elseif ($daysUntil === 0) {
+                $label = 'Due today';
+            } elseif ($daysUntil === 1) {
+                $label = 'Due tomorrow';
+            } elseif ($daysUntil <= 7) {
+                $label = "Due in {$daysUntil} days";
+            } else {
+                $label = 'Due '.$dueDate->format('M j');
+            }
+
+            return ['label' => $label, 'soon' => $daysUntil <= 7, 'daysUntil' => $daysUntil];
+        };
+
+        $sinkingFundBills = $user->sinkingFunds()
+            ->whereNotNull('due_date')
+            ->where('due_date', '>=', $today->toDateString())
+            ->orderBy('due_date')
+            ->get()
+            ->map(function ($sf) use ($makeDueLabel) {
+                $dueDate = Carbon::parse($sf->due_date)->startOfDay();
+                $due = $makeDueLabel($dueDate);
+
+                return [
+                    'id' => 'sf-'.$sf->id,
+                    'name' => $sf->name,
+                    'icon' => $sf->icon,
+                    'color' => $sf->color,
+                    'bg' => $sf->bg,
+                    'amount' => (float) $sf->target,
+                    'dueLabel' => $due['label'],
+                    'soon' => $due['soon'],
+                    'daysUntil' => $due['daysUntil'],
+                    'category' => null,
+                    'type' => 'set_aside',
+                ];
+            });
+
+        $recurringBillItems = $user->recurringBills()
+            ->with('budgetCategory')
+            ->orderBy('day_of_month')
+            ->get()
+            ->map(function ($bill) use ($cycleStart, $cycleEnd, $makeDueLabel) {
+                $day = $bill->day_of_month;
+
+                // Find this bill's occurrence within the current cycle (spans at most 2 calendar months)
+                $dueDate = null;
+                $checkMonth = $cycleStart->copy()->startOfMonth();
+                for ($i = 0; $i < 2; $i++) {
+                    $candidate = $checkMonth->copy()->setDay(min($day, (int) $checkMonth->copy()->endOfMonth()->day));
+                    if ($candidate->between($cycleStart, $cycleEnd)) {
+                        $dueDate = $candidate;
+                        break;
+                    }
+                    $checkMonth = $checkMonth->addMonthNoOverflow();
+                }
+
+                if (! $dueDate) {
+                    return null;
+                }
+
+                $due = $makeDueLabel($dueDate);
+
+                return [
+                    'id' => 'rb-'.$bill->id,
+                    'name' => $bill->name,
+                    'icon' => $bill->icon,
+                    'color' => $bill->color,
+                    'bg' => $bill->bg,
+                    'amount' => (float) $bill->amount,
+                    'day_of_month' => $bill->day_of_month,
+                    'budget_category_id' => $bill->budget_category_id,
+                    'dueLabel' => $due['label'],
+                    'soon' => $due['soon'],
+                    'daysUntil' => $due['daysUntil'],
+                    'category' => $bill->budgetCategory ? [
+                        'id' => $bill->budgetCategory->id,
+                        'name' => $bill->budgetCategory->name,
+                        'color' => $bill->budgetCategory->color,
+                    ] : null,
+                    'type' => 'recurring',
+                ];
+            })
+            ->filter()
+            ->values();
+
+        $upcomingBills = $sinkingFundBills
+            ->concat($recurringBillItems)
+            ->sortBy('daysUntil')
+            ->take(5)
+            ->values();
+
+        $allRecurringBills = $user->recurringBills()
+            ->with('budgetCategory')
+            ->orderBy('day_of_month')
+            ->get()
+            ->map(fn ($bill) => [
+                'id' => $bill->id,
+                'name' => $bill->name,
+                'icon' => $bill->icon,
+                'color' => $bill->color,
+                'bg' => $bill->bg,
+                'amount' => (float) $bill->amount,
+                'day_of_month' => $bill->day_of_month,
+                'budget_category_id' => $bill->budget_category_id,
+                'category' => $bill->budgetCategory ? [
+                    'id' => $bill->budgetCategory->id,
+                    'name' => $bill->budgetCategory->name,
+                    'color' => $bill->budgetCategory->color,
+                ] : null,
+            ]);
+
+        $prevCycleStart = $cycleStart->copy()->subDays($cycleDays)->toDateString();
+        $nextCycleStart = $cycleStart->copy()->addDays($cycleDays)->toDateString();
+        $isCurrentCycle = $today->between($cycleStart, $cycleEnd);
+
+        $isCalendarMonth = $cycleStart->day === 1 && $cycleEnd->isSameDay($cycleStart->copy()->endOfMonth());
+        if ($isCalendarMonth) {
+            $cycleLabel = $cycleStart->format('F Y');
+        } elseif ($cycleStart->year === $cycleEnd->year) {
+            $cycleLabel = $cycleStart->format('M j').' – '.$cycleEnd->format('M j, Y');
+        } else {
+            $cycleLabel = $cycleStart->format('M j, Y').' – '.$cycleEnd->format('M j, Y');
+        }
+
+        $mapTransaction = fn ($t) => [
+            'id' => $t->id,
+            'type' => $t->type,
+            'amount' => (float) $t->amount,
+            'merchant' => $t->merchant,
+            'transacted_at' => $t->transacted_at->toDateString(),
+            'account' => ['id' => $t->account_id, 'name' => $t->account->name],
+            'to_account_id' => $t->to_account_id,
+            'category' => $t->budgetCategory ? [
+                'id' => $t->budgetCategory->id,
+                'name' => $t->budgetCategory->name,
+                'icon' => $t->budgetCategory->icon,
+                'color' => $t->budgetCategory->color,
+            ] : null,
+        ];
+
+        $transactionData = $transactions->map($mapTransaction);
+        $allTransactionData = $allTransactions->map($mapTransaction);
+
+        $todayContext = [
+            'date' => Carbon::now()->format('l, M j'),
+            'tasksLeft' => $user->tasks()->where('done', false)->count(),
+            'eventsCount' => $user->events()->whereDate('date', Carbon::now())->count(),
+        ];
+
+        return Inertia::render('Budgets', [
+            'todayContext' => $todayContext,
+            'saPerMonth' => $saPerMonth,
+            'saCount' => $saCount,
+            'categories' => $categories,
+            'transactions' => $transactionData,
+            'allTransactions' => $allTransactionData,
+            'accounts' => $accounts,
+            'cycle' => [
+                'start' => $cycleStart->toDateString(),
+                'end' => $cycleEnd->toDateString(),
+                'label' => $cycleLabel,
+                'budget' => $cycleBudget,
+                'daysLeft' => $daysLeft,
+            ],
+            'totalSpent' => $totalSpent,
+            'safeToSpend' => $safeToSpend,
+            'readyToAssign' => $readyToAssign,
+            'prevCycleLeftover' => $prevCycleLeftover,
+            'dailyBudget' => $dailyBudget,
+            'prevCycleStart' => $prevCycleStart,
+            'nextCycleStart' => $nextCycleStart,
+            'isCurrentCycle' => $isCurrentCycle,
+            'upcomingBills' => $upcomingBills,
+            'recurringBills' => $allRecurringBills,
+        ]);
+    }
+}

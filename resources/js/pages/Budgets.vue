@@ -8,7 +8,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import { index } from '@/actions/App/Http/Controllers/BudgetController';
 import { store, update, destroy } from '@/actions/App/Http/Controllers/BudgetCategoryController';
 import { store as storeRecurringBill, update as updateRecurringBill, destroy as destroyRecurringBill } from '@/actions/App/Http/Controllers/RecurringBillController';
-import { update as updateTransaction, destroy as destroyTransaction } from '@/actions/App/Http/Controllers/TransactionController';
+import { store as storeTransaction, update as updateTransaction, destroy as destroyTransaction } from '@/actions/App/Http/Controllers/TransactionController';
 
 type Category = {
     id: number;
@@ -83,6 +83,7 @@ type RecurringBill = {
 const props = defineProps<{
     categories: Category[];
     transactions: Transaction[];
+    allTransactions: Transaction[];
     accounts: Account[];
     cycle: Cycle;
     totalSpent: number;
@@ -97,6 +98,7 @@ const props = defineProps<{
     upcomingBills: UpcomingBill[];
     recurringBills: RecurringBill[];
     readyToAssign: number;
+    prevCycleLeftover: number;
 }>();
 
 // ── Cycle navigation ──────────────────────────────────────────────────────────
@@ -448,9 +450,22 @@ function openEditTx(tx: Transaction) {
     txModalOpen.value = true;
 }
 
-function submitEditTx() {
-    if (!editingTx.value) { return; }
-    router.patch(updateTransaction({ transaction: editingTx.value.id }).url, {
+function openPayBill(bill: UpcomingBill) {
+    editingTx.value = null;
+    Object.assign(txForm, {
+        type: 'expense',
+        amount: String(bill.amount),
+        merchant: bill.name,
+        account_id: props.accounts[0]?.id ?? 0,
+        to_account_id: null,
+        budget_category_id: bill.budget_category_id ?? null,
+        transacted_at: props.todayContext.date,
+    });
+    txModalOpen.value = true;
+}
+
+function submitTxModal() {
+    const payload = {
         type: txForm.type,
         amount: txAmountEvaluated.value ?? parseFloat(txForm.amount),
         merchant: txForm.merchant || null,
@@ -458,10 +473,15 @@ function submitEditTx() {
         to_account_id: txForm.type === 'transfer' ? txForm.to_account_id : null,
         budget_category_id: txForm.type === 'expense' ? txForm.budget_category_id : null,
         transacted_at: txForm.transacted_at,
-    }, {
-        onSuccess: () => { txModalOpen.value = false; },
-        preserveScroll: true,
-    });
+    };
+
+    const opts = { onSuccess: () => { txModalOpen.value = false; }, preserveScroll: true };
+
+    if (editingTx.value) {
+        router.patch(updateTransaction({ transaction: editingTx.value.id }).url, payload, opts);
+    } else {
+        router.post(storeTransaction().url, payload, opts);
+    }
 }
 
 // ── Transaction delete ────────────────────────────────────────────────────────
@@ -596,7 +616,7 @@ function cancelDeleteTx() {
                             </div>
                         </TooltipTrigger>
                         <TooltipContent side="left">
-                            {{ formatMoney(totalAccountBalance) }} balance − {{ formatMoney(totalSaSaved) }} saved in set-asides − {{ formatMoney(cycle.budget) }} budgeted
+                            {{ formatMoney(totalAccountBalance) }} balance − {{ formatMoney(totalSaSaved) }} saved in set-asides − {{ formatMoney(cycle.budget) }} budgeted<template v-if="prevCycleLeftover > 0"> + {{ formatMoney(prevCycleLeftover) }} from last cycle</template>
                         </TooltipContent>
                     </Tooltip>
                 </div>
@@ -646,12 +666,16 @@ function cancelDeleteTx() {
                                 </span>
                             </div>
                         </div>
-                        <!-- Amount + edit/delete for recurring bills -->
+                        <!-- Amount + pay/edit/delete for recurring bills -->
                         <template v-if="bill.type === 'recurring' && deletingBillId !== bill.id">
                             <div class="flex items-center flex-none">
                                 <div style="font-weight: 700; font-size: 14px; font-family: 'Bricolage Grotesque'; color: #211d17">{{ formatMoney(bill.amount) }}</div>
-                                <div class="max-w-0 overflow-hidden transition-[max-width] duration-200 ease-out group-hover/bill:max-w-[68px] flex-shrink-0">
+                                <div class="max-w-0 overflow-hidden transition-[max-width] duration-200 ease-out group-hover/bill:max-w-[100px] flex-shrink-0">
                                     <div class="flex items-center gap-1" style="padding-left: 8px">
+                                        <button @click.stop="openPayBill(bill)"
+                                            style="width: 26px; height: 26px; border: 1px solid #d4edda; background: #d4edda; border-radius: 7px; cursor: pointer; display: flex; align-items: center; justify-content: center; color: #2e7d46">
+                                            <span class="material-symbols-rounded" style="font-size: 14px">price_check</span>
+                                        </button>
                                         <button @click.stop="openEditBill(bill)"
                                             style="width: 26px; height: 26px; border: 1px solid #e0dacd; background: #fffdf8; border-radius: 7px; cursor: pointer; display: flex; align-items: center; justify-content: center; color: #6b6355">
                                             <span class="material-symbols-rounded" style="font-size: 14px">edit</span>
@@ -813,13 +837,13 @@ function cancelDeleteTx() {
 
             <!-- Details view -->
             <div v-else-if="detailsView === 'details'">
-                <div v-if="!transactions.length" style="display: flex; flex-direction: column; align-items: center; padding: 36px 0; gap: 8px">
+                <div v-if="!allTransactions.length" style="display: flex; flex-direction: column; align-items: center; padding: 36px 0; gap: 8px">
                     <span class="material-symbols-rounded" style="font-size: 36px; color: #c3bbab">receipt</span>
-                    <div style="font-size: 13.5px; color: #8a8172">No spending logged this cycle</div>
+                    <div style="font-size: 13.5px; color: #8a8172">No transactions logged yet</div>
                     <div style="font-size: 13px; color: #a49b8a">Use "Log spending" to record a transaction</div>
                 </div>
                 <div v-else style="display: flex; flex-direction: column">
-                    <div v-for="(tx, i) in transactions" :key="tx.id" class="group/tx"
+                    <div v-for="(tx, i) in allTransactions" :key="tx.id" class="group/tx"
                         style="display: flex; align-items: center; gap: 13px; padding: 12px 0"
                         :style="{ borderTop: i > 0 ? '1px solid #efe9dc' : 'none' }">
                         <span v-if="tx.category" :style="{ background: tx.category.color + '22' }"
@@ -1013,13 +1037,13 @@ function cancelDeleteTx() {
         </DialogContent>
     </Dialog>
 
-    <!-- Edit transaction modal -->
+    <!-- Add / Edit transaction modal -->
     <Dialog v-model:open="txModalOpen">
         <DialogContent style="max-width: 460px">
             <DialogHeader>
-                <DialogTitle>Edit transaction</DialogTitle>
+                <DialogTitle>{{ editingTx ? 'Edit transaction' : 'Log payment' }}</DialogTitle>
             </DialogHeader>
-            <form @submit.prevent="submitEditTx" style="display: flex; flex-direction: column; gap: 16px; margin-top: 8px">
+            <form @submit.prevent="submitTxModal" style="display: flex; flex-direction: column; gap: 16px; margin-top: 8px">
 
                 <!-- Type -->
                 <div>
@@ -1098,7 +1122,7 @@ function cancelDeleteTx() {
                     </button>
                     <button type="submit"
                         style="padding: 0 16px; height: 40px; border: none; background: #211d17; border-radius: 10px; cursor: pointer; font-family: 'Instrument Sans'; font-weight: 600; font-size: 13.5px; color: #fdfbf5">
-                        Save changes
+                        {{ editingTx ? 'Save changes' : 'Log payment' }}
                     </button>
                 </div>
             </form>

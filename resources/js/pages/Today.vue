@@ -4,7 +4,7 @@ import { computed, ref } from 'vue';
 import type { HabitatTheme } from '@/types';
 
 type TodayEvent = { id: number; title: string; time: string; tag: string; color: string };
-type TodayTask = { id: number; label: string; group: string; done: boolean };
+type TodayTask = { id: number; label: string; section_id: number; done: boolean };
 type MoneySummary = { safeToSpend: number; budget: number; spent: number };
 type Habit = { id: number; name: string; icon: string; color: string; pct: number; streak: number };
 type HealthMetric = { name: string; value: string; sub: string; pct: number; color: string; icon: string };
@@ -38,6 +38,31 @@ function toggleTask(task: (typeof localTasks.value)[0]): void {
     );
 }
 
+// Dynamic greeting
+const greeting = computed(() => {
+    const hour = new Date().getHours();
+    if (hour >= 5 && hour < 12) return {
+        text: 'Good morning', icon: 'wb_sunny',
+        gradA: '#d4875a', gradB: '#b5663e', gradC: '#8a4621',
+        overlay: 'overlay-morning',
+    };
+    if (hour >= 12 && hour < 17) return {
+        text: 'Good afternoon', icon: 'light_mode',
+        gradA: '#2f8faa', gradB: '#256f88', gradC: '#1a5268',
+        overlay: 'overlay-afternoon',
+    };
+    if (hour >= 17 && hour < 21) return {
+        text: 'Good evening', icon: 'wb_twilight',
+        gradA: '#9b5490', gradB: '#7a3c72', gradC: '#592a52',
+        overlay: 'overlay-evening',
+    };
+    return {
+        text: 'Good night', icon: 'bedtime',
+        gradA: '#263670', gradB: '#1c285c', gradC: '#131d44',
+        overlay: 'overlay-night',
+    };
+});
+
 // Hero subtitle
 const heroSubtitle = computed(() => {
     const events = props.todayEvents.length;
@@ -66,7 +91,7 @@ const spentPct = computed(() =>
 );
 
 function formatPeso(amount: number): string {
-    return '₱' + Math.round(amount).toLocaleString('en-PH');
+    return '₱' + amount.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
 // Tag pill color helper
@@ -83,27 +108,28 @@ function tagStyle(tag: string): { bg: string; text: string } {
 <template>
     <Head title="Today" />
 
-    <div class="mx-auto w-full max-w-[1180px] px-[30px] pb-[46px] pt-6">
+    <div class="mx-auto w-full max-w-[1180px] px-4 sm:px-6 lg:px-[30px] pb-[46px] pt-6">
 
         <!-- Hero -->
         <div
-            class="mb-5 w-full rounded-[22px] px-8 py-7"
-            style="
-                background: radial-gradient(120% 140% at 100% 0%, var(--hab-grad-a) 0%, var(--hab-grad-b) 55%, var(--hab-grad-c) 100%);
-                box-shadow: 0 24px 40px -26px rgba(20,20,20,.7);
-            "
+            class="relative mb-5 w-full overflow-hidden rounded-[22px] px-5 py-5 sm:px-8 sm:py-7"
+            :style="{
+                background: `radial-gradient(120% 140% at 100% 0%, ${greeting.gradA} 0%, ${greeting.gradB} 55%, ${greeting.gradC} 100%)`,
+                boxShadow: '0 24px 40px -26px rgba(20,20,20,.7)',
+            }"
         >
+            <div class="pointer-events-none absolute inset-0" :class="greeting.overlay" />
             <div class="flex items-center gap-3">
-                <span class="material-symbols-rounded text-white/90" style="font-size: 32px">wb_sunny</span>
+                <span class="material-symbols-rounded text-white/90" style="font-size: 32px">{{ greeting.icon }}</span>
                 <h1 class="font-['Bricolage_Grotesque'] text-[32px] font-extrabold text-white">
-                    Good morning, {{ user.firstName }}
+                    {{ greeting.text }}, {{ user.firstName }}
                 </h1>
             </div>
             <p class="mt-2 text-[14px] text-white/72 pl-0.5">{{ heroSubtitle }}</p>
         </div>
 
         <!-- Two-column layout -->
-        <div class="grid gap-5" style="grid-template-columns: 1fr 340px">
+        <div class="grid grid-cols-1 gap-5 lg:grid-cols-[1fr_340px]">
 
             <!-- ── Left column ── -->
             <div class="flex flex-col gap-5">
@@ -162,10 +188,16 @@ function tagStyle(tag: string): { bg: string; text: string } {
                         <h2 class="font-['Bricolage_Grotesque'] text-[18px] font-bold" style="color: var(--hab-ink)">
                             Tasks
                         </h2>
-                        <span
-                            class="rounded-full px-2.5 py-0.5 text-[11px] font-semibold"
-                            style="background: var(--hab-chip-fill); color: var(--hab-muted)"
-                        >{{ undoneCount }} left</span>
+                        <div class="flex items-center gap-3">
+                            <span
+                                v-if="undoneCount > 0"
+                                class="rounded-full px-2.5 py-0.5 text-[11px] font-semibold"
+                                style="background: var(--hab-chip-fill); color: var(--hab-muted)"
+                            >{{ undoneCount }} left</span>
+                            <Link href="/tasks" class="text-[13px] font-medium" :style="{ color: 'var(--hab-accent)' }">
+                                Tasks →
+                            </Link>
+                        </div>
                     </div>
 
                     <div v-for="(task, i) in localTasks" :key="task.id">
@@ -323,3 +355,46 @@ function tagStyle(tag: string): { bg: string; text: string } {
         </div>
     </div>
 </template>
+
+<style scoped>
+/* ── Morning: warm sun glow pulses from top-right ── */
+.overlay-morning {
+    background: radial-gradient(circle at 88% 12%, rgba(255, 220, 100, 0.38) 0%, transparent 58%);
+    animation: morning-glow 7s ease-in-out infinite;
+}
+@keyframes morning-glow {
+    0%, 100% { opacity: 0.65; transform: scale(1); }
+    50%       { opacity: 1;    transform: scale(1.12); }
+}
+
+/* ── Afternoon: crisp shimmer sweeps left→right ── */
+.overlay-afternoon {
+    background: linear-gradient(108deg, transparent 30%, rgba(255, 255, 255, 0.13) 50%, transparent 70%);
+    animation: afternoon-shimmer 9s ease-in-out infinite;
+}
+@keyframes afternoon-shimmer {
+    0%, 100% { transform: translateX(-50%); opacity: 0.4; }
+    50%       { transform: translateX(50%);  opacity: 1; }
+}
+
+/* ── Evening: warm ember glow breathes from bottom-left ── */
+.overlay-evening {
+    background: radial-gradient(circle at 14% 88%, rgba(255, 145, 80, 0.38) 0%, transparent 55%);
+    animation: evening-glow 8s ease-in-out infinite;
+}
+@keyframes evening-glow {
+    0%, 100% { opacity: 0.55; transform: scale(1); }
+    50%       { opacity: 1;    transform: scale(1.18); }
+}
+
+/* ── Night: cool moonlight drifts slowly ── */
+.overlay-night {
+    background: radial-gradient(circle at 68% 28%, rgba(140, 165, 255, 0.22) 0%, transparent 52%);
+    animation: night-drift 14s ease-in-out infinite;
+}
+@keyframes night-drift {
+    0%, 100% { opacity: 0.55; transform: translate(0,    0)    scale(1); }
+    40%       { opacity: 1;    transform: translate(4%, -3%)   scale(1.08); }
+    70%       { opacity: 0.75; transform: translate(-3%, 4%)   scale(0.96); }
+}
+</style>

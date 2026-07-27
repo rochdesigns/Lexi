@@ -18,11 +18,13 @@ class EventController extends Controller
             'tag' => ['required', Rule::in(['Work', 'Personal', 'Health', 'Family', 'Other'])],
             'color' => ['required', 'regex:/^#[0-9a-fA-F]{6}$/'],
             'recurrence_type' => ['nullable', Rule::in(['daily', 'weekly', 'monthly', 'yearly'])],
-            'recurrence_interval' => ['nullable', 'integer', 'min:1', 'max:99'],
+            'recurrence_interval' => ['integer', 'min:1', 'max:99'],
             'recurrence_days' => ['nullable', 'array'],
             'recurrence_days.*' => ['string', Rule::in(['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'])],
             'recurrence_ends_on' => ['nullable', 'date', 'after:date'],
         ]);
+
+        $validated['recurrence_interval'] ??= 1;
 
         Event::create([...$validated, 'user_id' => $request->user()->id]);
 
@@ -40,7 +42,7 @@ class EventController extends Controller
             'tag' => ['sometimes', 'required', Rule::in(['Work', 'Personal', 'Health', 'Family', 'Other'])],
             'color' => ['sometimes', 'required', 'regex:/^#[0-9a-fA-F]{6}$/'],
             'recurrence_type' => ['nullable', Rule::in(['daily', 'weekly', 'monthly', 'yearly'])],
-            'recurrence_interval' => ['nullable', 'integer', 'min:1', 'max:99'],
+            'recurrence_interval' => ['integer', 'min:1', 'max:99'],
             'recurrence_days' => ['nullable', 'array'],
             'recurrence_days.*' => ['string', Rule::in(['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'])],
             'recurrence_ends_on' => ['nullable', 'date'],

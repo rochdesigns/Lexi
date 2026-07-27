@@ -27,7 +27,10 @@ class TaskSectionController extends Controller
     {
         abort_if($taskSection->user_id !== $request->user()->id, 403);
 
-        $validated = $request->validate(['label' => ['required', 'string', 'max:100']]);
+        $validated = $request->validate([
+            'label' => ['sometimes', 'required', 'string', 'max:100'],
+            'color' => ['sometimes', 'nullable', 'string', 'regex:/^#[0-9a-fA-F]{6}$/'],
+        ]);
 
         $taskSection->update($validated);
 

@@ -22,6 +22,7 @@ class TaskController extends Controller
             'id' => $section->id,
             'label' => $section->label,
             'position' => $section->position,
+            'color' => $section->color,
             'tasks' => $section->tasks->map(fn (Task $task): array => [
                 'id' => $task->id,
                 'label' => $task->label,
@@ -59,6 +60,15 @@ class TaskController extends Controller
         $validated = $request->validate(['done' => ['required', 'boolean']]);
 
         $task->update($validated);
+
+        return back();
+    }
+
+    public function destroy(Request $request, Task $task): RedirectResponse
+    {
+        abort_if($task->user_id !== $request->user()->id, 403);
+
+        $task->delete();
 
         return back();
     }

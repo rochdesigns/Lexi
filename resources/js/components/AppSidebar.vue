@@ -40,17 +40,17 @@ const navSections: HabitatNavSection[] = [
             { title: 'Meals', href: '/meals', icon: 'restaurant' },
             { title: 'Groceries', href: '/groceries', icon: 'shopping_cart' },
             { title: 'Pets', href: '/pets', icon: 'pets' },
+            { title: 'Photos', href: '/photos', icon: 'photo_library' },
         ],
     },
     {
         label: 'Money',
         items: [
-            { title: 'Goals', href: '/goals', icon: 'flag' },
             { title: 'Accounts', href: '/accounts', icon: 'account_balance' },
             { title: 'Budgets', href: '/budgets', icon: 'account_balance_wallet' },
+            { title: 'Goals', href: '/goals', icon: 'flag' },
             { title: 'Set-asides', href: '/set-asides', icon: 'savings' },
             { title: 'Debt', href: '/debt', icon: 'credit_card' },
-            { title: 'Photos', href: '/photos', icon: 'photo_library' },
         ],
     },
 ];
@@ -58,27 +58,20 @@ const navSections: HabitatNavSection[] = [
 
 <template>
     <Sidebar
-        collapsible="none"
         class="border-r-0"
-        :style="{ background: 'var(--hab-sidebar-bg)', width: '248px', flexShrink: '0', height: '100vh', position: 'sticky', top: '0' }"
+        :style="{ background: 'var(--hab-sidebar-bg)' }"
     >
         <!-- Brand row -->
         <SidebarHeader class="px-4 py-5">
             <div class="flex items-center gap-3">
                 <!-- Logo mark -->
-                <div
-                    class="flex h-7 w-7 items-center justify-center rounded-lg"
-                    :style="{ background: 'var(--hab-brand)' }"
-                >
-                    <span
-                        class="material-symbols-rounded filled text-[18px]"
-                        :style="{ color: 'var(--hab-brand-ink)', fontSize: '18px' }"
-                    >cottage</span>
+                <div class="flex h-7 w-7 items-center justify-center rounded-lg bg-white">
+                    <span style="font-family: 'Georgia', serif; font-size: 17px; font-weight: 700; color: #142731; line-height: 1; letter-spacing: -0.5px">L</span>
                 </div>
                 <!-- Wordmark -->
                 <span
                     class="font-['Bricolage_Grotesque'] text-[17px] font-bold text-white"
-                >Habitat</span>
+                >Lexi</span>
                 <!-- User pill -->
                 <span
                     v-if="user"
