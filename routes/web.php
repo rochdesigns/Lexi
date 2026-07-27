@@ -5,6 +5,7 @@ use App\Http\Controllers\BudgetCategoryController;
 use App\Http\Controllers\BudgetController;
 use App\Http\Controllers\CalendarController;
 use App\Http\Controllers\DebtController;
+use App\Http\Controllers\EventController;
 use App\Http\Controllers\GoalController;
 use App\Http\Controllers\RecurringBillController;
 use App\Http\Controllers\SinkingFundController;
@@ -30,6 +31,9 @@ Route::middleware(['auth', 'verified'])->group(function (): void {
 
     // Stub routes — content added in future sprints
     Route::get('/calendar', [CalendarController::class, 'index'])->name('calendar.index');
+    Route::post('/events', [EventController::class, 'store'])->name('events.store');
+    Route::patch('/events/{event}', [EventController::class, 'update'])->name('events.update');
+    Route::delete('/events/{event}', [EventController::class, 'destroy'])->name('events.destroy');
     Route::inertia('/health', 'Stub')->name('health');
     Route::inertia('/habits', 'Stub')->name('habits');
     Route::inertia('/notes', 'Stub')->name('notes');

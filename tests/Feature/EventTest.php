@@ -3,8 +3,13 @@
 use App\Models\Event;
 use App\Models\User;
 use Carbon\Carbon;
+use Database\Seeders\DatabaseSeeder;
+use Illuminate\Foundation\Testing\RefreshDatabase;
+
+uses(RefreshDatabase::class);
 
 beforeEach(function (): void {
+    $this->seed(DatabaseSeeder::class);
     $this->user = User::factory()->create();
 });
 
@@ -183,4 +188,116 @@ test('expandRecurring occurrence includes expected keys', function (): void {
     expect($result[0])->toHaveKeys(['id', 'title', 'date', 'time', 'tag', 'color', 'bg', 'is_recurring', 'recurrence_type'])
         ->and($result[0]['bg'])->toBe('#dcebf5')
         ->and($result[0]['is_recurring'])->toBeFalse();
+});
+
+// ── store ──────────────────────────────────────────────────────────────────
+
+test('user can create a one-off event', function (): void {
+    $user = User::where('email', 'elle@example.com')->first();
+
+    $this->actingAs($user)
+        ->post('/events', [
+            'title' => 'Team lunch',
+            'date' => '2026-08-01',
+            'time' => '12:00',
+            'tag' => 'Work',
+            'color' => '#3f7fb0',
+        ])
+        ->assertRedirect();
+
+    expect(Event::where('user_id', $user->id)->where('title', 'Team lunch')->exists())->toBeTrue();
+});
+
+test('user can create a recurring event', function (): void {
+    $user = User::where('email', 'elle@example.com')->first();
+
+    $this->actingAs($user)
+        ->post('/events', [
+            'title' => 'Standup',
+            'date' => '2026-08-04',
+            'time' => '09:00',
+            'tag' => 'Work',
+            'color' => '#3f7fb0',
+            'recurrence_type' => 'weekly',
+            'recurrence_interval' => 1,
+            'recurrence_days' => ['Mon', 'Wed', 'Fri'],
+        ])
+        ->assertRedirect();
+
+    $event = Event::where('user_id', $user->id)->where('title', 'Standup')->first();
+    expect($event)->not->toBeNull();
+    expect($event->recurrence_type)->toBe('weekly');
+    expect($event->recurrence_days)->toBe(['Mon', 'Wed', 'Fri']);
+});
+
+test('store validates required fields', function (): void {
+    $user = User::where('email', 'elle@example.com')->first();
+
+    $this->actingAs($user)
+        ->post('/events', [])
+        ->assertSessionHasErrors(['title', 'date', 'time', 'tag', 'color']);
+});
+
+test('store validates tag is in allowed list', function (): void {
+    $user = User::where('email', 'elle@example.com')->first();
+
+    $this->actingAs($user)
+        ->post('/events', [
+            'title' => 'Test',
+            'date' => '2026-08-01',
+            'time' => '09:00',
+            'tag' => 'BadTag',
+            'color' => '#3f7fb0',
+        ])
+        ->assertSessionHasErrors('tag');
+});
+
+test('guest cannot create an event', function (): void {
+    $this->post('/events', [])->assertRedirect('/login');
+});
+
+// ── update ────────────────────────────────────────────────────────────────
+
+test('user can update their event', function (): void {
+    $user = User::where('email', 'elle@example.com')->first();
+    $event = Event::factory()->create(['user_id' => $user->id]);
+
+    $this->actingAs($user)
+        ->patch("/events/{$event->id}", ['title' => 'Updated title'])
+        ->assertRedirect();
+
+    expect($event->fresh()->title)->toBe('Updated title');
+});
+
+test('user cannot update another users event', function (): void {
+    $user = User::where('email', 'elle@example.com')->first();
+    $other = User::factory()->create();
+    $event = Event::factory()->create(['user_id' => $other->id]);
+
+    $this->actingAs($user)
+        ->patch("/events/{$event->id}", ['title' => 'Stolen'])
+        ->assertForbidden();
+});
+
+// ── destroy ───────────────────────────────────────────────────────────────
+
+test('user can delete their event', function (): void {
+    $user = User::where('email', 'elle@example.com')->first();
+    $event = Event::factory()->create(['user_id' => $user->id]);
+
+    $this->actingAs($user)
+        ->delete("/events/{$event->id}")
+        ->assertRedirect();
+
+    expect(Event::find($event->id))->toBeNull();
+});
+
+test('user cannot delete another users event', function (): void {
+    $user = User::where('email', 'elle@example.com')->first();
+    $other = User::factory()->create();
+    $event = Event::factory()->create(['user_id' => $other->id]);
+
+    $this->actingAs($user)
+        ->delete("/events/{$event->id}")
+        ->assertForbidden();
 });
