@@ -36,6 +36,8 @@ type Debt = {
     due_label: string | null;
     months_left: number | null;
     position: number;
+    account_id: number | null;
+    minimum_payment_rate: number | null;
 };
 
 const props = defineProps<{
@@ -48,6 +50,7 @@ const props = defineProps<{
     debtFreeDate: string | null;
     accounts: Account[];
     budgetCategories: BudgetCategory[];
+    creditAccounts: { id: number; name: string }[];
 }>();
 
 const COLOR_PAIRS = [
@@ -110,6 +113,8 @@ const form = useForm({
     due_day: '' as number | string,
     interest_rate: '' as number | string,
     interest_rate_period: 'annual' as string,
+    account_id: null as number | null,
+    minimum_payment_rate: '' as number | string,
 });
 
 function openCreate() {
@@ -118,6 +123,8 @@ function openCreate() {
     form.icon = 'credit_card';
     form.color = '#3f7fb0';
     form.bg = '#dcebf5';
+    form.account_id = null;
+    form.minimum_payment_rate = '';
     modalOpen.value = true;
 }
 
@@ -134,6 +141,8 @@ function openEdit(debt: Debt) {
     form.due_day = debt.due_day ? String(debt.due_day) : '';
     form.interest_rate = debt.interest_rate ? String(debt.interest_rate) : '';
     form.interest_rate_period = debt.interest_rate_period || 'annual';
+    form.account_id = debt.account_id;
+    form.minimum_payment_rate = debt.minimum_payment_rate ? String(debt.minimum_payment_rate) : '';
     form.clearErrors();
     modalOpen.value = true;
 }
@@ -146,6 +155,8 @@ function submitForm() {
         per_month: (evaluateArithmetic(String(data.per_month)) ?? parseFloat(String(data.per_month))) || 0,
         due_day: data.due_day ? parseInt(String(data.due_day), 10) : null,
         interest_rate: data.interest_rate ? parseFloat(String(data.interest_rate)) : null,
+        account_id: data.account_id ?? null,
+        minimum_payment_rate: data.minimum_payment_rate ? parseFloat(String(data.minimum_payment_rate)) : null,
     }));
     if (editingDebt.value) {
         form.patch(update(editingDebt.value.id).url, {
@@ -236,6 +247,8 @@ function submitPayment() {
 }
 
 // ── Arithmetic hints ───────────────────────────────────────────────────────────
+
+const isLinkedCC = computed(() => !!form.account_id);
 
 const balanceEvaluated = computed(() => evaluateArithmetic(String(form.balance)));
 const balanceHasExpr = computed(() => hasArithmetic(String(form.balance)) && balanceEvaluated.value !== null);
@@ -420,6 +433,11 @@ const calcResult = computed((): CalcResult | null => {
                                     <span class="material-symbols-rounded" style="font-size: 17px">delete</span>
                                 </button>
                             </div>
+                            <!-- Credit card chip -->
+                            <span v-if="debt.account_id"
+                                style="font-size: 10.5px; font-weight: 600; padding: 2px 8px; border-radius: 20px; background: #fbe2d6; color: #c0512c; white-space: nowrap">
+                                Credit card
+                            </span>
                             <!-- Status badge -->
                             <span style="font-size: 11px; font-weight: 600; padding: 3px 9px; border-radius: 20px; white-space: nowrap"
                                 :style="debtStatusStyle(debt)">{{ debtStatus(debt) }}</span>
@@ -441,7 +459,12 @@ const calcResult = computed((): CalcResult | null => {
 
                 <!-- Footer: monthly + payments left / due -->
                 <div style="display: flex; align-items: center; justify-content: space-between; margin-top: 12px; font-size: 12.5px">
-                    <span style="color: #4a4436; font-weight: 600">{{ formatMoney(debt.per_month) }}/mo</span>
+                    <span style="color: #4a4436; font-weight: 600">
+                        <template v-if="debt.account_id && debt.minimum_payment_rate">~</template>{{ formatMoney(debt.per_month) }}/mo
+                        <template v-if="debt.account_id && debt.minimum_payment_rate">
+                            <span style="font-weight: 400; font-size: 11px; color: #8a8172"> min</span>
+                        </template>
+                    </span>
                     <span style="color: #8a8172">
                         <template v-if="debt.months_left !== null">
                             {{ debt.months_left }} {{ debt.months_left === 1 ? 'payment' : 'payments' }} left
@@ -578,6 +601,28 @@ const calcResult = computed((): CalcResult | null => {
                         </button>
                     </div>
 
+                    <!-- Linked credit account -->
+                    <div style="display: flex; flex-direction: column; gap: 6px">
+                        <label style="font-size: 13px; font-weight: 600; color: #4a4436">
+                            Linked credit account
+                            <span style="font-weight: 400; color: #8a8172">(optional — links this debt to a credit card account)</span>
+                        </label>
+                        <select v-model.number="form.account_id"
+                            style="width: 100%; height: 40px; border: 1px solid #e0dacd; border-radius: 10px; padding: 0 12px; font-family: 'Instrument Sans'; font-size: 14px; background: #fffdf8; outline: none; color: #211d17; appearance: none; box-sizing: border-box">
+                            <option :value="null">— None —</option>
+                            <option v-for="a in creditAccounts" :key="a.id" :value="a.id">{{ a.name }}</option>
+                        </select>
+                    </div>
+
+                    <!-- Minimum payment rate (only when CC linked) -->
+                    <div v-if="isLinkedCC" style="display: flex; flex-direction: column; gap: 6px">
+                        <label style="font-size: 13px; font-weight: 600; color: #4a4436">Minimum payment rate (%)</label>
+                        <input v-model="form.minimum_payment_rate" type="number" inputmode="decimal" min="0" max="100" step="0.01"
+                            placeholder="e.g. 3"
+                            style="height: 40px; border: 1px solid #e0dacd; border-radius: 10px; padding: 0 12px; font-family: 'Instrument Sans'; font-size: 14px; background: #fffdf8; width: 100%; box-sizing: border-box; outline: none" />
+                        <div v-if="form.errors.minimum_payment_rate" style="font-size: 12px; color: #c0512c">{{ form.errors.minimum_payment_rate }}</div>
+                    </div>
+
                     <!-- Color pair + preview -->
                     <div style="display: flex; gap: 16px; align-items: flex-start">
                         <div style="display: flex; flex-direction: column; gap: 6px; flex: 1">
@@ -621,7 +666,9 @@ const calcResult = computed((): CalcResult | null => {
                     <!-- Original + Balance -->
                     <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px">
                         <div style="display: flex; flex-direction: column; gap: 6px">
-                            <label style="font-size: 13px; font-weight: 600; color: #4a4436">Original amount (₱)</label>
+                            <label style="font-size: 13px; font-weight: 600; color: #4a4436">
+                                {{ isLinkedCC ? 'Credit limit (₱)' : 'Original amount (₱)' }}
+                            </label>
                             <input v-model="form.original" type="text" inputmode="decimal" required
                                 style="height: 40px; border: 1px solid #e0dacd; border-radius: 10px; padding: 0 12px; font-family: 'Instrument Sans'; font-size: 14px; background: #fffdf8; width: 100%; box-sizing: border-box; outline: none" />
                             <div v-if="originalHasExpr" style="font-size: 12px; color: #8a8172">= ₱{{ originalEvaluated?.toLocaleString('en-PH', { minimumFractionDigits: 2 }) }}</div>
@@ -639,11 +686,19 @@ const calcResult = computed((): CalcResult | null => {
                     <!-- Monthly payment + Due day -->
                     <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px">
                         <div style="display: flex; flex-direction: column; gap: 6px">
-                            <label style="font-size: 13px; font-weight: 600; color: #4a4436">Monthly payment (₱)</label>
-                            <input v-model="form.per_month" type="text" inputmode="decimal" required
-                                style="height: 40px; border: 1px solid #e0dacd; border-radius: 10px; padding: 0 12px; font-family: 'Instrument Sans'; font-size: 14px; background: #fffdf8; width: 100%; box-sizing: border-box; outline: none" />
-                            <div v-if="perMonthHasExpr" style="font-size: 12px; color: #8a8172">= ₱{{ perMonthEvaluated?.toLocaleString('en-PH', { minimumFractionDigits: 2 }) }}</div>
-                            <div v-if="form.errors.per_month" style="font-size: 12px; color: #c0512c">{{ form.errors.per_month }}</div>
+                            <template v-if="isLinkedCC">
+                                <label style="font-size: 13px; font-weight: 600; color: #4a4436">Est. min. payment (₱)</label>
+                                <div style="height: 40px; border: 1px solid #e0dacd; border-radius: 10px; padding: 0 12px; font-family: 'Instrument Sans'; font-size: 14px; background: #f7f3ec; color: #8a8172; display: flex; align-items: center">
+                                    Auto-computed from balance × rate
+                                </div>
+                            </template>
+                            <template v-else>
+                                <label style="font-size: 13px; font-weight: 600; color: #4a4436">Monthly payment (₱)</label>
+                                <input v-model="form.per_month" type="text" inputmode="decimal" required
+                                    style="height: 40px; border: 1px solid #e0dacd; border-radius: 10px; padding: 0 12px; font-family: 'Instrument Sans'; font-size: 14px; background: #fffdf8; width: 100%; box-sizing: border-box; outline: none" />
+                                <div v-if="perMonthHasExpr" style="font-size: 12px; color: #8a8172">= ₱{{ perMonthEvaluated?.toLocaleString('en-PH', { minimumFractionDigits: 2 }) }}</div>
+                                <div v-if="form.errors.per_month" style="font-size: 12px; color: #c0512c">{{ form.errors.per_month }}</div>
+                            </template>
                         </div>
                         <div style="display: flex; flex-direction: column; gap: 6px">
                             <label style="font-size: 13px; font-weight: 600; color: #4a4436">Payment due day</label>
