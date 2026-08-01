@@ -138,8 +138,16 @@ class DebtController extends Controller
 
         $account->decrement('balance', $validated['amount']);
 
-        $newBalance = max(0, (float) $debt->balance - (float) $validated['amount']);
-        $debt->update(['balance' => $newBalance]);
+        if ($debt->account_id) {
+            // CC-linked debt: decrement the CC outstanding balance, then sync
+            $ccAccount = $user->accounts()->findOrFail($debt->account_id);
+            $ccAccount->decrement('balance', $validated['amount']);
+            $ccAccount->refresh()->syncLinkedDebt();
+        } else {
+            // Unlinked debt: manually reduce balance
+            $newBalance = max(0, (float) $debt->balance - (float) $validated['amount']);
+            $debt->update(['balance' => $newBalance]);
+        }
 
         return back();
     }

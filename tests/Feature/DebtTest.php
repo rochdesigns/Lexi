@@ -388,3 +388,42 @@ test('syncLinkedDebt does nothing when no linked debt', function (): void {
     $account->syncLinkedDebt();
     expect(true)->toBeTrue();
 });
+
+test('makePayment on linked CC debt decrements CC account and syncs debt', function (): void {
+    $source = Account::factory()->for($this->user)->create(['type' => 'cash', 'balance' => 20000]);
+    $cc = Account::factory()->for($this->user)->create(['type' => 'credit', 'balance' => 15000]);
+    $debt = Debt::factory()->for($this->user)->create([
+        'account_id' => $cc->id,
+        'balance' => 15000,
+        'minimum_payment_rate' => 3.00,
+        'per_month' => 450,
+    ]);
+
+    $this->post("/debts/{$debt->id}/payment", [
+        'amount' => 5000,
+        'account_id' => $source->id,
+        'merchant' => 'HSBC CC Payment',
+        'transacted_at' => '2026-08-01',
+    ])->assertRedirect();
+
+    expect((float) $source->fresh()->balance)->toBe(15000.0); // 20000 - 5000
+    expect((float) $cc->fresh()->balance)->toBe(10000.0);     // 15000 - 5000
+    $debt->refresh();
+    expect((float) $debt->balance)->toBe(10000.0);            // synced from CC account
+    expect((float) $debt->per_month)->toBe(300.0);            // 10000 * 3% = 300
+});
+
+test('makePayment on unlinked debt still works as before', function (): void {
+    $source = Account::factory()->for($this->user)->create(['type' => 'cash', 'balance' => 10000]);
+    $debt = Debt::factory()->for($this->user)->create(['balance' => 8000, 'per_month' => 500]);
+
+    $this->post("/debts/{$debt->id}/payment", [
+        'amount' => 2000,
+        'account_id' => $source->id,
+        'merchant' => 'Loan Payment',
+        'transacted_at' => '2026-08-01',
+    ])->assertRedirect();
+
+    expect((float) $source->fresh()->balance)->toBe(8000.0);
+    expect((float) $debt->fresh()->balance)->toBe(6000.0);
+});
