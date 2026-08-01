@@ -459,6 +459,58 @@ test('store accepts account_id and minimum_payment_rate', function (): void {
     expect((float) $debt->minimum_payment_rate)->toBe(3.0);
 });
 
+test('store creates linked CC debt with per_month zero', function (): void {
+    $cc = Account::factory()->for($this->user)->create(['type' => 'credit', 'balance' => 10000]);
+
+    $this->post('/debts', [
+        'name' => 'HSBC CC',
+        'icon' => 'credit_card',
+        'color' => '#c0512c',
+        'bg' => '#fbe2d6',
+        'balance' => 10000,
+        'original' => 50000,
+        'per_month' => 0,
+        'account_id' => $cc->id,
+        'minimum_payment_rate' => 3.00,
+    ])->assertRedirect();
+
+    $debt = $this->user->debts()->where('name', 'HSBC CC')->first();
+    expect($debt)->not->toBeNull();
+    expect($debt->account_id)->toBe($cc->id);
+    expect((float) $debt->per_month)->toBe(0.0);
+});
+
+test('cannot link debt to another user\'s account', function (): void {
+    $other = User::factory()->create();
+    $otherCc = Account::factory()->for($other)->create(['type' => 'credit', 'balance' => 5000]);
+
+    $this->post('/debts', [
+        'name' => 'Stolen CC',
+        'icon' => 'credit_card',
+        'color' => '#c0512c',
+        'bg' => '#fbe2d6',
+        'balance' => 5000,
+        'original' => 10000,
+        'per_month' => 0,
+        'account_id' => $otherCc->id,
+    ])->assertSessionHasErrors('account_id');
+});
+
+test('cannot link debt to a non-credit account', function (): void {
+    $cash = Account::factory()->for($this->user)->create(['type' => 'cash', 'balance' => 5000]);
+
+    $this->post('/debts', [
+        'name' => 'Invalid link',
+        'icon' => 'credit_card',
+        'color' => '#c0512c',
+        'bg' => '#fbe2d6',
+        'balance' => 5000,
+        'original' => 10000,
+        'per_month' => 0,
+        'account_id' => $cash->id,
+    ])->assertSessionHasErrors('account_id');
+});
+
 test('debt index returns account_id and minimum_payment_rate per debt', function (): void {
     $cc = Account::factory()->for($this->user)->create(['type' => 'credit', 'balance' => 9000]);
     Debt::factory()->for($this->user)->create([

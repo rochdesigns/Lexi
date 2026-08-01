@@ -7,6 +7,7 @@ use App\Models\Transaction;
 use Carbon\Carbon;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Validation\Rule;
 use Inertia\Inertia;
 use Inertia\Response;
 
@@ -96,7 +97,11 @@ class DebtController extends Controller
 
     public function store(Request $request): RedirectResponse
     {
-        $validated = $request->validate($this->rules());
+        $validated = $request->validate($this->rules($request));
+
+        if (! empty($validated['account_id'] ?? null) && empty($validated['per_month'] ?? null)) {
+            $validated['per_month'] = 0;
+        }
 
         $position = $request->user()->debts()->max('position') + 1;
 
@@ -109,7 +114,7 @@ class DebtController extends Controller
     {
         abort_if($debt->user_id !== $request->user()->id, 403);
 
-        $validated = $request->validate($this->rules());
+        $validated = $request->validate($this->rules($request));
 
         $debt->update($validated);
 
@@ -185,8 +190,8 @@ class DebtController extends Controller
         return 'Due '.$candidate->format('M j');
     }
 
-    /** @return array<string, array<int, string>> */
-    private function rules(): array
+    /** @return array<string, mixed> */
+    private function rules(Request $request): array
     {
         return [
             'budget_category_id' => ['nullable', 'integer', 'exists:budget_categories,id'],
@@ -196,8 +201,12 @@ class DebtController extends Controller
             'bg' => ['required', 'string', 'regex:/^#[0-9a-fA-F]{6}$/'],
             'balance' => ['required', 'numeric', 'min:0'],
             'original' => ['required', 'numeric', 'min:0.01'],
-            'per_month' => ['required', 'numeric', 'min:0.01'],
-            'account_id' => ['nullable', 'integer', 'exists:accounts,id'],
+            'per_month' => $request->filled('account_id')
+                ? ['nullable', 'numeric', 'min:0']
+                : ['required', 'numeric', 'min:0.01'],
+            'account_id' => ['nullable', 'integer', Rule::exists('accounts', 'id')
+                ->where('user_id', $request->user()->id)
+                ->where('type', 'credit')],
             'minimum_payment_rate' => ['nullable', 'numeric', 'min:0', 'max:100'],
             'interest_rate' => ['nullable', 'numeric', 'min:0', 'max:100'],
             'interest_rate_period' => ['nullable', 'string', 'in:monthly,annual'],
