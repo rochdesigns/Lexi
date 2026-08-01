@@ -20,7 +20,12 @@ class AccountController extends Controller
             ->orderBy('name')
             ->get();
 
-        $accountTotal = (float) $accounts->sum('balance');
+        $linkedCreditIds = $user->accounts()
+            ->where('type', 'credit')
+            ->whereHas('linkedDebt')
+            ->pluck('id');
+
+        $accountTotal = (float) $accounts->reject(fn ($a) => $linkedCreditIds->contains($a->id))->sum('balance');
         $debtTotal = (float) $user->debts()->sum('balance');
         $netWorth = $accountTotal - $debtTotal;
 
@@ -144,6 +149,10 @@ class AccountController extends Controller
         $validated = $request->validate($this->accountRules());
 
         $account->update($validated);
+
+        if ($account->type === 'credit') {
+            $account->refresh()->syncLinkedDebt();
+        }
 
         return back();
     }

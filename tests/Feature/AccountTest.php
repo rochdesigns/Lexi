@@ -1,6 +1,7 @@
 <?php
 
 use App\Models\Account;
+use App\Models\Debt;
 use App\Models\Setting;
 use App\Models\Transaction;
 use App\Models\User;
@@ -169,4 +170,59 @@ test('transactions endpoint redirects guests', function () {
 
     $this->get(route('accounts.transactions', $account))
         ->assertRedirect(route('login'));
+});
+
+test('accountTotal excludes credit accounts that have a linked debt', function () {
+    $user = User::factory()->create();
+    Setting::factory()->create(['user_id' => $user->id]);
+
+    $cash = Account::factory()->create(['user_id' => $user->id, 'type' => 'cash', 'balance' => 10000]);
+    $cc = Account::factory()->create(['user_id' => $user->id, 'type' => 'credit', 'balance' => 3000]);
+    Debt::factory()->create(['user_id' => $user->id, 'account_id' => $cc->id, 'balance' => 3000]);
+
+    $this->actingAs($user)
+        ->get(route('accounts.index'))
+        ->assertInertia(fn ($page) => $page
+            ->where('accountTotal', 10000) // CC excluded because it has a linked debt
+            ->where('debtTotal', 3000)
+            ->where('netWorth', 7000)
+        );
+});
+
+test('accountTotal includes unlinked credit accounts (backward compat)', function () {
+    $user = User::factory()->create();
+    Setting::factory()->create(['user_id' => $user->id]);
+
+    Account::factory()->create(['user_id' => $user->id, 'type' => 'cash', 'balance' => 10000]);
+    Account::factory()->create(['user_id' => $user->id, 'type' => 'credit', 'balance' => 500]);
+    // No debt linked to the credit account
+
+    $this->actingAs($user)
+        ->get(route('accounts.index'))
+        ->assertInertia(fn ($page) => $page
+            ->where('accountTotal', 10500) // unlinked credit still included
+        );
+});
+
+test('updating credit account balance syncs linked debt', function () {
+    $user = User::factory()->create();
+    $cc = Account::factory()->create(['user_id' => $user->id, 'type' => 'credit', 'balance' => 5000]);
+    $debt = Debt::factory()->create([
+        'user_id' => $user->id,
+        'account_id' => $cc->id,
+        'balance' => 5000,
+        'minimum_payment_rate' => 2.00,
+        'per_month' => 100,
+    ]);
+
+    $this->actingAs($user)
+        ->patch(route('accounts.update', $cc), [
+            'name' => $cc->name,
+            'balance' => 8000,
+            'type' => 'credit',
+        ])->assertRedirect();
+
+    $debt->refresh();
+    expect((float) $debt->balance)->toBe(8000.0);
+    expect((float) $debt->per_month)->toBe(160.0); // 8000 * 2% = 160
 });
