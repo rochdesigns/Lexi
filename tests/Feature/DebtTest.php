@@ -357,3 +357,34 @@ test('interest_rate is returned in the debts index', function (): void {
             ->where('debts.0.interest_rate', 24)
         );
 });
+
+test('debt can be linked to a credit account', function (): void {
+    $account = Account::factory()->for($this->user)->create(['type' => 'credit', 'balance' => 5000]);
+    $debt = Debt::factory()->for($this->user)->create(['account_id' => $account->id, 'balance' => 5000]);
+
+    expect($debt->account->id)->toBe($account->id);
+    expect($account->linkedDebt->id)->toBe($debt->id);
+});
+
+test('syncLinkedDebt updates debt balance and per_month from account', function (): void {
+    $account = Account::factory()->for($this->user)->create(['type' => 'credit', 'balance' => 10000]);
+    $debt = Debt::factory()->for($this->user)->create([
+        'account_id' => $account->id,
+        'balance' => 0,
+        'minimum_payment_rate' => 3.00,
+        'per_month' => 0,
+    ]);
+
+    $account->syncLinkedDebt();
+
+    $debt->refresh();
+    expect((float) $debt->balance)->toBe(10000.0);
+    expect((float) $debt->per_month)->toBe(300.0); // 10000 * 3% = 300
+});
+
+test('syncLinkedDebt does nothing when no linked debt', function (): void {
+    $account = Account::factory()->for($this->user)->create(['type' => 'credit', 'balance' => 5000]);
+    // No debt linked — should not throw
+    $account->syncLinkedDebt();
+    expect(true)->toBeTrue();
+});

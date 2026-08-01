@@ -17,6 +17,7 @@ class DebtFactory extends Factory
 
         return [
             'budget_category_id' => null,
+            'account_id' => null,
             'name' => $this->faker->words(3, true),
             'icon' => $this->faker->randomElement(['credit_card', 'directions_car', 'smartphone', 'chair']),
             'color' => $this->faker->randomElement(['#3f7fb0', '#a85fc0', '#d98a2b', '#c0512c']),
@@ -26,6 +27,7 @@ class DebtFactory extends Factory
             'per_month' => $this->faker->randomElement([100, 200, 300, 500]),
             'interest_rate' => null,
             'interest_rate_period' => 'annual',
+            'minimum_payment_rate' => null,
             'due_day' => $this->faker->numberBetween(1, 28),
             'position' => 0,
         ];
