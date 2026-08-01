@@ -71,7 +71,7 @@ test('store transaction requires amount, category, account, and date', function 
 
 test('store transaction creates record and decrements account balance', function () {
     $user = User::factory()->create();
-    $account = Account::factory()->create(['user_id' => $user->id, 'balance' => 5000]);
+    $account = Account::factory()->create(['user_id' => $user->id, 'balance' => 5000, 'type' => 'cash']);
     $category = BudgetCategory::factory()->create(['user_id' => $user->id]);
 
     $this->actingAs($user)
@@ -139,7 +139,7 @@ test('store income transaction increments account balance and is excluded from t
         'budget_cycle_days' => 30,
         'budget_cycle_anchor' => Carbon::now()->startOfMonth()->toDateString(),
     ]);
-    $account = Account::factory()->create(['user_id' => $user->id, 'balance' => 1000]);
+    $account = Account::factory()->create(['user_id' => $user->id, 'balance' => 1000, 'type' => 'cash']);
 
     $this->actingAs($user)
         ->post(route('transactions.store'), [
@@ -195,7 +195,7 @@ test('store transfer requires different source and destination accounts', functi
 
 test('destroy transaction deletes record and restores account balance', function () {
     $user = User::factory()->create();
-    $account = Account::factory()->create(['user_id' => $user->id, 'balance' => 3000]);
+    $account = Account::factory()->create(['user_id' => $user->id, 'balance' => 3000, 'type' => 'cash']);
     $category = BudgetCategory::factory()->create(['user_id' => $user->id]);
     $transaction = Transaction::factory()->create([
         'user_id' => $user->id,
@@ -261,7 +261,7 @@ test('daily budget is zero when spending exceeds the cycle budget', function () 
 
 test('store expense with sinking_fund_id does not require budget_category_id', function () {
     $user = User::factory()->create();
-    $account = Account::factory()->create(['user_id' => $user->id, 'balance' => 5000]);
+    $account = Account::factory()->create(['user_id' => $user->id, 'balance' => 5000, 'type' => 'cash']);
     $fund = SinkingFund::factory()->for($user)->create(['saved' => 12000, 'target' => 12000]);
 
     $this->actingAs($user)

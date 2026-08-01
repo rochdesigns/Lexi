@@ -162,7 +162,7 @@ test('top-up returns 403 for another user\'s goal', function (): void {
 });
 
 test('deleting a goal top-up transaction reverses the saved amount', function (): void {
-    $account = Account::factory()->for($this->user)->create(['balance' => 4750]);
+    $account = Account::factory()->for($this->user)->create(['balance' => 4750, 'type' => 'cash']);
     $goal = Goal::factory()->for($this->user)->create(['saved' => 750]);
     $tx = Transaction::factory()->create([
         'user_id' => $this->user->id,

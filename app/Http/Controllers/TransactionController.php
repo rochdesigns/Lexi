@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\Account;
 use App\Models\Transaction;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -13,14 +14,13 @@ class TransactionController extends Controller
         $user = $request->user();
         $user->transactions()->findOrFail($transaction->id);
 
-        match ($transaction->type) {
-            'income' => $transaction->account->decrement('balance', $transaction->amount),
-            'transfer' => (function () use ($transaction) {
-                $transaction->account->increment('balance', $transaction->amount);
-                $transaction->toAccount?->decrement('balance', $transaction->amount);
-            })(),
-            default => $transaction->account->increment('balance', $transaction->amount),
-        };
+        $this->reverseEffect($transaction->account, $transaction->type, (float) $transaction->amount);
+
+        if ($transaction->type === 'transfer') {
+            $transaction->toAccount?->decrement('balance', $transaction->amount);
+        }
+
+        $transaction->account->refresh()->syncLinkedDebt();
 
         // Restore the set-aside's saved amount when an expense linked to it is deleted
         if ($transaction->type === 'expense' && $transaction->sinking_fund_id) {
@@ -63,14 +63,10 @@ class TransactionController extends Controller
         ]);
 
         // Reverse old balance effect
-        match ($transaction->type) {
-            'income' => $transaction->account->decrement('balance', $transaction->amount),
-            'transfer' => (function () use ($transaction) {
-                $transaction->account->increment('balance', $transaction->amount);
-                $transaction->toAccount?->decrement('balance', $transaction->amount);
-            })(),
-            default => $transaction->account->increment('balance', $transaction->amount),
-        };
+        $this->reverseEffect($transaction->account, $transaction->type, (float) $transaction->amount);
+        if ($transaction->type === 'transfer') {
+            $transaction->toAccount?->decrement('balance', $transaction->amount);
+        }
 
         // Reverse old sinking fund effect
         if ($transaction->type === 'expense' && $transaction->sinking_fund_id) {
@@ -86,16 +82,14 @@ class TransactionController extends Controller
 
         // Apply new balance effect
         $newAccount = $user->accounts()->findOrFail($validated['account_id']);
+        $this->applyEffect($newAccount, $validated['type'], (float) $validated['amount']);
 
-        match ($validated['type']) {
-            'income' => $newAccount->increment('balance', $validated['amount']),
-            'transfer' => (function () use ($user, $newAccount, $validated) {
-                $toAccount = $user->accounts()->findOrFail($validated['to_account_id']);
-                $newAccount->decrement('balance', $validated['amount']);
-                $toAccount->increment('balance', $validated['amount']);
-            })(),
-            default => $newAccount->decrement('balance', $validated['amount']),
-        };
+        if ($validated['type'] === 'transfer') {
+            $toAccount = $user->accounts()->findOrFail($validated['to_account_id']);
+            $toAccount->increment('balance', $validated['amount']);
+        }
+
+        $newAccount->refresh()->syncLinkedDebt();
 
         // Apply new sinking fund effect
         if ($validated['type'] === 'expense' && ! empty($validated['sinking_fund_id'])) {
@@ -148,14 +142,13 @@ class TransactionController extends Controller
 
         $user->transactions()->create($validated);
 
-        match ($type) {
-            'income' => $account->increment('balance', $validated['amount']),
-            'transfer' => (function () use ($account, $toAccount, $validated) {
-                $account->decrement('balance', $validated['amount']);
-                $toAccount->increment('balance', $validated['amount']);
-            })(),
-            default => $account->decrement('balance', $validated['amount']),
-        };
+        $this->applyEffect($account, $type, (float) $validated['amount']);
+
+        if ($type === 'transfer') {
+            $toAccount->increment('balance', $validated['amount']);
+        }
+
+        $account->refresh()->syncLinkedDebt();
 
         // Decrement the set-aside's saved amount when spending it
         if ($type === 'expense' && ! empty($validated['sinking_fund_id'])) {
@@ -164,5 +157,35 @@ class TransactionController extends Controller
         }
 
         return back();
+    }
+
+    private function applyEffect(Account $account, string $type, float $amount): void
+    {
+        if ($type === 'income') {
+            $account->type === 'credit'
+                ? $account->decrement('balance', $amount)
+                : $account->increment('balance', $amount);
+        } elseif ($type === 'transfer') {
+            $account->decrement('balance', $amount);
+        } else { // expense
+            $account->type === 'credit'
+                ? $account->increment('balance', $amount)
+                : $account->decrement('balance', $amount);
+        }
+    }
+
+    private function reverseEffect(Account $account, string $type, float $amount): void
+    {
+        if ($type === 'income') {
+            $account->type === 'credit'
+                ? $account->increment('balance', $amount)
+                : $account->decrement('balance', $amount);
+        } elseif ($type === 'transfer') {
+            $account->increment('balance', $amount);
+        } else { // expense
+            $account->type === 'credit'
+                ? $account->decrement('balance', $amount)
+                : $account->increment('balance', $amount);
+        }
     }
 }
