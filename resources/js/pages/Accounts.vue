@@ -5,7 +5,7 @@ import { ref, reactive, computed } from 'vue';
 import { evaluateArithmetic, hasArithmetic } from '@/utils/arithmetic';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { store, update, destroy, transactions as accountTransactionsUrl } from '@/actions/App/Http/Controllers/AccountController';
-import { destroy as destroyTransaction, update as updateTransaction } from '@/actions/App/Http/Controllers/TransactionController';
+import { destroy as destroyTransaction, update as updateTransaction, store as storeTransaction } from '@/actions/App/Http/Controllers/TransactionController';
 
 type AccountType = 'cash' | 'credit' | 'investment';
 
@@ -103,6 +103,45 @@ const txEditForm = reactive({
     transacted_at: '',
 });
 
+// Add CC expense form (shown in the transaction panel for credit accounts)
+const addExpenseOpen = ref(false);
+const addExpenseForm = reactive({
+    amount: '',
+    merchant: '',
+    budget_category_id: null as number | null,
+    transacted_at: new Date().toISOString().split('T')[0],
+});
+const addExpenseAmountEvaluated = computed(() => evaluateArithmetic(addExpenseForm.amount));
+const addExpenseAmountHasExpr = computed(() => hasArithmetic(addExpenseForm.amount) && addExpenseAmountEvaluated.value !== null);
+
+function openAddExpense() {
+    Object.assign(addExpenseForm, {
+        amount: '',
+        merchant: '',
+        budget_category_id: null,
+        transacted_at: new Date().toISOString().split('T')[0],
+    });
+    addExpenseOpen.value = true;
+}
+
+function submitAddExpense() {
+    if (!txPanelAccount.value) { return; }
+    router.post(storeTransaction().url, {
+        type: 'expense',
+        amount: addExpenseAmountEvaluated.value ?? parseFloat(addExpenseForm.amount),
+        merchant: addExpenseForm.merchant || null,
+        account_id: txPanelAccount.value.id,
+        budget_category_id: addExpenseForm.budget_category_id,
+        transacted_at: addExpenseForm.transacted_at,
+    }, {
+        preserveScroll: true,
+        onSuccess: () => {
+            addExpenseOpen.value = false;
+            openAccountTransactions(txPanelAccount.value!);
+        },
+    });
+}
+
 const allAccounts = computed(() => props.groups.flatMap(g => g.accounts));
 
 const netWorthFormatted = computed(() => formatMoney(props.netWorth));
@@ -189,6 +228,7 @@ async function openAccountTransactions(account: Account) {
     txPanelCategories.value = [];
     txPanelLoading.value = true;
     txPanelOpen.value = true;
+    addExpenseOpen.value = false;
     try {
         const response = await fetch(accountTransactionsUrl({ account: account.id }).url, {
             credentials: 'same-origin',
@@ -391,8 +431,13 @@ function formatDate(iso: string): string {
                     <div style="font-size: 11.5px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: #a49b8a">
                         {{ group.label }}
                     </div>
-                    <div style="font-family: 'Bricolage Grotesque'; font-weight: 700; font-size: 14px;" :style="{ color: group.subtotal < 0 ? '#c0512c' : '#4a4436' }">
-                        {{ formatMoney(group.subtotal) }}
+                    <div style="display: flex; flex-direction: column; align-items: flex-end; gap: 1px">
+                        <div style="font-family: 'Bricolage Grotesque'; font-weight: 700; font-size: 14px;" :style="{ color: group.subtotal < 0 ? '#c0512c' : '#4a4436' }">
+                            {{ formatMoney(group.subtotal) }}
+                        </div>
+                        <span style="font-size: 12.5px; color: #8a8172">
+                            {{ group.type === 'credit' ? 'Total owed' : 'Balance' }}
+                        </span>
                     </div>
                 </div>
 
@@ -470,6 +515,58 @@ function formatDate(iso: string): string {
                     {{ txPanelAccount?.name }} Transactions
                 </DialogTitle>
             </DialogHeader>
+
+            <!-- Add expense button — only for credit accounts -->
+            <template v-if="txPanelAccount?.type === 'credit'">
+                <div v-if="!addExpenseOpen" style="padding: 0 20px 12px">
+                    <button @click="openAddExpense"
+                        style="width: 100%; display: flex; align-items: center; justify-content: center; gap: 6px; height: 36px; border: 1.5px dashed #c8c0b0; border-radius: 10px; background: none; font-family: 'Instrument Sans'; font-size: 12.5px; font-weight: 600; color: #6b6355; cursor: pointer">
+                        <span class="material-symbols-rounded" style="font-size: 15px">add</span> Add CC expense
+                    </button>
+                </div>
+
+                <div v-else style="padding: 0 20px 16px; display: flex; flex-direction: column; gap: 10px">
+                    <!-- Amount -->
+                    <div style="display: flex; flex-direction: column; gap: 4px">
+                        <label style="font-size: 12px; font-weight: 600; color: #4a4436">Amount (₱)</label>
+                        <input v-model="addExpenseForm.amount" type="text" inputmode="decimal" autofocus
+                            style="height: 38px; border: 1px solid #e0dacd; border-radius: 8px; padding: 0 10px; font-family: 'Instrument Sans'; font-size: 13px; background: #fffdf8; width: 100%; box-sizing: border-box; outline: none" />
+                        <div v-if="addExpenseAmountHasExpr" style="font-size: 11px; color: #8a8172">= ₱{{ addExpenseAmountEvaluated?.toLocaleString('en-PH', { minimumFractionDigits: 2 }) }}</div>
+                    </div>
+                    <!-- Merchant -->
+                    <div style="display: flex; flex-direction: column; gap: 4px">
+                        <label style="font-size: 12px; font-weight: 600; color: #4a4436">Merchant</label>
+                        <input v-model="addExpenseForm.merchant" type="text" placeholder="e.g. SM Supermarket"
+                            style="height: 38px; border: 1px solid #e0dacd; border-radius: 8px; padding: 0 10px; font-family: 'Instrument Sans'; font-size: 13px; background: #fffdf8; width: 100%; box-sizing: border-box; outline: none" />
+                    </div>
+                    <!-- Category -->
+                    <div style="display: flex; flex-direction: column; gap: 4px">
+                        <label style="font-size: 12px; font-weight: 600; color: #4a4436">Category</label>
+                        <select v-model.number="addExpenseForm.budget_category_id"
+                            style="width: 100%; height: 38px; border: 1px solid #e0dacd; border-radius: 8px; padding: 0 10px; font-family: 'Instrument Sans'; font-size: 13px; background: #fffdf8; outline: none; color: #211d17; appearance: none; box-sizing: border-box">
+                            <option :value="null">— None —</option>
+                            <option v-for="c in txPanelCategories" :key="c.id" :value="c.id">{{ c.icon }} {{ c.name }}</option>
+                        </select>
+                    </div>
+                    <!-- Date -->
+                    <div style="display: flex; flex-direction: column; gap: 4px">
+                        <label style="font-size: 12px; font-weight: 600; color: #4a4436">Date</label>
+                        <input v-model="addExpenseForm.transacted_at" type="date"
+                            style="height: 38px; border: 1px solid #e0dacd; border-radius: 8px; padding: 0 10px; font-family: 'Instrument Sans'; font-size: 13px; background: #fffdf8; width: 100%; box-sizing: border-box; outline: none" />
+                    </div>
+                    <!-- Buttons -->
+                    <div style="display: flex; gap: 8px">
+                        <button type="button" @click="addExpenseOpen = false"
+                            style="flex: 1; height: 36px; border: 1px solid #e0dacd; background: #fffdf8; border-radius: 8px; font-family: 'Instrument Sans'; font-weight: 600; font-size: 12.5px; cursor: pointer; color: #4a4436">
+                            Cancel
+                        </button>
+                        <button type="button" @click="submitAddExpense"
+                            style="flex: 1; height: 36px; background: #211d17; color: #fdfbf5; border: none; border-radius: 8px; font-family: 'Instrument Sans'; font-weight: 600; font-size: 12.5px; cursor: pointer">
+                            Add expense
+                        </button>
+                    </div>
+                </div>
+            </template>
 
             <!-- Loading state -->
             <div v-if="txPanelLoading" style="display: flex; align-items: center; justify-content: center; padding: 48px 0; gap: 10px; color: #8a8172; font-size: 13.5px">
