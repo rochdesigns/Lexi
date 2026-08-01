@@ -36,6 +36,8 @@ class DebtController extends Controller
                     'balance' => (float) $d->balance,
                     'original' => (float) $d->original,
                     'per_month' => (float) $d->per_month,
+                    'account_id' => $d->account_id,
+                    'minimum_payment_rate' => $d->minimum_payment_rate !== null ? (float) $d->minimum_payment_rate : null,
                     'interest_rate' => $d->interest_rate !== null ? (float) $d->interest_rate : null,
                     'interest_rate_period' => $d->interest_rate_period ?? 'annual',
                     'due_day' => $d->due_day,
@@ -65,6 +67,12 @@ class DebtController extends Controller
             'type' => $a->type,
         ]);
 
+        $creditAccounts = $user->accounts()
+            ->where('type', 'credit')
+            ->orderBy('name')
+            ->get()
+            ->map(fn ($a) => ['id' => $a->id, 'name' => $a->name]);
+
         $budgetCategories = $user->budgetCategories()->orderBy('name')->get()->map(fn ($c) => [
             'id' => $c->id,
             'name' => $c->name,
@@ -81,6 +89,7 @@ class DebtController extends Controller
             'debtPaidPct' => $debtPaidPct,
             'debtFreeDate' => $debtFreeDate,
             'accounts' => $accounts,
+            'creditAccounts' => $creditAccounts,
             'budgetCategories' => $budgetCategories,
         ]);
     }
@@ -188,6 +197,8 @@ class DebtController extends Controller
             'balance' => ['required', 'numeric', 'min:0'],
             'original' => ['required', 'numeric', 'min:0.01'],
             'per_month' => ['required', 'numeric', 'min:0.01'],
+            'account_id' => ['nullable', 'integer', 'exists:accounts,id'],
+            'minimum_payment_rate' => ['nullable', 'numeric', 'min:0', 'max:100'],
             'interest_rate' => ['nullable', 'numeric', 'min:0', 'max:100'],
             'interest_rate_period' => ['nullable', 'string', 'in:monthly,annual'],
             'due_day' => ['nullable', 'integer', 'min:1', 'max:31'],

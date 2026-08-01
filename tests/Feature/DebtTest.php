@@ -427,3 +427,50 @@ test('makePayment on unlinked debt still works as before', function (): void {
     expect((float) $source->fresh()->balance)->toBe(8000.0);
     expect((float) $debt->fresh()->balance)->toBe(6000.0);
 });
+
+test('debt index passes creditAccounts prop', function (): void {
+    Account::factory()->for($this->user)->create(['type' => 'credit', 'name' => 'HSBC CC']);
+    Account::factory()->for($this->user)->create(['type' => 'cash', 'name' => 'BPI Savings']);
+
+    $this->get('/debt')
+        ->assertInertia(fn ($page) => $page
+            ->has('creditAccounts', 1)
+            ->where('creditAccounts.0.name', 'HSBC CC')
+        );
+});
+
+test('store accepts account_id and minimum_payment_rate', function (): void {
+    $cc = Account::factory()->for($this->user)->create(['type' => 'credit', 'balance' => 10000]);
+
+    $this->post('/debts', [
+        'name' => 'HSBC CC',
+        'icon' => 'credit_card',
+        'color' => '#c0512c',
+        'bg' => '#fbe2d6',
+        'balance' => 10000,
+        'original' => 50000,
+        'per_month' => 300,
+        'account_id' => $cc->id,
+        'minimum_payment_rate' => 3.00,
+    ])->assertRedirect();
+
+    $debt = $this->user->debts()->where('name', 'HSBC CC')->first();
+    expect($debt->account_id)->toBe($cc->id);
+    expect((float) $debt->minimum_payment_rate)->toBe(3.0);
+});
+
+test('debt index returns account_id and minimum_payment_rate per debt', function (): void {
+    $cc = Account::factory()->for($this->user)->create(['type' => 'credit', 'balance' => 9000]);
+    Debt::factory()->for($this->user)->create([
+        'account_id' => $cc->id,
+        'minimum_payment_rate' => 3.00,
+        'balance' => 9000,
+        'per_month' => 270,
+    ]);
+
+    $this->get('/debt')
+        ->assertInertia(fn ($page) => $page
+            ->where('debts.0.account_id', $cc->id)
+            ->where('debts.0.minimum_payment_rate', 3)
+        );
+});
