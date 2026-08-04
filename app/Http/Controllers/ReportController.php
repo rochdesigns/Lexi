@@ -27,6 +27,7 @@ class ReportController extends Controller
         $overview = $this->computeOverview($user, $period['start'], $period['end'], $period['monthsInPeriod'], $period['isCurrent']);
         $spending = $this->computeSpending($user, $period['start'], $period['end']);
         $budgetVsActual = $this->computeBudgetVsActual($user, $period['start'], $period['end'], $period['monthsInPeriod']);
+        $cashFlow = $this->computeCashFlow($user, $periodType, $period['start'], $period['end'], $period['isCurrent'], $overview['budgetTotal']);
 
         return Inertia::render('Reports', [
             'period' => [
@@ -39,6 +40,7 @@ class ReportController extends Controller
             'overview' => $overview,
             'spending' => $spending,
             'budgetVsActual' => $budgetVsActual,
+            'cashFlow' => $cashFlow,
         ]);
     }
 
@@ -189,5 +191,104 @@ class ReportController extends Controller
             })
             ->values()
             ->all();
+    }
+
+    private function computeCashFlow(User $user, string $periodType, Carbon $start, Carbon $end, bool $isCurrent, float $budgetTotal): array
+    {
+        $buckets = [];
+
+        if ($periodType === 'month') {
+            $cursor = $start->copy();
+            while ($cursor->lte($end)) {
+                $bucketEnd = $cursor->copy()->addDays(6);
+                if ($bucketEnd->gt($end)) {
+                    $bucketEnd = $end->copy();
+                }
+                $buckets[] = ['start' => $cursor->copy(), 'end' => $bucketEnd->copy(), 'label' => $cursor->format('M j')];
+                $cursor = $bucketEnd->copy()->addDay();
+            }
+        } else {
+            $cursor = $start->copy()->startOfMonth();
+            while ($cursor->lte($end)) {
+                $bucketEnd = $cursor->copy()->endOfMonth();
+                if ($bucketEnd->gt($end)) {
+                    $bucketEnd = $end->copy();
+                }
+                $buckets[] = ['start' => $cursor->copy(), 'end' => $bucketEnd->copy(), 'label' => $cursor->format('M')];
+                $cursor = $cursor->copy()->addMonthNoOverflow()->startOfMonth();
+            }
+        }
+
+        $today = Carbon::now()->startOfDay();
+
+        $series = [];
+        foreach ($buckets as $bucket) {
+            $isFuture = $isCurrent && $bucket['start']->copy()->startOfDay()->gt($today);
+
+            if ($isFuture) {
+                $series[] = ['label' => $bucket['label'], 'income' => null, 'expenses' => null, 'net' => null];
+
+                continue;
+            }
+
+            $income = (float) $user->transactions()
+                ->where('type', 'income')
+                ->whereDate('transacted_at', '>=', $bucket['start'])
+                ->whereDate('transacted_at', '<=', $bucket['end'])
+                ->sum('amount');
+
+            $expenses = (float) $user->transactions()
+                ->where('type', 'expense')
+                ->whereDate('transacted_at', '>=', $bucket['start'])
+                ->whereDate('transacted_at', '<=', $bucket['end'])
+                ->sum('amount');
+
+            $series[] = ['label' => $bucket['label'], 'income' => $income, 'expenses' => $expenses, 'net' => $income - $expenses];
+        }
+
+        $trendLine = null;
+        $budgetLine = null;
+
+        if ($isCurrent) {
+            $elapsedDays = max(1, $start->copy()->startOfDay()->diffInDays($today) + 1);
+            $totalDays = max(1, $start->copy()->startOfDay()->diffInDays($end->copy()->startOfDay()) + 1);
+
+            $expensesSoFar = (float) $user->transactions()
+                ->where('type', 'expense')
+                ->whereDate('transacted_at', '>=', $start)
+                ->whereDate('transacted_at', '<=', $today)
+                ->sum('amount');
+
+            $dailyTrendRate = $expensesSoFar / $elapsedDays;
+            $dailyBudgetRate = $budgetTotal / $totalDays;
+
+            $runningTrend = 0.0;
+            $runningBudget = 0.0;
+            $trendLine = [];
+            $budgetLine = [];
+
+            foreach ($buckets as $bucket) {
+                $isFuture = $bucket['start']->copy()->startOfDay()->gt($today);
+
+                if (! $isFuture) {
+                    $trendLine[] = null;
+                    $budgetLine[] = null;
+
+                    continue;
+                }
+
+                $bucketDays = $bucket['start']->copy()->startOfDay()->diffInDays($bucket['end']->copy()->startOfDay()) + 1;
+                $runningTrend += $dailyTrendRate * $bucketDays;
+                $runningBudget += $dailyBudgetRate * $bucketDays;
+                $trendLine[] = round($runningTrend, 2);
+                $budgetLine[] = round($runningBudget, 2);
+            }
+        }
+
+        return [
+            'series' => $series,
+            'trendLine' => $trendLine,
+            'budgetLine' => $budgetLine,
+        ];
     }
 }

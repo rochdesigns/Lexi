@@ -1,8 +1,9 @@
 <script setup lang="ts">
 import { Head, router } from '@inertiajs/vue3';
-import { ref } from 'vue';
+import { computed, ref } from 'vue';
 import { index } from '@/actions/App/Http/Controllers/ReportController';
 import ReportBarChart from '@/components/reports/ReportBarChart.vue';
+import ReportLineChart from '@/components/reports/ReportLineChart.vue';
 
 type PeriodType = 'month' | 'quarter' | 'year';
 
@@ -36,11 +37,15 @@ type BudgetVsActualItem = {
     status: 'over' | 'under';
 };
 
+type CashFlowBucket = { label: string; income: number | null; expenses: number | null; net: number | null };
+type CashFlow = { series: CashFlowBucket[]; trendLine: (number | null)[] | null; budgetLine: (number | null)[] | null };
+
 const props = defineProps<{
     period: Period;
     overview: Overview;
     spending: SpendingItem[];
     budgetVsActual: BudgetVsActualItem[];
+    cashFlow: CashFlow;
 }>();
 
 const periodOptions: { value: PeriodType; label: string }[] = [
@@ -59,6 +64,10 @@ const tabOptions: { value: Tab; label: string }[] = [
     { value: 'cashflow', label: 'Cash Flow' },
     { value: 'payoff', label: 'Payoff' },
 ];
+
+const hasCashFlowData = computed(() =>
+    props.cashFlow.series.some(b => (b.income ?? 0) > 0 || (b.expenses ?? 0) > 0) || props.cashFlow.trendLine !== null,
+);
 
 function switchPeriod(type: PeriodType) {
     router.get(index({ query: { period: type } }).url, {}, { preserveScroll: true, preserveState: true, replace: true });
@@ -218,6 +227,22 @@ function formatMoney(n: number): string {
                     </div>
                 </div>
             </template>
+        </div>
+
+        <!-- Cash Flow tab -->
+        <div v-if="activeTab === 'cashflow'" style="background: #fffdf8; border: 1px solid #e0dacd; border-radius: 14px; padding: 18px 20px">
+            <div v-if="!hasCashFlowData" style="text-align: center; padding: 24px 0; color: #8a8172; font-size: 14px">
+                No transactions in this period yet
+            </div>
+            <ReportLineChart
+                v-else
+                :labels="cashFlow.series.map(b => b.label)"
+                :datasets="[
+                    { label: 'Net', data: cashFlow.series.map(b => b.net), borderColor: '#211d17', backgroundColor: '#211d17' },
+                    ...(cashFlow.trendLine ? [{ label: 'Trend projection', data: cashFlow.trendLine, borderColor: '#3f7fb0', borderDash: [6, 4], spanGaps: false }] : []),
+                    ...(cashFlow.budgetLine ? [{ label: 'Budget projection', data: cashFlow.budgetLine, borderColor: '#2f7d5b', borderDash: [6, 4], spanGaps: false }] : []),
+                ]"
+            />
         </div>
     </div>
 </template>
