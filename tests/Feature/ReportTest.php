@@ -167,3 +167,31 @@ test('reports spending groups expenses by category and sorts by amount', functio
 
     Carbon::setTestNow();
 });
+
+test('reports budget vs actual scales limit by months and flags over/under', function () {
+    Carbon::setTestNow(Carbon::parse('2026-08-15'));
+    $user = User::factory()->create();
+    $account = Account::factory()->create(['user_id' => $user->id]);
+    $groceries = BudgetCategory::factory()->create(['user_id' => $user->id, 'name' => 'Groceries', 'limit_amount' => 1000]);
+
+    Transaction::factory()->create(['user_id' => $user->id, 'account_id' => $account->id, 'budget_category_id' => $groceries->id, 'type' => 'expense', 'amount' => 1200, 'transacted_at' => '2026-08-05']);
+
+    $this->actingAs($user)
+        ->get(route('reports'))
+        ->assertInertia(fn ($page) => $page
+            ->has('budgetVsActual', 1)
+            ->where('budgetVsActual.0.category.name', 'Groceries')
+            ->where('budgetVsActual.0.budgeted', 1000)
+            ->where('budgetVsActual.0.actual', 1200)
+            ->where('budgetVsActual.0.status', 'over')
+        );
+
+    $this->actingAs($user)
+        ->get(route('reports', ['period' => 'quarter']))
+        ->assertInertia(fn ($page) => $page
+            ->where('budgetVsActual.0.budgeted', 3000)
+            ->where('budgetVsActual.0.status', 'under')
+        );
+
+    Carbon::setTestNow();
+});

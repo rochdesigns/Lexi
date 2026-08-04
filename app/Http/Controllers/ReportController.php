@@ -26,6 +26,7 @@ class ReportController extends Controller
 
         $overview = $this->computeOverview($user, $period['start'], $period['end'], $period['monthsInPeriod'], $period['isCurrent']);
         $spending = $this->computeSpending($user, $period['start'], $period['end']);
+        $budgetVsActual = $this->computeBudgetVsActual($user, $period['start'], $period['end'], $period['monthsInPeriod']);
 
         return Inertia::render('Reports', [
             'period' => [
@@ -37,6 +38,7 @@ class ReportController extends Controller
             ],
             'overview' => $overview,
             'spending' => $spending,
+            'budgetVsActual' => $budgetVsActual,
         ]);
     }
 
@@ -155,6 +157,36 @@ class ReportController extends Controller
                 ];
             })
             ->sortByDesc('amount')
+            ->values()
+            ->all();
+    }
+
+    private function computeBudgetVsActual(User $user, Carbon $start, Carbon $end, int $monthsInPeriod): array
+    {
+        return $user->budgetCategories()
+            ->orderBy('name')
+            ->get()
+            ->map(function ($cat) use ($start, $end, $monthsInPeriod) {
+                $actual = (float) $cat->transactions()
+                    ->where('type', 'expense')
+                    ->whereDate('transacted_at', '>=', $start)
+                    ->whereDate('transacted_at', '<=', $end)
+                    ->sum('amount');
+
+                $budgeted = (float) $cat->limit_amount * $monthsInPeriod;
+
+                return [
+                    'category' => [
+                        'id' => $cat->id,
+                        'name' => $cat->name,
+                        'icon' => $cat->icon,
+                        'color' => $cat->color,
+                    ],
+                    'budgeted' => $budgeted,
+                    'actual' => $actual,
+                    'status' => $actual > $budgeted ? 'over' : 'under',
+                ];
+            })
             ->values()
             ->all();
     }

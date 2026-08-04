@@ -29,10 +29,18 @@ type SpendingItem = {
     pct: number;
 };
 
+type BudgetVsActualItem = {
+    category: { id: number; name: string; icon: string; color: string };
+    budgeted: number;
+    actual: number;
+    status: 'over' | 'under';
+};
+
 const props = defineProps<{
     period: Period;
     overview: Overview;
     spending: SpendingItem[];
+    budgetVsActual: BudgetVsActualItem[];
 }>();
 
 const periodOptions: { value: PeriodType; label: string }[] = [
@@ -179,6 +187,34 @@ function formatMoney(n: number): string {
                         <span style="font-size: 13.5px; font-weight: 500; flex: 1">{{ item.category.name }}</span>
                         <span style="font-size: 12px; color: #8a8172">{{ Math.round(item.pct * 100) }}%</span>
                         <span style="font-size: 13.5px; font-weight: 700; width: 100px; text-align: right">{{ formatMoney(item.amount) }}</span>
+                    </div>
+                </div>
+            </template>
+        </div>
+
+        <!-- Budget vs Actual tab -->
+        <div v-if="activeTab === 'budget'" style="background: #fffdf8; border: 1px solid #e0dacd; border-radius: 14px; padding: 18px 20px">
+            <div v-if="budgetVsActual.length === 0" style="text-align: center; padding: 24px 0; color: #8a8172; font-size: 14px">
+                No budget categories yet
+            </div>
+            <template v-else>
+                <ReportBarChart
+                    :labels="budgetVsActual.map(b => b.category.name)"
+                    :datasets="[
+                        { label: 'Budgeted', data: budgetVsActual.map(b => b.budgeted), backgroundColor: '#c3d1c9', borderRadius: 6 },
+                        { label: 'Actual', data: budgetVsActual.map(b => b.actual), backgroundColor: budgetVsActual.map(b => b.status === 'over' ? '#c0512c' : '#2f7d5b'), borderRadius: 6 },
+                    ]"
+                    :show-legend="true"
+                />
+                <div style="display: flex; flex-direction: column; gap: 8px; margin-top: 16px">
+                    <div v-for="item in budgetVsActual" :key="item.category.id" style="display: flex; align-items: center; gap: 10px">
+                        <span class="material-symbols-rounded" style="font-size: 18px" :style="{ color: item.category.color }">{{ item.category.icon }}</span>
+                        <span style="font-size: 13.5px; font-weight: 500; flex: 1">{{ item.category.name }}</span>
+                        <span
+                            style="font-size: 11px; font-weight: 600; padding: 2px 8px; border-radius: 20px"
+                            :style="item.status === 'over' ? { background: '#fbe2d6', color: '#c0512c' } : { background: '#dff3e6', color: '#2f7d5b' }"
+                        >{{ item.status === 'over' ? 'Over' : 'Under' }}</span>
+                        <span style="font-size: 13.5px; font-weight: 700; width: 140px; text-align: right">{{ formatMoney(item.actual) }} / {{ formatMoney(item.budgeted) }}</span>
                     </div>
                 </div>
             </template>
