@@ -51,6 +51,7 @@ const navSections: HabitatNavSection[] = [
             { title: 'Goals', href: '/goals', icon: 'flag' },
             { title: 'Set-asides', href: '/set-asides', icon: 'savings' },
             { title: 'Debt', href: '/debt', icon: 'credit_card' },
+            { title: 'Reports', href: '/reports', icon: 'bar_chart' },
         ],
     },
 ];
