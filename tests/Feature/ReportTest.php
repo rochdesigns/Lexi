@@ -2,6 +2,8 @@
 
 use App\Models\Account;
 use App\Models\BudgetCategory;
+use App\Models\Debt;
+use App\Models\Goal;
 use App\Models\Transaction;
 use App\Models\User;
 use Carbon\Carbon;
@@ -247,6 +249,87 @@ test('reports cash flow has no projection lines for a past period', function () 
         ->assertInertia(fn ($page) => $page
             ->where('cashFlow.trendLine', null)
             ->where('cashFlow.budgetLine', null)
+        );
+
+    Carbon::setTestNow();
+});
+
+test('reports payoff computes months and date for a debt with no interest', function () {
+    Carbon::setTestNow(Carbon::parse('2026-08-15'));
+    $user = User::factory()->create();
+    Debt::factory()->create(['user_id' => $user->id, 'name' => 'Car Loan', 'balance' => 1200, 'per_month' => 100, 'interest_rate' => null]);
+
+    $this->actingAs($user)
+        ->get(route('reports'))
+        ->assertInertia(fn ($page) => $page
+            ->where('payoff.debts.0.months', 12)
+            ->where('payoff.debts.0.payoffDate', 'Aug 2027')
+            ->where('payoff.debts.0.onTrack', true)
+        );
+
+    Carbon::setTestNow();
+});
+
+test('reports payoff flags a debt as not on track when payment does not cover interest', function () {
+    Carbon::setTestNow(Carbon::parse('2026-08-15'));
+    $user = User::factory()->create();
+    Debt::factory()->create([
+        'user_id' => $user->id,
+        'balance' => 10000,
+        'per_month' => 50,
+        'interest_rate' => 24,
+        'interest_rate_period' => 'annual',
+    ]);
+
+    $this->actingAs($user)
+        ->get(route('reports'))
+        ->assertInertia(fn ($page) => $page
+            ->where('payoff.debts.0.onTrack', false)
+            ->where('payoff.debts.0.months', null)
+            ->where('payoff.debts.0.payoffDate', null)
+        );
+
+    Carbon::setTestNow();
+});
+
+test('reports payoff computes months and date for a goal', function () {
+    Carbon::setTestNow(Carbon::parse('2026-08-15'));
+    $user = User::factory()->create();
+    Goal::factory()->create(['user_id' => $user->id, 'saved' => 2000, 'target' => 5000, 'per_month' => 1000]);
+
+    $this->actingAs($user)
+        ->get(route('reports'))
+        ->assertInertia(fn ($page) => $page
+            ->where('payoff.goals.0.months', 3)
+            ->where('payoff.goals.0.targetDate', 'Nov 2026')
+        );
+
+    Carbon::setTestNow();
+});
+
+test('reports payoff shows null months for a goal with no monthly amount', function () {
+    Carbon::setTestNow(Carbon::parse('2026-08-15'));
+    $user = User::factory()->create();
+    Goal::factory()->create(['user_id' => $user->id, 'saved' => 1000, 'target' => 5000, 'per_month' => 0]);
+
+    $this->actingAs($user)
+        ->get(route('reports'))
+        ->assertInertia(fn ($page) => $page->where('payoff.goals.0.months', null));
+
+    Carbon::setTestNow();
+});
+
+test('reports payoff excludes paid-off debts and completed goals', function () {
+    Carbon::setTestNow(Carbon::parse('2026-08-15'));
+    $user = User::factory()->create();
+    Debt::factory()->create(['user_id' => $user->id, 'balance' => 0]);
+    Goal::factory()->create(['user_id' => $user->id, 'saved' => 5000, 'target' => 5000]);
+
+    $this->actingAs($user)
+        ->get(route('reports'))
+        ->assertInertia(fn ($page) => $page
+            ->has('payoff.debts', 0)
+            ->has('payoff.goals', 0)
         );
 
     Carbon::setTestNow();

@@ -28,6 +28,7 @@ class ReportController extends Controller
         $spending = $this->computeSpending($user, $period['start'], $period['end']);
         $budgetVsActual = $this->computeBudgetVsActual($user, $period['start'], $period['end'], $period['monthsInPeriod']);
         $cashFlow = $this->computeCashFlow($user, $periodType, $period['start'], $period['end'], $period['isCurrent'], $overview['budgetTotal']);
+        $payoff = $this->computePayoff($user);
 
         return Inertia::render('Reports', [
             'period' => [
@@ -41,6 +42,7 @@ class ReportController extends Controller
             'spending' => $spending,
             'budgetVsActual' => $budgetVsActual,
             'cashFlow' => $cashFlow,
+            'payoff' => $payoff,
         ]);
     }
 
@@ -290,5 +292,79 @@ class ReportController extends Controller
             'trendLine' => $trendLine,
             'budgetLine' => $budgetLine,
         ];
+    }
+
+    private function computePayoff(User $user): array
+    {
+        $today = Carbon::now()->startOfDay();
+
+        $debts = $user->debts()
+            ->where('balance', '>', 0)
+            ->orderBy('position')
+            ->get()
+            ->map(function ($debt) use ($today) {
+                $monthlyRate = $debt->interest_rate === null ? 0.0
+                    : ($debt->interest_rate_period === 'monthly'
+                        ? (float) $debt->interest_rate / 100
+                        : (float) $debt->interest_rate / 100 / 12);
+
+                $balance = (float) $debt->balance;
+                $perMonth = (float) $debt->per_month;
+                $months = 0;
+                $onTrack = true;
+
+                while ($balance > 0 && $months < 600) {
+                    $interestAccrued = $balance * $monthlyRate;
+
+                    if ($monthlyRate > 0 && $perMonth <= $interestAccrued) {
+                        $onTrack = false;
+
+                        break;
+                    }
+
+                    $balance = $balance + $interestAccrued - $perMonth;
+                    $months++;
+                }
+
+                if ($balance > 0) {
+                    $onTrack = false;
+                }
+
+                return [
+                    'id' => $debt->id,
+                    'name' => $debt->name,
+                    'icon' => $debt->icon,
+                    'color' => $debt->color,
+                    'months' => $onTrack ? $months : null,
+                    'payoffDate' => $onTrack ? $today->copy()->addMonthsNoOverflow($months)->format('M Y') : null,
+                    'onTrack' => $onTrack,
+                ];
+            })
+            ->values()
+            ->all();
+
+        $goals = $user->goals()
+            ->whereColumn('saved', '<', 'target')
+            ->orderBy('position')
+            ->get()
+            ->map(function ($goal) use ($today) {
+                $perMonth = (float) $goal->per_month;
+                $months = $perMonth > 0
+                    ? (int) ceil(((float) $goal->target - (float) $goal->saved) / $perMonth)
+                    : null;
+
+                return [
+                    'id' => $goal->id,
+                    'name' => $goal->name,
+                    'icon' => $goal->icon,
+                    'color' => $goal->color,
+                    'months' => $months,
+                    'targetDate' => $months !== null ? $today->copy()->addMonthsNoOverflow($months)->format('M Y') : null,
+                ];
+            })
+            ->values()
+            ->all();
+
+        return ['debts' => $debts, 'goals' => $goals];
     }
 }

@@ -40,12 +40,17 @@ type BudgetVsActualItem = {
 type CashFlowBucket = { label: string; income: number | null; expenses: number | null; net: number | null };
 type CashFlow = { series: CashFlowBucket[]; trendLine: (number | null)[] | null; budgetLine: (number | null)[] | null };
 
+type PayoffDebt = { id: number; name: string; icon: string; color: string; months: number | null; payoffDate: string | null; onTrack: boolean };
+type PayoffGoal = { id: number; name: string; icon: string; color: string; months: number | null; targetDate: string | null };
+type Payoff = { debts: PayoffDebt[]; goals: PayoffGoal[] };
+
 const props = defineProps<{
     period: Period;
     overview: Overview;
     spending: SpendingItem[];
     budgetVsActual: BudgetVsActualItem[];
     cashFlow: CashFlow;
+    payoff: Payoff;
 }>();
 
 const periodOptions: { value: PeriodType; label: string }[] = [
@@ -243,6 +248,35 @@ function formatMoney(n: number): string {
                     ...(cashFlow.budgetLine ? [{ label: 'Budget projection', data: cashFlow.budgetLine, borderColor: '#2f7d5b', borderDash: [6, 4], spanGaps: false }] : []),
                 ]"
             />
+        </div>
+
+        <!-- Payoff tab -->
+        <div v-if="activeTab === 'payoff'" style="display: flex; flex-direction: column; gap: 16px">
+            <div style="background: #fffdf8; border: 1px solid #e0dacd; border-radius: 14px; padding: 18px 20px">
+                <div style="font-family: 'Bricolage Grotesque'; font-weight: 700; font-size: 15px; margin-bottom: 10px">Debts</div>
+                <div v-if="payoff.debts.length === 0" style="text-align: center; padding: 16px 0; color: #8a8172; font-size: 14px">No debts to pay off</div>
+                <div v-else style="display: flex; flex-direction: column; gap: 8px">
+                    <div v-for="debt in payoff.debts" :key="debt.id" style="display: flex; align-items: center; gap: 10px">
+                        <span class="material-symbols-rounded" style="font-size: 18px" :style="{ color: debt.color }">{{ debt.icon }}</span>
+                        <span style="font-size: 13.5px; font-weight: 500; flex: 1">{{ debt.name }}</span>
+                        <span v-if="debt.onTrack" style="font-size: 13.5px; font-weight: 700">{{ debt.payoffDate }} · {{ debt.months }} mo</span>
+                        <span v-else style="font-size: 12px; font-weight: 600; padding: 2px 8px; border-radius: 20px; background: #fbe2d6; color: #c0512c">Not on track</span>
+                    </div>
+                </div>
+            </div>
+
+            <div style="background: #fffdf8; border: 1px solid #e0dacd; border-radius: 14px; padding: 18px 20px">
+                <div style="font-family: 'Bricolage Grotesque'; font-weight: 700; font-size: 15px; margin-bottom: 10px">Goals</div>
+                <div v-if="payoff.goals.length === 0" style="text-align: center; padding: 16px 0; color: #8a8172; font-size: 14px">No goals in progress</div>
+                <div v-else style="display: flex; flex-direction: column; gap: 8px">
+                    <div v-for="goal in payoff.goals" :key="goal.id" style="display: flex; align-items: center; gap: 10px">
+                        <span class="material-symbols-rounded" style="font-size: 18px" :style="{ color: goal.color }">{{ goal.icon }}</span>
+                        <span style="font-size: 13.5px; font-weight: 500; flex: 1">{{ goal.name }}</span>
+                        <span v-if="goal.months !== null" style="font-size: 13.5px; font-weight: 700">{{ goal.targetDate }} · {{ goal.months }} mo</span>
+                        <span v-else style="font-size: 12px; color: #8a8172">Set a monthly amount to see an estimate</span>
+                    </div>
+                </div>
+            </div>
         </div>
     </div>
 </template>
