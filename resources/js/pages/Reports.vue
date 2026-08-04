@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import { Head, router } from '@inertiajs/vue3';
+import { ref } from 'vue';
 import { index } from '@/actions/App/Http/Controllers/ReportController';
+import ReportBarChart from '@/components/reports/ReportBarChart.vue';
 
 type PeriodType = 'month' | 'quarter' | 'year';
 
@@ -21,15 +23,33 @@ type Overview = {
     projectedTotal: number | null;
 };
 
+type SpendingItem = {
+    category: { id: number | null; name: string; icon: string; color: string };
+    amount: number;
+    pct: number;
+};
+
 const props = defineProps<{
     period: Period;
     overview: Overview;
+    spending: SpendingItem[];
 }>();
 
 const periodOptions: { value: PeriodType; label: string }[] = [
     { value: 'month', label: 'Month' },
     { value: 'quarter', label: 'Quarter' },
     { value: 'year', label: 'Year' },
+];
+
+type Tab = 'spending' | 'budget' | 'cashflow' | 'payoff';
+
+const activeTab = ref<Tab>('spending');
+
+const tabOptions: { value: Tab; label: string }[] = [
+    { value: 'spending', label: 'Spending' },
+    { value: 'budget', label: 'Budget vs Actual' },
+    { value: 'cashflow', label: 'Cash Flow' },
+    { value: 'payoff', label: 'Payoff' },
 ];
 
 function switchPeriod(type: PeriodType) {
@@ -121,6 +141,47 @@ function formatMoney(n: number): string {
                 <div style="font-size: 12px; color: #8a8172">Projected total</div>
                 <div style="font-family: 'Bricolage Grotesque'; font-weight: 700; font-size: 20px; margin-top: 4px">{{ formatMoney(overview.projectedTotal) }}</div>
             </div>
+        </div>
+
+        <!-- Tab bar -->
+        <div style="display: flex; gap: 6px; border-bottom: 1px solid #e0dacd; padding-bottom: 2px">
+            <button
+                v-for="tab in tabOptions"
+                :key="tab.value"
+                type="button"
+                @click="activeTab = tab.value"
+                :style="{
+                    padding: '8px 14px',
+                    border: 'none',
+                    background: 'transparent',
+                    fontSize: '13.5px',
+                    fontWeight: 600,
+                    cursor: 'pointer',
+                    color: activeTab === tab.value ? '#211d17' : '#8a8172',
+                    borderBottom: activeTab === tab.value ? '2px solid #211d17' : '2px solid transparent',
+                }"
+            >{{ tab.label }}</button>
+        </div>
+
+        <!-- Spending tab -->
+        <div v-if="activeTab === 'spending'" style="background: #fffdf8; border: 1px solid #e0dacd; border-radius: 14px; padding: 18px 20px">
+            <div v-if="spending.length === 0" style="text-align: center; padding: 24px 0; color: #8a8172; font-size: 14px">
+                No transactions in this period yet
+            </div>
+            <template v-else>
+                <ReportBarChart
+                    :labels="spending.map(s => s.category.name)"
+                    :datasets="[{ data: spending.map(s => s.amount), backgroundColor: spending.map(s => s.category.color), borderRadius: 6 }]"
+                />
+                <div style="display: flex; flex-direction: column; gap: 8px; margin-top: 16px">
+                    <div v-for="item in spending" :key="item.category.id ?? 'uncategorized'" style="display: flex; align-items: center; gap: 10px">
+                        <span class="material-symbols-rounded" style="font-size: 18px" :style="{ color: item.category.color }">{{ item.category.icon }}</span>
+                        <span style="font-size: 13.5px; font-weight: 500; flex: 1">{{ item.category.name }}</span>
+                        <span style="font-size: 12px; color: #8a8172">{{ Math.round(item.pct * 100) }}%</span>
+                        <span style="font-size: 13.5px; font-weight: 700; width: 100px; text-align: right">{{ formatMoney(item.amount) }}</span>
+                    </div>
+                </div>
+            </template>
         </div>
     </div>
 </template>

@@ -25,6 +25,7 @@ class ReportController extends Controller
         $period = $this->resolvePeriod($periodType, $anchor);
 
         $overview = $this->computeOverview($user, $period['start'], $period['end'], $period['monthsInPeriod'], $period['isCurrent']);
+        $spending = $this->computeSpending($user, $period['start'], $period['end']);
 
         return Inertia::render('Reports', [
             'period' => [
@@ -35,6 +36,7 @@ class ReportController extends Controller
                 'isCurrent' => $period['isCurrent'],
             ],
             'overview' => $overview,
+            'spending' => $spending,
         ]);
     }
 
@@ -117,5 +119,43 @@ class ReportController extends Controller
             'budgetUsedPct' => $budgetUsedPct,
             'projectedTotal' => $projectedTotal,
         ];
+    }
+
+    private function computeSpending(User $user, Carbon $start, Carbon $end): array
+    {
+        $expenses = $user->transactions()
+            ->with('budgetCategory')
+            ->where('type', 'expense')
+            ->whereDate('transacted_at', '>=', $start)
+            ->whereDate('transacted_at', '<=', $end)
+            ->get();
+
+        $total = (float) $expenses->sum('amount');
+
+        return $expenses
+            ->groupBy('budget_category_id')
+            ->map(function ($group) use ($total) {
+                $amount = (float) $group->sum('amount');
+                $category = $group->first()->budgetCategory;
+
+                return [
+                    'category' => $category ? [
+                        'id' => $category->id,
+                        'name' => $category->name,
+                        'icon' => $category->icon,
+                        'color' => $category->color,
+                    ] : [
+                        'id' => null,
+                        'name' => 'Uncategorized',
+                        'icon' => 'help',
+                        'color' => '#8a8172',
+                    ],
+                    'amount' => $amount,
+                    'pct' => $total > 0 ? $amount / $total : 0.0,
+                ];
+            })
+            ->sortByDesc('amount')
+            ->values()
+            ->all();
     }
 }

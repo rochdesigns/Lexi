@@ -139,3 +139,31 @@ test('reports overview budget used pct is zero with no budget categories', funct
 
     Carbon::setTestNow();
 });
+
+test('reports spending groups expenses by category and sorts by amount', function () {
+    Carbon::setTestNow(Carbon::parse('2026-08-15'));
+    $user = User::factory()->create();
+    $account = Account::factory()->create(['user_id' => $user->id]);
+    $groceries = BudgetCategory::factory()->create(['user_id' => $user->id, 'name' => 'Groceries']);
+    $dining = BudgetCategory::factory()->create(['user_id' => $user->id, 'name' => 'Dining out']);
+
+    Transaction::factory()->create(['user_id' => $user->id, 'account_id' => $account->id, 'budget_category_id' => $groceries->id, 'type' => 'expense', 'amount' => 300, 'transacted_at' => '2026-08-05']);
+    Transaction::factory()->create(['user_id' => $user->id, 'account_id' => $account->id, 'budget_category_id' => $dining->id, 'type' => 'expense', 'amount' => 600, 'transacted_at' => '2026-08-06']);
+    Transaction::factory()->create(['user_id' => $user->id, 'account_id' => $account->id, 'budget_category_id' => null, 'type' => 'expense', 'amount' => 100, 'transacted_at' => '2026-08-07']);
+
+    $this->actingAs($user)
+        ->get(route('reports'))
+        ->assertInertia(fn ($page) => $page
+            ->has('spending', 3)
+            ->where('spending.0.category.name', 'Dining out')
+            ->where('spending.0.amount', 600)
+            ->where('spending.0.pct', 0.6)
+            ->where('spending.1.category.name', 'Groceries')
+            ->where('spending.1.amount', 300)
+            ->where('spending.2.category.name', 'Uncategorized')
+            ->where('spending.2.amount', 100)
+            ->where('spending.2.pct', 0.1)
+        );
+
+    Carbon::setTestNow();
+});
