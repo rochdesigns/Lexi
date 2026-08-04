@@ -217,8 +217,8 @@ test('reports cash flow buckets the month weekly with actuals and projections', 
             ->where('cashFlow.series.1.expenses', 0)
             ->where('cashFlow.series.3.expenses', null)
             ->where('cashFlow.series.4.expenses', null)
-            ->where('cashFlow.trendLine', [null, null, null, 350, 500])
-            ->where('cashFlow.budgetLine', [null, null, null, 700, 1000])
+            ->where('cashFlow.trendLine', [null, null, -1050, -1400, -1550])
+            ->where('cashFlow.budgetLine', [null, null, -1350, -2050, -2350])
         );
 
     Carbon::setTestNow();
@@ -249,6 +249,38 @@ test('reports cash flow has no projection lines for a past period', function () 
         ->assertInertia(fn ($page) => $page
             ->where('cashFlow.trendLine', null)
             ->where('cashFlow.budgetLine', null)
+        );
+
+    Carbon::setTestNow();
+});
+
+test('reports page falls back to current period when date query param is unparseable', function () {
+    Carbon::setTestNow(Carbon::parse('2026-08-15'));
+    $user = User::factory()->create();
+
+    $this->actingAs($user)
+        ->get(route('reports', ['date' => 'not-a-real-date']))
+        ->assertOk()
+        ->assertInertia(fn ($page) => $page
+            ->where('period.label', 'August 2026')
+            ->where('period.isCurrent', true)
+            ->where('period.nextDate', null)
+        );
+
+    Carbon::setTestNow();
+});
+
+test('reports page clamps a future date query param to the current period', function () {
+    Carbon::setTestNow(Carbon::parse('2026-08-15'));
+    $user = User::factory()->create();
+
+    $this->actingAs($user)
+        ->get(route('reports', ['date' => '2099-01-01']))
+        ->assertOk()
+        ->assertInertia(fn ($page) => $page
+            ->where('period.label', 'August 2026')
+            ->where('period.isCurrent', true)
+            ->where('period.nextDate', null)
         );
 
     Carbon::setTestNow();

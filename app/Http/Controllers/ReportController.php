@@ -18,9 +18,15 @@ class ReportController extends Controller
             ? $request->query('period')
             : 'month';
 
-        $anchor = $request->query('date')
-            ? Carbon::parse($request->query('date'))
-            : Carbon::now();
+        $anchor = Carbon::now();
+        if ($request->query('date')) {
+            try {
+                $parsed = Carbon::parse($request->query('date'));
+                $anchor = $parsed->greaterThan(Carbon::now()) ? Carbon::now() : $parsed;
+            } catch (\Exception $e) {
+                $anchor = Carbon::now();
+            }
+        }
 
         $period = $this->resolvePeriod($periodType, $anchor);
 
@@ -261,27 +267,41 @@ class ReportController extends Controller
                 ->whereDate('transacted_at', '<=', $today)
                 ->sum('amount');
 
+            $incomeSoFar = (float) $user->transactions()
+                ->where('type', 'income')
+                ->whereDate('transacted_at', '>=', $start)
+                ->whereDate('transacted_at', '<=', $today)
+                ->sum('amount');
+
             $dailyTrendRate = $expensesSoFar / $elapsedDays;
             $dailyBudgetRate = $budgetTotal / $totalDays;
 
-            $runningTrend = 0.0;
-            $runningBudget = 0.0;
+            $netSoFar = $incomeSoFar - $expensesSoFar;
+
+            $runningTrend = $netSoFar;
+            $runningBudget = $netSoFar;
             $trendLine = [];
             $budgetLine = [];
 
             foreach ($buckets as $bucket) {
-                $isFuture = $bucket['start']->copy()->startOfDay()->gt($today);
+                $bucketStart = $bucket['start']->copy()->startOfDay();
+                $bucketEnd = $bucket['end']->copy()->startOfDay();
 
-                if (! $isFuture) {
+                // Days within this bucket that fall strictly after today — the only
+                // days that haven't happened yet and thus need projecting, whether
+                // the bucket is fully future or straddles today.
+                $remainingStart = $bucketStart->gt($today) ? $bucketStart : $today->copy()->addDay();
+                $remainingDays = $remainingStart->lte($bucketEnd) ? $remainingStart->diffInDays($bucketEnd) + 1 : 0;
+
+                if ($remainingDays <= 0) {
                     $trendLine[] = null;
                     $budgetLine[] = null;
 
                     continue;
                 }
 
-                $bucketDays = $bucket['start']->copy()->startOfDay()->diffInDays($bucket['end']->copy()->startOfDay()) + 1;
-                $runningTrend += $dailyTrendRate * $bucketDays;
-                $runningBudget += $dailyBudgetRate * $bucketDays;
+                $runningTrend -= $dailyTrendRate * $remainingDays;
+                $runningBudget -= $dailyBudgetRate * $remainingDays;
                 $trendLine[] = round($runningTrend, 2);
                 $budgetLine[] = round($runningBudget, 2);
             }
