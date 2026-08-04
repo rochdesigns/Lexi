@@ -16,6 +16,7 @@
 - Next-period navigation is capped at the current period — no browsing into the future
 - New dependency `chart.js` + `vue-chartjs` is approved for this feature only
 - After adding the route, regenerate Wayfinder actions: `php artisan wayfinder:generate`
+- Inertia's `assertInertia(...)->where(...)` uses PHPUnit's `assertSame` (strict `===`). PHP's JSON encoder emits whole-number floats without a decimal point (`json_encode(5000.0)` → `"5000"`), so they decode back as `int`, not `float`. Test literals for whole-number amounts must be bare ints (`5000`, `-750`, `0`), matching the existing convention in `tests/Feature/BudgetTest.php`. Only genuinely fractional expected values (e.g. `0.6`) should use a float literal.
 - Design spec: [docs/superpowers/specs/2026-08-04-money-reports-page-design.md](../specs/2026-08-04-money-reports-page-design.md)
 
 ---
@@ -383,9 +384,9 @@ test('reports overview computes income, expenses, and net for the month', functi
     $this->actingAs($user)
         ->get(route('reports'))
         ->assertInertia(fn ($page) => $page
-            ->where('overview.income', 5000.0)
-            ->where('overview.expenses', 1200.0)
-            ->where('overview.net', 3800.0)
+            ->where('overview.income', 5000)
+            ->where('overview.expenses', 1200)
+            ->where('overview.net', 3800)
         );
 
     Carbon::setTestNow();
@@ -399,11 +400,11 @@ test('reports overview scales budget total by months in period', function () {
 
     $this->actingAs($user)
         ->get(route('reports', ['period' => 'month']))
-        ->assertInertia(fn ($page) => $page->where('overview.budgetTotal', 1500.0));
+        ->assertInertia(fn ($page) => $page->where('overview.budgetTotal', 1500));
 
     $this->actingAs($user)
         ->get(route('reports', ['period' => 'quarter']))
-        ->assertInertia(fn ($page) => $page->where('overview.budgetTotal', 4500.0));
+        ->assertInertia(fn ($page) => $page->where('overview.budgetTotal', 4500));
 
     Carbon::setTestNow();
 });
@@ -417,7 +418,7 @@ test('reports overview projects a full-period total from spending so far', funct
 
     $this->actingAs($user)
         ->get(route('reports'))
-        ->assertInertia(fn ($page) => $page->where('overview.projectedTotal', 3100.0));
+        ->assertInertia(fn ($page) => $page->where('overview.projectedTotal', 3100));
 
     Carbon::setTestNow();
 });
@@ -439,7 +440,7 @@ test('reports overview budget used pct is zero with no budget categories', funct
 
     $this->actingAs($user)
         ->get(route('reports'))
-        ->assertInertia(fn ($page) => $page->where('overview.budgetUsedPct', 0.0));
+        ->assertInertia(fn ($page) => $page->where('overview.budgetUsedPct', 0));
 
     Carbon::setTestNow();
 });
@@ -644,12 +645,12 @@ test('reports spending groups expenses by category and sorts by amount', functio
         ->assertInertia(fn ($page) => $page
             ->has('spending', 3)
             ->where('spending.0.category.name', 'Dining out')
-            ->where('spending.0.amount', 600.0)
+            ->where('spending.0.amount', 600)
             ->where('spending.0.pct', 0.6)
             ->where('spending.1.category.name', 'Groceries')
-            ->where('spending.1.amount', 300.0)
+            ->where('spending.1.amount', 300)
             ->where('spending.2.category.name', 'Uncategorized')
-            ->where('spending.2.amount', 100.0)
+            ->where('spending.2.amount', 100)
             ->where('spending.2.pct', 0.1)
         );
 
@@ -899,15 +900,15 @@ test('reports budget vs actual scales limit by months and flags over/under', fun
         ->assertInertia(fn ($page) => $page
             ->has('budgetVsActual', 1)
             ->where('budgetVsActual.0.category.name', 'Groceries')
-            ->where('budgetVsActual.0.budgeted', 1000.0)
-            ->where('budgetVsActual.0.actual', 1200.0)
+            ->where('budgetVsActual.0.budgeted', 1000)
+            ->where('budgetVsActual.0.actual', 1200)
             ->where('budgetVsActual.0.status', 'over')
         );
 
     $this->actingAs($user)
         ->get(route('reports', ['period' => 'quarter']))
         ->assertInertia(fn ($page) => $page
-            ->where('budgetVsActual.0.budgeted', 3000.0)
+            ->where('budgetVsActual.0.budgeted', 3000)
             ->where('budgetVsActual.0.status', 'under')
         );
 
@@ -1080,13 +1081,13 @@ test('reports cash flow buckets the month weekly with actuals and projections', 
         ->assertInertia(fn ($page) => $page
             ->has('cashFlow.series', 5)
             ->where('cashFlow.series.0.label', 'Aug 1')
-            ->where('cashFlow.series.0.expenses', 750.0)
-            ->where('cashFlow.series.0.net', -750.0)
-            ->where('cashFlow.series.1.expenses', 0.0)
+            ->where('cashFlow.series.0.expenses', 750)
+            ->where('cashFlow.series.0.net', -750)
+            ->where('cashFlow.series.1.expenses', 0)
             ->where('cashFlow.series.3.expenses', null)
             ->where('cashFlow.series.4.expenses', null)
-            ->where('cashFlow.trendLine', [null, null, null, 350.0, 500.0])
-            ->where('cashFlow.budgetLine', [null, null, null, 700.0, 1000.0])
+            ->where('cashFlow.trendLine', [null, null, null, 350, 500])
+            ->where('cashFlow.budgetLine', [null, null, null, 700, 1000])
         );
 
     Carbon::setTestNow();
