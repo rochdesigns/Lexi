@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\User;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
@@ -23,6 +24,8 @@ class ReportController extends Controller
 
         $period = $this->resolvePeriod($periodType, $anchor);
 
+        $overview = $this->computeOverview($user, $period['start'], $period['end'], $period['monthsInPeriod'], $period['isCurrent']);
+
         return Inertia::render('Reports', [
             'period' => [
                 'type' => $periodType,
@@ -31,6 +34,7 @@ class ReportController extends Controller
                 'nextDate' => $period['nextDate'],
                 'isCurrent' => $period['isCurrent'],
             ],
+            'overview' => $overview,
         ]);
     }
 
@@ -77,6 +81,41 @@ class ReportController extends Controller
             'nextDate' => $isCurrent ? null : $nextAnchor->toDateString(),
             'isCurrent' => $isCurrent,
             'monthsInPeriod' => $monthsInPeriod,
+        ];
+    }
+
+    private function computeOverview(User $user, Carbon $start, Carbon $end, int $monthsInPeriod, bool $isCurrent): array
+    {
+        $income = (float) $user->transactions()
+            ->where('type', 'income')
+            ->whereDate('transacted_at', '>=', $start)
+            ->whereDate('transacted_at', '<=', $end)
+            ->sum('amount');
+
+        $expenses = (float) $user->transactions()
+            ->where('type', 'expense')
+            ->whereDate('transacted_at', '>=', $start)
+            ->whereDate('transacted_at', '<=', $end)
+            ->sum('amount');
+
+        $budgetTotal = (float) $user->budgetCategories()->sum('limit_amount') * $monthsInPeriod;
+        $budgetUsedPct = $budgetTotal > 0 ? $expenses / $budgetTotal : 0.0;
+
+        $projectedTotal = null;
+        if ($isCurrent) {
+            $today = Carbon::now()->startOfDay();
+            $elapsedDays = max(1, $start->copy()->startOfDay()->diffInDays($today) + 1);
+            $totalDays = $start->copy()->startOfDay()->diffInDays($end->copy()->startOfDay()) + 1;
+            $projectedTotal = round($expenses / $elapsedDays * $totalDays, 2);
+        }
+
+        return [
+            'income' => $income,
+            'expenses' => $expenses,
+            'net' => $income - $expenses,
+            'budgetTotal' => $budgetTotal,
+            'budgetUsedPct' => $budgetUsedPct,
+            'projectedTotal' => $projectedTotal,
         ];
     }
 }

@@ -12,8 +12,18 @@ type Period = {
     isCurrent: boolean;
 };
 
+type Overview = {
+    income: number;
+    expenses: number;
+    net: number;
+    budgetTotal: number;
+    budgetUsedPct: number;
+    projectedTotal: number | null;
+};
+
 const props = defineProps<{
     period: Period;
+    overview: Overview;
 }>();
 
 const periodOptions: { value: PeriodType; label: string }[] = [
@@ -28,6 +38,12 @@ function switchPeriod(type: PeriodType) {
 
 function navigateDate(date: string) {
     router.get(index({ query: { period: props.period.type, date } }).url, {}, { preserveScroll: true, preserveState: true, replace: true });
+}
+
+function formatMoney(n: number): string {
+    const abs = Math.abs(n);
+    const formatted = '₱' + abs.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    return n < 0 ? `-${formatted}` : formatted;
 }
 </script>
 
@@ -80,6 +96,30 @@ function navigateDate(date: string) {
                         <span class="material-symbols-rounded" style="font-size: 20px">chevron_right</span>
                     </button>
                 </div>
+            </div>
+        </div>
+
+        <!-- Overview stat cards -->
+        <div class="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
+            <div style="background: #fffdf8; border: 1px solid #e0dacd; border-radius: 14px; padding: 14px 16px">
+                <div style="font-size: 12px; color: #8a8172">Income</div>
+                <div style="font-family: 'Bricolage Grotesque'; font-weight: 700; font-size: 20px; color: #2f7d5b; margin-top: 4px">{{ formatMoney(overview.income) }}</div>
+            </div>
+            <div style="background: #fffdf8; border: 1px solid #e0dacd; border-radius: 14px; padding: 14px 16px">
+                <div style="font-size: 12px; color: #8a8172">Expenses</div>
+                <div style="font-family: 'Bricolage Grotesque'; font-weight: 700; font-size: 20px; color: #c0512c; margin-top: 4px">{{ formatMoney(overview.expenses) }}</div>
+            </div>
+            <div style="background: #fffdf8; border: 1px solid #e0dacd; border-radius: 14px; padding: 14px 16px">
+                <div style="font-size: 12px; color: #8a8172">Net</div>
+                <div style="font-family: 'Bricolage Grotesque'; font-weight: 700; font-size: 20px; margin-top: 4px" :style="{ color: overview.net >= 0 ? '#2f7d5b' : '#c0512c' }">{{ formatMoney(overview.net) }}</div>
+            </div>
+            <div style="background: #fffdf8; border: 1px solid #e0dacd; border-radius: 14px; padding: 14px 16px">
+                <div style="font-size: 12px; color: #8a8172">Budget used</div>
+                <div style="font-family: 'Bricolage Grotesque'; font-weight: 700; font-size: 20px; margin-top: 4px">{{ Math.round(overview.budgetUsedPct * 100) }}%</div>
+            </div>
+            <div v-if="overview.projectedTotal !== null" style="background: #fffdf8; border: 1px solid #e0dacd; border-radius: 14px; padding: 14px 16px">
+                <div style="font-size: 12px; color: #8a8172">Projected total</div>
+                <div style="font-family: 'Bricolage Grotesque'; font-weight: 700; font-size: 20px; margin-top: 4px">{{ formatMoney(overview.projectedTotal) }}</div>
             </div>
         </div>
     </div>

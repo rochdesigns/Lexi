@@ -1,5 +1,8 @@
 <?php
 
+use App\Models\Account;
+use App\Models\BudgetCategory;
+use App\Models\Transaction;
 use App\Models\User;
 use Carbon\Carbon;
 
@@ -60,6 +63,79 @@ test('reports page allows navigating to a past period and re-enables next', func
             ->where('period.isCurrent', false)
             ->where('period.nextDate', '2026-07-01')
         );
+
+    Carbon::setTestNow();
+});
+
+test('reports overview computes income, expenses, and net for the month', function () {
+    Carbon::setTestNow(Carbon::parse('2026-08-15'));
+    $user = User::factory()->create();
+    $account = Account::factory()->create(['user_id' => $user->id]);
+
+    Transaction::factory()->create(['user_id' => $user->id, 'account_id' => $account->id, 'type' => 'income', 'amount' => 5000, 'transacted_at' => '2026-08-05']);
+    Transaction::factory()->create(['user_id' => $user->id, 'account_id' => $account->id, 'type' => 'expense', 'amount' => 1200, 'transacted_at' => '2026-08-10']);
+    Transaction::factory()->create(['user_id' => $user->id, 'account_id' => $account->id, 'type' => 'expense', 'amount' => 999, 'transacted_at' => '2026-07-31']);
+
+    $this->actingAs($user)
+        ->get(route('reports'))
+        ->assertInertia(fn ($page) => $page
+            ->where('overview.income', 5000)
+            ->where('overview.expenses', 1200)
+            ->where('overview.net', 3800)
+        );
+
+    Carbon::setTestNow();
+});
+
+test('reports overview scales budget total by months in period', function () {
+    Carbon::setTestNow(Carbon::parse('2026-08-15'));
+    $user = User::factory()->create();
+    BudgetCategory::factory()->create(['user_id' => $user->id, 'limit_amount' => 1000]);
+    BudgetCategory::factory()->create(['user_id' => $user->id, 'limit_amount' => 500]);
+
+    $this->actingAs($user)
+        ->get(route('reports', ['period' => 'month']))
+        ->assertInertia(fn ($page) => $page->where('overview.budgetTotal', 1500));
+
+    $this->actingAs($user)
+        ->get(route('reports', ['period' => 'quarter']))
+        ->assertInertia(fn ($page) => $page->where('overview.budgetTotal', 4500));
+
+    Carbon::setTestNow();
+});
+
+test('reports overview projects a full-period total from spending so far', function () {
+    Carbon::setTestNow(Carbon::parse('2026-08-11'));
+    $user = User::factory()->create();
+    $account = Account::factory()->create(['user_id' => $user->id]);
+
+    Transaction::factory()->create(['user_id' => $user->id, 'account_id' => $account->id, 'type' => 'expense', 'amount' => 1100, 'transacted_at' => '2026-08-10']);
+
+    $this->actingAs($user)
+        ->get(route('reports'))
+        ->assertInertia(fn ($page) => $page->where('overview.projectedTotal', 3100));
+
+    Carbon::setTestNow();
+});
+
+test('reports overview omits projected total for a past period', function () {
+    Carbon::setTestNow(Carbon::parse('2026-08-15'));
+    $user = User::factory()->create();
+
+    $this->actingAs($user)
+        ->get(route('reports', ['period' => 'month', 'date' => '2026-06-01']))
+        ->assertInertia(fn ($page) => $page->where('overview.projectedTotal', null));
+
+    Carbon::setTestNow();
+});
+
+test('reports overview budget used pct is zero with no budget categories', function () {
+    Carbon::setTestNow(Carbon::parse('2026-08-15'));
+    $user = User::factory()->create();
+
+    $this->actingAs($user)
+        ->get(route('reports'))
+        ->assertInertia(fn ($page) => $page->where('overview.budgetUsedPct', 0));
 
     Carbon::setTestNow();
 });
