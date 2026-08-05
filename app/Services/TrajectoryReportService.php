@@ -494,11 +494,7 @@ class TrajectoryReportService
             ->sortByDesc(fn (Debt $debt) => $debt->interest_rate === null ? -1.0 : (float) $debt->interest_rate)
             ->values();
 
-        $inputs = $sorted->map(fn (Debt $debt) => [
-            'balance' => (float) $debt->balance,
-            'perMonth' => (float) $debt->per_month,
-            'monthlyRate' => $this->monthlyRate($debt),
-        ])->all();
+        $inputs = $this->payoffInputs($sorted);
 
         $baseline = $this->simulatePayoff($inputs, 0.0);
         $projected = $extra > 0.0 ? $this->simulatePayoff($inputs, $extra) : $baseline;
@@ -580,6 +576,24 @@ class TrajectoryReportService
                 'trend' => $dtiTrend,
             ],
         ];
+    }
+
+    /**
+     * Builds simulatePayoff()'s input shape from a debt collection, in the collection's
+     * current order — callers that care about avalanche ordering should sort before
+     * calling this. Shared with ReportController::computePayoff() so the annual-to-monthly
+     * rate conversion has exactly one implementation.
+     *
+     * @param  Collection<int, Debt>  $debts
+     * @return list<array{balance: float, perMonth: float, monthlyRate: float}>
+     */
+    public function payoffInputs(Collection $debts): array
+    {
+        return $debts->map(fn (Debt $debt) => [
+            'balance' => (float) $debt->balance,
+            'perMonth' => (float) $debt->per_month,
+            'monthlyRate' => $this->monthlyRate($debt),
+        ])->values()->all();
     }
 
     protected function monthlyRate(Debt $debt): float

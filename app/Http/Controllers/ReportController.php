@@ -2,7 +2,9 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\Debt;
 use App\Models\User;
+use App\Services\TrajectoryReportService;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
@@ -10,6 +12,8 @@ use Inertia\Response;
 
 class ReportController extends Controller
 {
+    public function __construct(private TrajectoryReportService $trajectory) {}
+
     public function index(Request $request): Response
     {
         $user = $request->user();
@@ -348,50 +352,31 @@ class ReportController extends Controller
     {
         $today = Carbon::now()->startOfDay();
 
-        $debts = $user->debts()
+        $debtModels = $user->debts()
             ->where('balance', '>', 0)
             ->orderBy('position')
-            ->get()
-            ->map(function ($debt) use ($today) {
-                $monthlyRate = $debt->interest_rate === null ? 0.0
-                    : ($debt->interest_rate_period === 'monthly'
-                        ? (float) $debt->interest_rate / 100
-                        : (float) $debt->interest_rate / 100 / 12);
+            ->get();
 
-                $balance = (float) $debt->balance;
-                $perMonth = (float) $debt->per_month;
-                $months = 0;
-                $onTrack = true;
+        // No extra monthly payment here — this page has no what-if input, so every debt
+        // simply pays its own perMonth every month, independent of the others. With
+        // extraMonthly at its default of 0.0, simulatePayoff()'s avalanche target-selection
+        // never fires (there is nothing to redirect), so this is equivalent to running each
+        // debt through its own amortization in isolation.
+        $result = $this->trajectory->simulatePayoff($this->trajectory->payoffInputs($debtModels));
 
-                while ($balance > 0 && $months < 600) {
-                    $interestAccrued = $balance * $monthlyRate;
+        $debts = $debtModels->values()->map(function (Debt $debt, int $index) use ($result, $today) {
+            $months = $result['perDebtMonths'][$index] ?? null;
 
-                    if ($monthlyRate > 0 && $perMonth <= $interestAccrued) {
-                        $onTrack = false;
-
-                        break;
-                    }
-
-                    $balance = $balance + $interestAccrued - $perMonth;
-                    $months++;
-                }
-
-                if ($balance > 0) {
-                    $onTrack = false;
-                }
-
-                return [
-                    'id' => $debt->id,
-                    'name' => $debt->name,
-                    'icon' => $debt->icon,
-                    'color' => $debt->color,
-                    'months' => $onTrack ? $months : null,
-                    'payoffDate' => $onTrack ? $today->copy()->addMonthsNoOverflow($months)->format('M Y') : null,
-                    'onTrack' => $onTrack,
-                ];
-            })
-            ->values()
-            ->all();
+            return [
+                'id' => $debt->id,
+                'name' => $debt->name,
+                'icon' => $debt->icon,
+                'color' => $debt->color,
+                'months' => $months,
+                'payoffDate' => $months !== null ? $today->copy()->addMonthsNoOverflow($months)->format('M Y') : null,
+                'onTrack' => $months !== null,
+            ];
+        })->all();
 
         $goals = $user->goals()
             ->whereColumn('saved', '<', 'target')
