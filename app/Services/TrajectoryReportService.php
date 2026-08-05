@@ -2,10 +2,12 @@
 
 namespace App\Services;
 
+use App\Models\Account;
 use App\Models\AccountBalanceSnapshot;
 use App\Models\Debt;
 use App\Models\DebtBalanceSnapshot;
 use App\Models\DebtPayment;
+use App\Models\Goal;
 use App\Models\User;
 use Carbon\Carbon;
 use Illuminate\Support\Collection;
@@ -451,5 +453,160 @@ class TrajectoryReportService
         $numerator = $paid > 0 ? $paid : $scheduledMonthly;
 
         return round($numerator / $income * 100, 1);
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    public function savingsSummary(User $user): array
+    {
+        $emergencyFund = $this->emergencyFundSection($user);
+        $goals = $this->goalSection($user);
+        $cashBuffer = $this->cashBufferSection($user);
+
+        $available = $emergencyFund['available'] || $goals !== [] || $cashBuffer['available'];
+
+        return [
+            'available' => $available,
+            ...($available ? [] : ['reason' => 'Flag an account as your emergency fund, add a savings goal, or let daily snapshots build up.']),
+            'emergencyFund' => $emergencyFund,
+            'goals' => $goals,
+            'cashBuffer' => $cashBuffer,
+        ];
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    protected function emergencyFundSection(User $user): array
+    {
+        $accounts = $user->accounts()->where('is_emergency_fund', true)->get();
+
+        if ($accounts->isEmpty()) {
+            return [
+                'available' => false,
+                'reason' => 'No account is flagged as your emergency fund yet.',
+                'balance' => 0.0,
+                'avgMonthlyExpenses' => 0.0,
+                'monthsCovered' => null,
+                'targetMonths' => (int) ($user->setting?->emergency_fund_target_months ?? 6),
+                'progressPct' => null,
+            ];
+        }
+
+        $balance = round((float) $accounts->sum('balance'), 2);
+
+        $expenses = array_map(
+            fn (Carbon $month) => $this->monthlyTotals($user, $month)['expenses'],
+            $this->monthWindow(3),
+        );
+
+        $average = round(array_sum($expenses) / max(1, count($expenses)), 2);
+        $targetMonths = (int) ($user->setting?->emergency_fund_target_months ?? 6);
+        $monthsCovered = $average > 0 ? round($balance / $average, 2) : null;
+
+        return [
+            'available' => true,
+            'balance' => $balance,
+            'avgMonthlyExpenses' => $average,
+            'monthsCovered' => $monthsCovered,
+            'targetMonths' => $targetMonths,
+            'progressPct' => $monthsCovered !== null && $targetMonths > 0
+                ? round(min(100, $monthsCovered / $targetMonths * 100), 1)
+                : null,
+        ];
+    }
+
+    /**
+     * @return list<array<string, mixed>>
+     */
+    protected function goalSection(User $user): array
+    {
+        $today = Carbon::now()->startOfDay();
+
+        return $user->goals()
+            ->whereColumn('saved', '<', 'target')
+            ->orderBy('position')
+            ->get()
+            ->map(function (Goal $goal) use ($today) {
+                $remaining = round((float) $goal->target - (float) $goal->saved, 2);
+                $perMonth = round((float) $goal->per_month, 2);
+
+                $monthsRemaining = null;
+                $requiredMonthly = null;
+
+                if ($goal->by_date !== null) {
+                    $days = max(0.0, (float) $today->diffInDays(Carbon::parse($goal->by_date)->startOfDay(), false));
+                    $monthsRemaining = max(1, (int) ceil($days / 30.4375));
+                    $requiredMonthly = round($remaining / $monthsRemaining, 2);
+                }
+
+                return [
+                    'id' => $goal->id,
+                    'name' => $goal->name,
+                    'icon' => $goal->icon,
+                    'color' => $goal->color,
+                    'bg' => $goal->bg,
+                    'saved' => round((float) $goal->saved, 2),
+                    'target' => round((float) $goal->target, 2),
+                    'progressPct' => (float) $goal->target > 0
+                        ? round((float) $goal->saved / (float) $goal->target * 100, 1)
+                        : 0.0,
+                    'perMonth' => $perMonth,
+                    'byDate' => $goal->by_date?->toDateString(),
+                    'monthsRemaining' => $monthsRemaining,
+                    'requiredMonthly' => $requiredMonthly,
+                    'onTrack' => $requiredMonthly !== null ? $perMonth >= $requiredMonthly : null,
+                ];
+            })
+            ->values()
+            ->all();
+    }
+
+    /**
+     * Lowest total cash balance reached in each of the last 12 months.
+     *
+     * @return array<string, mixed>
+     */
+    protected function cashBufferSection(User $user): array
+    {
+        $cashAccountIds = $user->accounts()->where('type', 'cash')->pluck('id');
+
+        $windowStart = Carbon::now()->startOfMonth()->subMonths(11)->toDateString();
+
+        $dailyTotals = AccountBalanceSnapshot::where('user_id', $user->id)
+            ->whereIn('account_id', $cashAccountIds)
+            ->where('snapshot_date', '>=', $windowStart)
+            ->get(['balance', 'snapshot_date'])
+            ->groupBy(fn (AccountBalanceSnapshot $snapshot) => $snapshot->snapshot_date->toDateString())
+            ->map(fn ($group) => round((float) $group->sum('balance'), 2));
+
+        $trend = [];
+
+        foreach ($this->monthWindow(12) as $month) {
+            $key = $month->format('Y-m');
+
+            $inMonth = $dailyTotals->filter(fn ($value, $date) => str_starts_with($date, $key));
+
+            if ($inMonth->isEmpty()) {
+                continue;
+            }
+
+            $trend[] = [
+                'month' => $key,
+                'label' => $month->format('M Y'),
+                'value' => round((float) $inMonth->min(), 2),
+            ];
+        }
+
+        if ($trend === []) {
+            return [
+                'available' => false,
+                'reason' => 'No cash balance snapshots recorded yet.',
+                'trend' => [],
+            ];
+        }
+
+        return ['available' => true, 'trend' => $trend];
     }
 }

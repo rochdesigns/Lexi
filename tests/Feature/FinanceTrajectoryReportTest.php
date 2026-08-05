@@ -5,6 +5,7 @@ use App\Models\AccountBalanceSnapshot;
 use App\Models\Debt;
 use App\Models\DebtBalanceSnapshot;
 use App\Models\DebtPayment;
+use App\Models\Goal;
 use App\Models\Setting;
 use App\Models\Transaction;
 use App\Models\User;
@@ -509,6 +510,122 @@ test('a cleared debt does not redistribute its freed monthly payment to the rema
         ->and($result['debts'][0]['months'])->toBe(2)
         ->and($result['debts'][1]['months'])->toBe(10)
         ->and($result['debtFreeMonths'])->toBe(10);
+
+    Carbon::setTestNow();
+});
+
+test('savings summary reports emergency fund coverage against the configured target', function () {
+    Carbon::setTestNow(Carbon::parse('2026-08-05'));
+
+    $user = User::factory()->create();
+    Setting::create(['user_id' => $user->id, 'theme' => 'ocean', 'budget_cycle_days' => 30, 'emergency_fund_target_months' => 6]);
+
+    Account::factory()->emergencyFund()->for($user)->create(['balance' => 90000]);
+    $spending = Account::factory()->for($user)->create(['type' => 'cash']);
+
+    foreach (['2026-08-02', '2026-07-02', '2026-06-02'] as $date) {
+        \App\Models\Transaction::factory()->for($user)->create([
+            'account_id' => $spending->id, 'type' => 'expense', 'amount' => 30000, 'transacted_at' => $date,
+        ]);
+    }
+
+    $result = app(TrajectoryReportService::class)->savingsSummary($user);
+
+    expect($result['available'])->toBeTrue()
+        ->and($result['emergencyFund']['available'])->toBeTrue()
+        ->and($result['emergencyFund']['balance'])->toBe(90000.0)
+        ->and($result['emergencyFund']['avgMonthlyExpenses'])->toBe(30000.0)
+        ->and($result['emergencyFund']['monthsCovered'])->toBe(3.0)
+        ->and($result['emergencyFund']['targetMonths'])->toBe(6)
+        ->and($result['emergencyFund']['progressPct'])->toBe(50.0);
+
+    Carbon::setTestNow();
+});
+
+test('savings summary marks the emergency fund unavailable when no account is flagged', function () {
+    Carbon::setTestNow(Carbon::parse('2026-08-05'));
+
+    $user = User::factory()->create();
+    Account::factory()->for($user)->create(['type' => 'cash', 'balance' => 50000]);
+
+    $result = app(TrajectoryReportService::class)->savingsSummary($user);
+
+    expect($result['emergencyFund']['available'])->toBeFalse()
+        ->and($result['emergencyFund']['reason'])->toBeString();
+
+    Carbon::setTestNow();
+});
+
+test('savings summary computes the monthly contribution each dated goal requires', function () {
+    Carbon::setTestNow(Carbon::parse('2026-08-05'));
+
+    $user = User::factory()->create();
+
+    Goal::factory()->for($user)->create([
+        'name' => 'Japan trip', 'target' => 100000, 'saved' => 25000,
+        'per_month' => 10000, 'by_date' => '2026-12-31',
+    ]);
+    Goal::factory()->for($user)->create([
+        'name' => 'Someday', 'target' => 50000, 'saved' => 1000, 'per_month' => 2000, 'by_date' => null,
+    ]);
+    Goal::factory()->for($user)->create(['name' => 'Done', 'target' => 1000, 'saved' => 1000, 'per_month' => 0]);
+
+    $goals = app(TrajectoryReportService::class)->savingsSummary($user)['goals'];
+
+    expect($goals)->toHaveCount(2);
+
+    $japan = collect($goals)->firstWhere('name', 'Japan trip');
+    $someday = collect($goals)->firstWhere('name', 'Someday');
+
+    // 2026-08-05 -> 2026-12-31 is 148 days; ceil(148 / 30.4375) = 5 months.
+    expect($japan['monthsRemaining'])->toBe(5)
+        ->and($japan['requiredMonthly'])->toBe(15000.0)
+        ->and($japan['onTrack'])->toBeFalse()
+        ->and($japan['progressPct'])->toBe(25.0)
+        ->and($someday['requiredMonthly'])->toBeNull()
+        ->and($someday['onTrack'])->toBeNull();
+
+    Carbon::setTestNow();
+});
+
+test('savings summary reports the lowest cash balance reached each month', function () {
+    Carbon::setTestNow(Carbon::parse('2026-08-05'));
+
+    $user = User::factory()->create();
+    $cash = Account::factory()->for($user)->create(['type' => 'cash', 'balance' => 6000]);
+    $investment = Account::factory()->investment()->for($user)->create(['balance' => 500000]);
+
+    foreach ([['2026-07-10', 5000], ['2026-07-20', 3000], ['2026-08-01', 8000], ['2026-08-05', 6000]] as [$date, $balance]) {
+        AccountBalanceSnapshot::create([
+            'user_id' => $user->id, 'account_id' => $cash->id, 'balance' => $balance, 'snapshot_date' => $date,
+        ]);
+    }
+
+    AccountBalanceSnapshot::create([
+        'user_id' => $user->id, 'account_id' => $investment->id, 'balance' => 500000, 'snapshot_date' => '2026-08-05',
+    ]);
+
+    $buffer = app(TrajectoryReportService::class)->savingsSummary($user)['cashBuffer'];
+
+    expect($buffer['available'])->toBeTrue()
+        ->and($buffer['trend'])->toBe([
+            ['month' => '2026-07', 'label' => 'Jul 2026', 'value' => 3000.0],
+            ['month' => '2026-08', 'label' => 'Aug 2026', 'value' => 6000.0],
+        ]);
+
+    Carbon::setTestNow();
+});
+
+test('savings summary is unavailable with no emergency fund, goals or snapshots', function () {
+    Carbon::setTestNow(Carbon::parse('2026-08-05'));
+
+    $user = User::factory()->create();
+
+    $result = app(TrajectoryReportService::class)->savingsSummary($user);
+
+    expect($result['available'])->toBeFalse()
+        ->and($result['reason'])->toBeString()
+        ->and($result['goals'])->toBe([]);
 
     Carbon::setTestNow();
 });
