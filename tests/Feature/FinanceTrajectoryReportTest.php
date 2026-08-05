@@ -629,3 +629,128 @@ test('savings summary is unavailable with no emergency fund, goals or snapshots'
 
     Carbon::setTestNow();
 });
+
+test('investments summary reports value, cost basis and allocation per vehicle', function () {
+    Carbon::setTestNow(Carbon::parse('2026-08-05'));
+
+    $user = User::factory()->create();
+    Setting::create([
+        'user_id' => $user->id, 'theme' => 'ocean', 'budget_cycle_days' => 30,
+        'investment_monthly_contribution_target' => 15000,
+    ]);
+
+    $cash = Account::factory()->for($user)->create(['type' => 'cash', 'balance' => 100000]);
+    $indexFund = Account::factory()->investment()->for($user)->create(['name' => 'Index Fund', 'balance' => 300000, 'cost_basis' => 250000]);
+    Account::factory()->investment()->for($user)->create(['name' => 'Bonds', 'balance' => 200000, 'cost_basis' => 180000]);
+
+    \App\Models\Transaction::factory()->for($user)->create([
+        'account_id' => $cash->id, 'to_account_id' => $indexFund->id,
+        'type' => 'transfer', 'amount' => 20000, 'transacted_at' => '2026-08-03',
+    ]);
+
+    $result = app(TrajectoryReportService::class)->investmentsSummary($user);
+
+    expect($result['available'])->toBeTrue()
+        ->and($result['totalValue'])->toBe(500000.0)
+        ->and($result['totalCostBasis'])->toBe(430000.0)
+        ->and($result['costBasisComplete'])->toBeTrue()
+        ->and($result['gainLoss'])->toBe(70000.0)
+        ->and($result['gainLossPct'])->toBe(16.3)
+        ->and($result['contributionsThisMonth'])->toBe(20000.0)
+        ->and($result['contributionTarget'])->toBe(15000.0)
+        ->and($result['contributionProgressPct'])->toBe(133.3)
+        ->and($result['vehicles'])->toHaveCount(2)
+        ->and(collect($result['vehicles'])->firstWhere('name', 'Index Fund')['allocationPct'])->toBe(60.0)
+        ->and(collect($result['vehicles'])->firstWhere('name', 'Bonds')['allocationPct'])->toBe(40.0);
+
+    Carbon::setTestNow();
+});
+
+test('investments summary withholds gain when any cost basis is missing', function () {
+    Carbon::setTestNow(Carbon::parse('2026-08-05'));
+
+    $user = User::factory()->create();
+    Account::factory()->investment()->for($user)->create(['balance' => 300000, 'cost_basis' => 250000]);
+    Account::factory()->investment()->for($user)->create(['balance' => 200000, 'cost_basis' => null]);
+
+    $result = app(TrajectoryReportService::class)->investmentsSummary($user);
+
+    expect($result['costBasisComplete'])->toBeFalse()
+        ->and($result['gainLoss'])->toBeNull()
+        ->and($result['gainLossPct'])->toBeNull()
+        ->and($result['totalValue'])->toBe(500000.0);
+
+    Carbon::setTestNow();
+});
+
+test('fire progress projects years to financial independence', function () {
+    Carbon::setTestNow(Carbon::parse('2026-08-05'));
+
+    $user = User::factory()->create();
+    Setting::create([
+        'user_id' => $user->id, 'theme' => 'ocean', 'budget_cycle_days' => 30,
+        'fi_number' => 1000000, 'fi_expected_return_rate' => 0,
+    ]);
+
+    $cash = Account::factory()->for($user)->create(['type' => 'cash', 'balance' => 100000]);
+    $fund = Account::factory()->investment()->for($user)->create(['balance' => 500000, 'cost_basis' => 500000]);
+
+    \App\Models\Transaction::factory()->for($user)->create([
+        'account_id' => $cash->id, 'to_account_id' => $fund->id,
+        'type' => 'transfer', 'amount' => 20000, 'transacted_at' => '2026-08-03',
+    ]);
+
+    $fire = app(TrajectoryReportService::class)->investmentsSummary($user)['fire'];
+
+    // 20000 over the trailing 3 months = 6666.67/month = 80000.04/year.
+    // 500000 + 80000.04t >= 1,000,000 -> t = 7.
+    expect($fire['available'])->toBeTrue()
+        ->and($fire['fiNumber'])->toBe(1000000.0)
+        ->and($fire['progressPct'])->toBe(50.0)
+        ->and($fire['avgMonthlyContribution'])->toBe(6666.67)
+        ->and($fire['yearsToFi'])->toBe(7);
+
+    Carbon::setTestNow();
+});
+
+test('fire progress is null years away when contributions never reach the target', function () {
+    Carbon::setTestNow(Carbon::parse('2026-08-05'));
+
+    $user = User::factory()->create();
+    Setting::create([
+        'user_id' => $user->id, 'theme' => 'ocean', 'budget_cycle_days' => 30,
+        'fi_number' => 100000000, 'fi_expected_return_rate' => 0,
+    ]);
+    Account::factory()->investment()->for($user)->create(['balance' => 1000, 'cost_basis' => 1000]);
+
+    $fire = app(TrajectoryReportService::class)->investmentsSummary($user)['fire'];
+
+    expect($fire['available'])->toBeTrue()
+        ->and($fire['yearsToFi'])->toBeNull();
+
+    Carbon::setTestNow();
+});
+
+test('fire progress is unavailable without a configured fi number', function () {
+    Carbon::setTestNow(Carbon::parse('2026-08-05'));
+
+    $user = User::factory()->create();
+    Account::factory()->investment()->for($user)->create(['balance' => 1000, 'cost_basis' => 1000]);
+
+    $fire = app(TrajectoryReportService::class)->investmentsSummary($user)['fire'];
+
+    expect($fire['available'])->toBeFalse()
+        ->and($fire['reason'])->toBeString();
+
+    Carbon::setTestNow();
+});
+
+test('investments summary is unavailable with no investment accounts', function () {
+    $user = User::factory()->create();
+    Account::factory()->for($user)->create(['type' => 'cash']);
+
+    $result = app(TrajectoryReportService::class)->investmentsSummary($user);
+
+    expect($result['available'])->toBeFalse()
+        ->and($result['reason'])->toBeString();
+});

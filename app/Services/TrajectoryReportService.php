@@ -609,4 +609,145 @@ class TrajectoryReportService
 
         return ['available' => true, 'trend' => $trend];
     }
+
+    /**
+     * @return array<string, mixed>
+     */
+    public function investmentsSummary(User $user): array
+    {
+        $accounts = $user->accounts()->where('type', 'investment')->orderBy('name')->get();
+
+        if ($accounts->isEmpty()) {
+            return [
+                'available' => false,
+                'reason' => 'No investment accounts yet — add one to track growth toward financial independence.',
+            ];
+        }
+
+        $totalValue = round((float) $accounts->sum('balance'), 2);
+        $costBasisComplete = $accounts->every(fn (Account $account) => $account->cost_basis !== null);
+        $totalCostBasis = round((float) $accounts->sum('cost_basis'), 2);
+
+        $gainLoss = $costBasisComplete ? round($totalValue - $totalCostBasis, 2) : null;
+        $gainLossPct = $costBasisComplete && $totalCostBasis > 0
+            ? round(($totalValue - $totalCostBasis) / $totalCostBasis * 100, 1)
+            : null;
+
+        $vehicles = $accounts->map(function (Account $account) use ($totalValue) {
+            $value = round((float) $account->balance, 2);
+            $costBasis = $account->cost_basis !== null ? round((float) $account->cost_basis, 2) : null;
+
+            return [
+                'id' => $account->id,
+                'name' => $account->name,
+                'institution' => $account->institution,
+                'value' => $value,
+                'costBasis' => $costBasis,
+                'gainLoss' => $costBasis !== null ? round($value - $costBasis, 2) : null,
+                'allocationPct' => $totalValue > 0 ? round($value / $totalValue * 100, 1) : 0.0,
+            ];
+        })->values()->all();
+
+        $accountIds = $accounts->pluck('id');
+        $contributionsThisMonth = $this->investmentContributions($user, $accountIds, Carbon::now()->startOfMonth());
+
+        $setting = $user->setting;
+        $target = $setting?->investment_monthly_contribution_target !== null
+            ? round((float) $setting->investment_monthly_contribution_target, 2)
+            : null;
+
+        $trailing = array_map(
+            fn (Carbon $month) => $this->investmentContributions($user, $accountIds, $month),
+            $this->monthWindow(3),
+        );
+        $avgMonthlyContribution = round(array_sum($trailing) / max(1, count($trailing)), 2);
+
+        return [
+            'available' => true,
+            'totalValue' => $totalValue,
+            'totalCostBasis' => $totalCostBasis,
+            'costBasisComplete' => $costBasisComplete,
+            'gainLoss' => $gainLoss,
+            'gainLossPct' => $gainLossPct,
+            'contributionsThisMonth' => $contributionsThisMonth,
+            'contributionTarget' => $target,
+            'contributionProgressPct' => $target !== null && $target > 0
+                ? round($contributionsThisMonth / $target * 100, 1)
+                : null,
+            'vehicles' => $vehicles,
+            'fire' => $this->fireSection($user, $totalValue, $avgMonthlyContribution),
+        ];
+    }
+
+    /**
+     * Transfers into the given investment accounts within one calendar month.
+     *
+     * @param  \Illuminate\Support\Collection<int, int>  $accountIds
+     */
+    protected function investmentContributions(User $user, Collection $accountIds, Carbon $month): float
+    {
+        return round((float) $user->transactions()
+            ->where('type', 'transfer')
+            ->whereIn('to_account_id', $accountIds)
+            ->whereBetween('transacted_at', [
+                $month->copy()->startOfMonth()->toDateString(),
+                $month->copy()->endOfMonth()->toDateString(),
+            ])
+            ->sum('amount'), 2);
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    protected function fireSection(User $user, float $totalValue, float $avgMonthlyContribution): array
+    {
+        $setting = $user->setting;
+        $rate = (float) ($setting?->fi_expected_return_rate ?? 6.0) / 100;
+
+        if ($setting?->fi_number === null) {
+            return [
+                'available' => false,
+                'reason' => 'Set your FI number in settings to track progress toward financial independence.',
+                'fiNumber' => null,
+                'progressPct' => null,
+                'expectedReturnRate' => round($rate * 100, 2),
+                'avgMonthlyContribution' => $avgMonthlyContribution,
+                'yearsToFi' => null,
+            ];
+        }
+
+        $fiNumber = round((float) $setting->fi_number, 2);
+
+        return [
+            'available' => true,
+            'fiNumber' => $fiNumber,
+            'progressPct' => $fiNumber > 0 ? round($totalValue / $fiNumber * 100, 1) : null,
+            'expectedReturnRate' => round($rate * 100, 2),
+            'avgMonthlyContribution' => $avgMonthlyContribution,
+            'yearsToFi' => $this->yearsToFinancialIndependence($totalValue, $avgMonthlyContribution * 12, $rate, $fiNumber),
+        ];
+    }
+
+    /**
+     * First whole year t (1..100) where the growing-annuity future value reaches the FI number:
+     * FV(t) = P(1+r)^t + C((1+r)^t - 1)/r, or P + Ct when r is zero.
+     */
+    protected function yearsToFinancialIndependence(float $present, float $annualContribution, float $rate, float $target): ?int
+    {
+        if ($present >= $target) {
+            return 0;
+        }
+
+        for ($year = 1; $year <= 100; $year++) {
+            $futureValue = $rate == 0.0
+                ? $present + $annualContribution * $year
+                : $present * (1 + $rate) ** $year + $annualContribution * (((1 + $rate) ** $year) - 1) / $rate;
+
+            if ($futureValue >= $target) {
+                return $year;
+            }
+        }
+
+        return null;
+    }
 }
