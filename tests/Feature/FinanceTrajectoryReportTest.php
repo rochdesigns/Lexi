@@ -1,7 +1,9 @@
 <?php
 
 use App\Models\Account;
+use App\Models\Debt;
 use App\Models\Setting;
+use App\Models\Transaction;
 use App\Models\User;
 
 test('settings store financial independence planning fields', function () {
@@ -51,4 +53,24 @@ test('accounts store cost basis and emergency fund flag', function () {
         ->and($investment->is_emergency_fund)->toBeFalse()
         ->and($emergency->is_emergency_fund)->toBeTrue()
         ->and($emergency->type)->toBe('cash');
+});
+
+test('a transaction can be linked to a debt and is unlinked when the debt is deleted', function () {
+    $user = User::factory()->create();
+    $account = Account::factory()->for($user)->create();
+    $debt = Debt::factory()->for($user)->create();
+
+    $transaction = Transaction::factory()->for($user)->create([
+        'account_id' => $account->id,
+        'debt_id' => $debt->id,
+        'type' => 'expense',
+        'amount' => 500,
+    ]);
+
+    expect($transaction->fresh()->debt->id)->toBe($debt->id)
+        ->and($debt->transactions()->pluck('id')->all())->toBe([$transaction->id]);
+
+    $debt->delete();
+
+    expect($transaction->fresh()->debt_id)->toBeNull();
 });

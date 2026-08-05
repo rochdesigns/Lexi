@@ -12,7 +12,7 @@ class Transaction extends Model
     /** @use HasFactory<TransactionFactory> */
     use HasFactory;
 
-    protected $fillable = ['user_id', 'account_id', 'to_account_id', 'budget_category_id', 'sinking_fund_id', 'goal_id', 'type', 'amount', 'merchant', 'transacted_at'];
+    protected $fillable = ['user_id', 'account_id', 'to_account_id', 'budget_category_id', 'sinking_fund_id', 'goal_id', 'debt_id', 'type', 'amount', 'merchant', 'transacted_at'];
 
     protected $casts = [
         'amount' => 'decimal:2',
@@ -47,5 +47,10 @@ class Transaction extends Model
     public function goal(): BelongsTo
     {
         return $this->belongsTo(Goal::class);
+    }
+
+    public function debt(): BelongsTo
+    {
+        return $this->belongsTo(Debt::class);
     }
 }
