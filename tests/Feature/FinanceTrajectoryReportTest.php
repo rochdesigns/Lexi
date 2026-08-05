@@ -1100,3 +1100,37 @@ test('trajectory page exposes every field the debt section renders', function ()
 
     Carbon::setTestNow();
 });
+
+test('trajectory page exposes every field the savings and investment sections render', function () {
+    Carbon::setTestNow(Carbon::parse('2026-08-05'));
+
+    $user = User::factory()->create();
+    $user->markEmailAsVerified();
+    Setting::create([
+        'user_id' => $user->id, 'theme' => 'ocean', 'budget_cycle_days' => 30,
+        'fi_number' => 25000000, 'fi_expected_return_rate' => 6,
+        'emergency_fund_target_months' => 6, 'investment_monthly_contribution_target' => 15000,
+    ]);
+
+    Account::factory()->emergencyFund()->for($user)->create(['balance' => 90000]);
+    Account::factory()->investment()->for($user)->create(['name' => 'Index Fund', 'balance' => 300000, 'cost_basis' => 250000]);
+    Goal::factory()->for($user)->create(['name' => 'Japan trip', 'target' => 100000, 'saved' => 25000, 'per_month' => 10000, 'by_date' => '2026-12-31']);
+
+    $this->actingAs($user)
+        ->get(route('trajectory'))
+        ->assertInertia(fn ($page) => $page
+            ->where('savings.emergencyFund.available', true)
+            ->where('savings.emergencyFund.targetMonths', 6)
+            ->where('savings.goals.0.name', 'Japan trip')
+            ->where('savings.goals.0.requiredMonthly', 15000)
+            ->where('savings.cashBuffer.available', false)
+            ->where('investments.available', true)
+            ->where('investments.vehicles.0.name', 'Index Fund')
+            ->where('investments.vehicles.0.allocationPct', 100)
+            ->where('investments.contributionTarget', 15000)
+            ->where('investments.fire.available', true)
+            ->where('investments.fire.fiNumber', 25000000)
+        );
+
+    Carbon::setTestNow();
+});

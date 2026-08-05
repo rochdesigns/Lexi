@@ -1,11 +1,18 @@
 <script setup lang="ts">
 import { Head } from '@inertiajs/vue3';
+import AllocationChart from '@/components/trajectory/AllocationChart.vue';
+import CashBufferTrend from '@/components/trajectory/CashBufferTrend.vue';
 import DebtFreeCard from '@/components/trajectory/DebtFreeCard.vue';
 import DebtTable from '@/components/trajectory/DebtTable.vue';
 import DtiCard from '@/components/trajectory/DtiCard.vue';
+import EmergencyFundProgress from '@/components/trajectory/EmergencyFundProgress.vue';
+import FireProgress from '@/components/trajectory/FireProgress.vue';
 import InterestBleedingCard from '@/components/trajectory/InterestBleedingCard.vue';
+import InvestmentContributions from '@/components/trajectory/InvestmentContributions.vue';
+import InvestmentVehicleTable from '@/components/trajectory/InvestmentVehicleTable.vue';
 import NetWorthCard from '@/components/trajectory/NetWorthCard.vue';
 import PrincipalInterestTrend from '@/components/trajectory/PrincipalInterestTrend.vue';
+import SavingsGoalsList from '@/components/trajectory/SavingsGoalsList.vue';
 import UnavailableNote from '@/components/trajectory/UnavailableNote.vue';
 
 export type TrendPoint = { month: string; label: string; value: number };
@@ -46,10 +53,50 @@ export type DebtSummary = {
     debtToIncome: DebtToIncome;
 };
 
+export type EmergencyFund = {
+    available: boolean; reason?: string;
+    balance: number; avgMonthlyExpenses: number;
+    monthsCovered: number | null; targetMonths: number; progressPct: number | null;
+};
+
+export type GoalRow = {
+    id: number; name: string; icon: string; color: string; bg: string;
+    saved: number; target: number; progressPct: number; perMonth: number;
+    byDate: string | null; monthsRemaining: number | null; requiredMonthly: number | null; onTrack: boolean | null;
+};
+
+export type CashBuffer = { available: boolean; reason?: string; trend: TrendPoint[] };
+
+export type SavingsSummary = {
+    available: boolean; reason?: string;
+    emergencyFund: EmergencyFund; goals: GoalRow[]; cashBuffer: CashBuffer;
+};
+
+export type Vehicle = {
+    id: number; name: string; institution: string | null;
+    value: number; costBasis: number | null; gainLoss: number | null; allocationPct: number;
+};
+
+export type Fire = {
+    available: boolean; reason?: string;
+    fiNumber: number | null; progressPct: number | null;
+    expectedReturnRate: number; avgMonthlyContribution: number; yearsToFi: number | null;
+};
+
+export type InvestmentsSummary = {
+    available: boolean; reason?: string;
+    totalValue: number; totalCostBasis: number; costBasisComplete: boolean;
+    gainLoss: number | null; gainLossPct: number | null;
+    contributionsThisMonth: number; contributionTarget: number | null; contributionProgressPct: number | null;
+    vehicles: Vehicle[]; fire: Fire;
+};
+
 defineProps<{
     netWorth: NetWorth;
     extraMonthly: number;
     debt: DebtSummary;
+    savings: SavingsSummary;
+    investments: InvestmentsSummary;
 }>();
 </script>
 
@@ -74,5 +121,27 @@ defineProps<{
             <PrincipalInterestTrend :trend="debt.principalInterestTrend" />
         </template>
         <UnavailableNote v-else :reason="debt.reason" />
+
+        <div class="grid gap-3 lg:grid-cols-2">
+            <EmergencyFundProgress :emergency-fund="savings.emergencyFund" />
+            <SavingsGoalsList :goals="savings.goals" />
+        </div>
+        <CashBufferTrend :cash-buffer="savings.cashBuffer" />
+
+        <template v-if="investments.available">
+            <div class="grid gap-3 lg:grid-cols-2">
+                <InvestmentContributions
+                    :contributions-this-month="investments.contributionsThisMonth"
+                    :contribution-target="investments.contributionTarget"
+                    :contribution-progress-pct="investments.contributionProgressPct"
+                />
+                <FireProgress :fire="investments.fire" :total-value="investments.totalValue" />
+            </div>
+            <div class="grid gap-3 lg:grid-cols-2">
+                <InvestmentVehicleTable :vehicles="investments.vehicles" :cost-basis-complete="investments.costBasisComplete" />
+                <AllocationChart :vehicles="investments.vehicles" />
+            </div>
+        </template>
+        <UnavailableNote v-else :reason="investments.reason" />
     </div>
 </template>
