@@ -4,6 +4,7 @@ use App\Models\Account;
 use App\Models\AccountBalanceSnapshot;
 use App\Models\Debt;
 use App\Models\DebtBalanceSnapshot;
+use App\Models\DebtPayment;
 use App\Models\Setting;
 use App\Models\Transaction;
 use App\Models\User;
@@ -313,4 +314,135 @@ test('savings rate is unavailable with no transactions in the window', function 
         ->and($result['reason'])->toBeString();
 
     Carbon::setTestNow();
+});
+
+test('debt summary sorts by interest rate and projects a debt free date', function () {
+    Carbon::setTestNow(Carbon::parse('2026-08-05'));
+
+    $user = User::factory()->create();
+    Debt::factory()->for($user)->create(['name' => 'Card', 'balance' => 10000, 'per_month' => 1000, 'interest_rate' => 18, 'interest_rate_period' => 'annual']);
+    Debt::factory()->for($user)->create(['name' => 'Loan', 'balance' => 3000, 'per_month' => 1000, 'interest_rate' => 6, 'interest_rate_period' => 'annual']);
+    Debt::factory()->for($user)->create(['name' => 'Friend', 'balance' => 500, 'per_month' => 500, 'interest_rate' => null]);
+
+    $result = app(TrajectoryReportService::class)->debtSummary($user);
+
+    expect($result['available'])->toBeTrue()
+        ->and($result['totalRemaining'])->toBe(13500.0)
+        ->and($result['totalMonthly'])->toBe(2500.0)
+        ->and(array_column($result['debts'], 'name'))->toBe(['Card', 'Loan', 'Friend'])
+        ->and($result['debts'][0]['interestRate'])->toBe(18.0)
+        ->and($result['debts'][2]['interestRate'])->toBeNull()
+        ->and($result['onTrack'])->toBeTrue()
+        ->and($result['debtFreeMonths'])->toBeInt()
+        ->and($result['debtFreeDate'])->toBeString()
+        ->and($result['extraMonthly'])->toBe(0.0);
+
+    Carbon::setTestNow();
+});
+
+test('an extra monthly payment shortens the debt free date avalanche style', function () {
+    Carbon::setTestNow(Carbon::parse('2026-08-05'));
+
+    $user = User::factory()->create();
+    Debt::factory()->for($user)->create(['name' => 'A', 'balance' => 10000, 'per_month' => 1000, 'interest_rate' => null]);
+    Debt::factory()->for($user)->create(['name' => 'B', 'balance' => 3000, 'per_month' => 1000, 'interest_rate' => null]);
+
+    $service = app(TrajectoryReportService::class);
+
+    expect($service->debtSummary($user)['debtFreeMonths'])->toBe(10);
+
+    $boosted = $service->debtSummary($user, 1000.0);
+
+    expect($boosted['extraMonthly'])->toBe(1000.0)
+        ->and($boosted['debtFreeMonths'])->toBe(5)
+        ->and($boosted['baselineDebtFreeMonths'])->toBe(10)
+        ->and($boosted['monthsSaved'])->toBe(5);
+
+    Carbon::setTestNow();
+});
+
+test('a debt whose payment cannot cover its interest is reported as not on track', function () {
+    Carbon::setTestNow(Carbon::parse('2026-08-05'));
+
+    $user = User::factory()->create();
+    Debt::factory()->for($user)->create(['balance' => 100000, 'per_month' => 100, 'interest_rate' => 24, 'interest_rate_period' => 'annual']);
+
+    $result = app(TrajectoryReportService::class)->debtSummary($user);
+
+    expect($result['onTrack'])->toBeFalse()
+        ->and($result['debtFreeMonths'])->toBeNull()
+        ->and($result['debtFreeDate'])->toBeNull()
+        ->and($result['debts'][0]['months'])->toBeNull();
+
+    Carbon::setTestNow();
+});
+
+test('debt summary reports interest bled this month and year to date with a monthly split trend', function () {
+    Carbon::setTestNow(Carbon::parse('2026-08-05'));
+
+    $user = User::factory()->create();
+    $account = Account::factory()->for($user)->create();
+    $debt = Debt::factory()->for($user)->create(['balance' => 50000, 'per_month' => 5000, 'interest_rate' => null]);
+
+    foreach ([
+        ['2026-08-01', 5000, 4200, 800],
+        ['2026-03-01', 5000, 4500, 500],
+        ['2025-12-01', 5000, 4001, 999],
+    ] as [$date, $amount, $principal, $interest]) {
+        DebtPayment::factory()->create([
+            'user_id' => $user->id, 'debt_id' => $debt->id, 'account_id' => $account->id,
+            'amount' => $amount, 'principal_amount' => $principal, 'interest_amount' => $interest,
+            'paid_at' => $date,
+        ]);
+    }
+
+    $result = app(TrajectoryReportService::class)->debtSummary($user);
+
+    expect($result['interestThisMonth'])->toBe(800.0)
+        ->and($result['interestYearToDate'])->toBe(1300.0)
+        ->and($result['principalInterestTrend'])->toHaveCount(12)
+        ->and($result['principalInterestTrend'][11])->toBe(['month' => '2026-08', 'label' => 'Aug 2026', 'principal' => 4200.0, 'interest' => 800.0]);
+
+    Carbon::setTestNow();
+});
+
+test('debt to income uses recorded payments and falls back to scheduled payments', function () {
+    Carbon::setTestNow(Carbon::parse('2026-08-05'));
+
+    $user = User::factory()->create();
+    $account = Account::factory()->for($user)->create();
+    $debt = Debt::factory()->for($user)->create(['balance' => 50000, 'per_month' => 4000, 'interest_rate' => null]);
+
+    \App\Models\Transaction::factory()->for($user)->create([
+        'account_id' => $account->id, 'type' => 'income', 'amount' => 50000, 'transacted_at' => '2026-08-01',
+    ]);
+
+    $estimated = app(TrajectoryReportService::class)->debtSummary($user)['debtToIncome'];
+
+    expect($estimated['isEstimated'])->toBeTrue()
+        ->and($estimated['monthlyDebtPayments'])->toBe(4000.0)
+        ->and($estimated['ratio'])->toBe(8.0);
+
+    DebtPayment::factory()->create([
+        'user_id' => $user->id, 'debt_id' => $debt->id, 'account_id' => $account->id,
+        'amount' => 5000, 'principal_amount' => 5000, 'interest_amount' => 0, 'paid_at' => '2026-08-02',
+    ]);
+
+    $actual = app(TrajectoryReportService::class)->debtSummary($user)['debtToIncome'];
+
+    expect($actual['isEstimated'])->toBeFalse()
+        ->and($actual['monthlyDebtPayments'])->toBe(5000.0)
+        ->and($actual['ratio'])->toBe(10.0)
+        ->and($actual['trend'])->toHaveCount(6);
+
+    Carbon::setTestNow();
+});
+
+test('debt summary is unavailable with no outstanding debts', function () {
+    $user = User::factory()->create();
+
+    $result = app(TrajectoryReportService::class)->debtSummary($user);
+
+    expect($result['available'])->toBeFalse()
+        ->and($result['reason'])->toBeString();
 });

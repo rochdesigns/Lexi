@@ -3,7 +3,9 @@
 namespace App\Services;
 
 use App\Models\AccountBalanceSnapshot;
+use App\Models\Debt;
 use App\Models\DebtBalanceSnapshot;
+use App\Models\DebtPayment;
 use App\Models\User;
 use Carbon\Carbon;
 use Illuminate\Support\Collection;
@@ -216,5 +218,238 @@ class TrajectoryReportService
         }
 
         return $totals;
+    }
+
+    /**
+     * Generalized amortization simulation, extracted from ReportController::computePayoff().
+     *
+     * Each active debt pays its own perMonth every month; the whole $extraMonthly is applied
+     * avalanche-style to the highest-rate active debt, re-chosen each month. A debt whose
+     * allocated payment cannot cover its own accrued interest is dropped as not-on-track.
+     *
+     * @param  list<array{balance: float, perMonth: float, monthlyRate: float}>  $debts
+     * @return array{months: int|null, onTrack: bool, perDebtMonths: array<int, int|null>}
+     */
+    public function simulatePayoff(array $debts, float $extraMonthly = 0.0): array
+    {
+        $state = [];
+
+        foreach ($debts as $key => $debt) {
+            $state[$key] = [
+                'balance' => (float) $debt['balance'],
+                'perMonth' => (float) $debt['perMonth'],
+                'monthlyRate' => (float) $debt['monthlyRate'],
+                'months' => (float) $debt['balance'] <= 0 ? 0 : null,
+                'onTrack' => true,
+            ];
+        }
+
+        $months = 0;
+
+        while ($months < 600) {
+            $active = array_keys(array_filter($state, fn (array $debt) => $debt['onTrack'] && $debt['balance'] > 0));
+
+            if ($active === []) {
+                break;
+            }
+
+            usort($active, fn (int $a, int $b) => $state[$b]['monthlyRate'] <=> $state[$a]['monthlyRate']);
+            $target = $active[0];
+            $months++;
+
+            foreach ($active as $key) {
+                $payment = $state[$key]['perMonth'] + ($key === $target ? $extraMonthly : 0.0);
+                $interest = $state[$key]['balance'] * $state[$key]['monthlyRate'];
+
+                if ($payment <= $interest) {
+                    $state[$key]['onTrack'] = false;
+
+                    continue;
+                }
+
+                $state[$key]['balance'] = $state[$key]['balance'] + $interest - $payment;
+
+                if ($state[$key]['balance'] <= 0) {
+                    $state[$key]['balance'] = 0.0;
+                    $state[$key]['months'] = $months;
+                }
+            }
+        }
+
+        $perDebtMonths = [];
+        $allCleared = true;
+        $longest = 0;
+
+        foreach ($state as $key => $debt) {
+            $cleared = $debt['onTrack'] && $debt['months'] !== null;
+            $perDebtMonths[$key] = $cleared ? $debt['months'] : null;
+
+            if (! $cleared) {
+                $allCleared = false;
+
+                continue;
+            }
+
+            $longest = max($longest, (int) $debt['months']);
+        }
+
+        return [
+            'months' => $allCleared ? $longest : null,
+            'onTrack' => $allCleared,
+            'perDebtMonths' => $perDebtMonths,
+        ];
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    public function debtSummary(User $user, ?float $extraMonthly = null): array
+    {
+        $debts = $user->debts()->where('balance', '>', 0)->orderBy('position')->orderBy('id')->get();
+
+        if ($debts->isEmpty()) {
+            return [
+                'available' => false,
+                'reason' => 'No outstanding debts — nothing is accruing interest right now.',
+            ];
+        }
+
+        $extra = max(0.0, (float) ($extraMonthly ?? 0.0));
+        $today = Carbon::now()->startOfDay();
+
+        $sorted = $debts
+            ->sortByDesc(fn (Debt $debt) => $debt->interest_rate === null ? -1.0 : (float) $debt->interest_rate)
+            ->values();
+
+        $inputs = $sorted->map(fn (Debt $debt) => [
+            'balance' => (float) $debt->balance,
+            'perMonth' => (float) $debt->per_month,
+            'monthlyRate' => $this->monthlyRate($debt),
+        ])->all();
+
+        $baseline = $this->simulatePayoff($inputs, 0.0);
+        $projected = $extra > 0.0 ? $this->simulatePayoff($inputs, $extra) : $baseline;
+
+        $rows = $sorted->values()->map(function (Debt $debt, int $index) use ($projected, $today) {
+            $months = $projected['perDebtMonths'][$index] ?? null;
+
+            return [
+                'id' => $debt->id,
+                'name' => $debt->name,
+                'icon' => $debt->icon,
+                'color' => $debt->color,
+                'bg' => $debt->bg,
+                'balance' => round((float) $debt->balance, 2),
+                'perMonth' => round((float) $debt->per_month, 2),
+                'interestRate' => $debt->interest_rate !== null ? (float) $debt->interest_rate : null,
+                'interestRatePeriod' => $debt->interest_rate_period ?? 'annual',
+                'months' => $months,
+                'payoffDate' => $months !== null ? $today->copy()->addMonthsNoOverflow($months)->format('M Y') : null,
+            ];
+        })->all();
+
+        $thisMonth = Carbon::now()->startOfMonth();
+        $paymentsThisMonth = $this->debtPaymentTotals($user, $thisMonth);
+
+        $interestYearToDate = round((float) DebtPayment::where('user_id', $user->id)
+            ->whereBetween('paid_at', [Carbon::now()->startOfYear()->toDateString(), Carbon::now()->endOfYear()->toDateString()])
+            ->sum('interest_amount'), 2);
+
+        $splitTrend = [];
+
+        foreach ($this->monthWindow(12) as $month) {
+            $totals = $this->debtPaymentTotals($user, $month);
+            $splitTrend[] = [
+                'month' => $month->format('Y-m'),
+                'label' => $month->format('M Y'),
+                'principal' => $totals['principal'],
+                'interest' => $totals['interest'],
+            ];
+        }
+
+        $scheduledMonthly = round((float) $debts->sum('per_month'), 2);
+        $dtiTrend = [];
+
+        foreach ($this->monthWindow(6) as $month) {
+            $dtiTrend[] = [
+                'month' => $month->format('Y-m'),
+                'label' => $month->format('M Y'),
+                'ratio' => $this->debtToIncomeRatio($user, $month, $scheduledMonthly),
+            ];
+        }
+
+        $currentIncome = $this->monthlyTotals($user, $thisMonth)['income'];
+        $numerator = $paymentsThisMonth['amount'] > 0 ? $paymentsThisMonth['amount'] : $scheduledMonthly;
+
+        return [
+            'available' => true,
+            'totalRemaining' => round((float) $debts->sum('balance'), 2),
+            'totalMonthly' => $scheduledMonthly,
+            'extraMonthly' => round($extra, 2),
+            'debts' => $rows,
+            'debtFreeMonths' => $projected['months'],
+            'debtFreeDate' => $projected['months'] !== null
+                ? $today->copy()->addMonthsNoOverflow($projected['months'])->format('M Y')
+                : null,
+            'onTrack' => $projected['onTrack'],
+            'baselineDebtFreeMonths' => $baseline['months'],
+            'monthsSaved' => $baseline['months'] !== null && $projected['months'] !== null
+                ? $baseline['months'] - $projected['months']
+                : null,
+            'interestThisMonth' => $paymentsThisMonth['interest'],
+            'interestYearToDate' => $interestYearToDate,
+            'principalInterestTrend' => $splitTrend,
+            'debtToIncome' => [
+                'ratio' => $this->debtToIncomeRatio($user, $thisMonth, $scheduledMonthly),
+                'monthlyDebtPayments' => round($numerator, 2),
+                'income' => $currentIncome,
+                'isEstimated' => $paymentsThisMonth['amount'] <= 0,
+                'trend' => $dtiTrend,
+            ],
+        ];
+    }
+
+    protected function monthlyRate(Debt $debt): float
+    {
+        if ($debt->interest_rate === null) {
+            return 0.0;
+        }
+
+        return $debt->interest_rate_period === 'monthly'
+            ? (float) $debt->interest_rate / 100
+            : (float) $debt->interest_rate / 100 / 12;
+    }
+
+    /**
+     * @return array{amount: float, principal: float, interest: float}
+     */
+    protected function debtPaymentTotals(User $user, Carbon $month): array
+    {
+        $rows = DebtPayment::where('user_id', $user->id)
+            ->whereBetween('paid_at', [
+                $month->copy()->startOfMonth()->toDateString(),
+                $month->copy()->endOfMonth()->toDateString(),
+            ])
+            ->get(['amount', 'principal_amount', 'interest_amount']);
+
+        return [
+            'amount' => round((float) $rows->sum('amount'), 2),
+            'principal' => round((float) $rows->sum('principal_amount'), 2),
+            'interest' => round((float) $rows->sum('interest_amount'), 2),
+        ];
+    }
+
+    protected function debtToIncomeRatio(User $user, Carbon $month, float $scheduledMonthly): ?float
+    {
+        $income = $this->monthlyTotals($user, $month)['income'];
+
+        if ($income <= 0) {
+            return null;
+        }
+
+        $paid = $this->debtPaymentTotals($user, $month)['amount'];
+        $numerator = $paid > 0 ? $paid : $scheduledMonthly;
+
+        return round($numerator / $income * 100, 1);
     }
 }
