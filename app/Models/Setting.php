@@ -16,11 +16,19 @@ class Setting extends Model
         'theme',
         'budget_cycle_days',
         'budget_cycle_anchor',
+        'fi_number',
+        'fi_expected_return_rate',
+        'emergency_fund_target_months',
+        'investment_monthly_contribution_target',
     ];
 
     protected $casts = [
         'budget_cycle_days' => 'integer',
         'budget_cycle_anchor' => 'date',
+        'fi_number' => 'decimal:2',
+        'fi_expected_return_rate' => 'decimal:2',
+        'emergency_fund_target_months' => 'integer',
+        'investment_monthly_contribution_target' => 'decimal:2',
     ];
 
     public function user(): BelongsTo
