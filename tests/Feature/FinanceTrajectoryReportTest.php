@@ -713,6 +713,54 @@ test('fire progress projects years to financial independence', function () {
     Carbon::setTestNow();
 });
 
+test('fire progress projects years to financial independence with compounding returns', function () {
+    Carbon::setTestNow(Carbon::parse('2026-08-05'));
+
+    $user = User::factory()->create();
+    Setting::create([
+        'user_id' => $user->id, 'theme' => 'ocean', 'budget_cycle_days' => 30,
+        'fi_number' => 150000, 'fi_expected_return_rate' => 6,
+    ]);
+    Account::factory()->investment()->for($user)->create(['balance' => 100000, 'cost_basis' => 100000]);
+
+    $fire = app(TrajectoryReportService::class)->investmentsSummary($user)['fire'];
+
+    // No transfers into the investment account in the trailing 3 months, so the
+    // average monthly contribution — and therefore the annuity contribution C — is 0.
+    // FV(t) reduces to pure compounding: FV(t) = P(1+r)^t = 100000 * 1.06^t.
+    // 1.06^6 = 1.418519112256      -> FV(6) = 141,851.91 <  150,000.
+    // 1.06^7 = 1.50363025899136    -> FV(7) = 150,363.03 >= 150,000.
+    // First year the target is reached is t = 7.
+    expect($fire['available'])->toBeTrue()
+        ->and($fire['fiNumber'])->toBe(150000.0)
+        ->and($fire['expectedReturnRate'])->toBe(6.0)
+        ->and($fire['avgMonthlyContribution'])->toBe(0.0)
+        ->and($fire['progressPct'])->toBe(66.7)
+        ->and($fire['yearsToFi'])->toBe(7);
+
+    Carbon::setTestNow();
+});
+
+test('fire progress returns zero years when already at the fi number', function () {
+    Carbon::setTestNow(Carbon::parse('2026-08-05'));
+
+    $user = User::factory()->create();
+    Setting::create([
+        'user_id' => $user->id, 'theme' => 'ocean', 'budget_cycle_days' => 30,
+        'fi_number' => 500000, 'fi_expected_return_rate' => 0,
+    ]);
+    Account::factory()->investment()->for($user)->create(['balance' => 500000, 'cost_basis' => 500000]);
+
+    $fire = app(TrajectoryReportService::class)->investmentsSummary($user)['fire'];
+
+    expect($fire['available'])->toBeTrue()
+        ->and($fire['fiNumber'])->toBe(500000.0)
+        ->and($fire['progressPct'])->toBe(100.0)
+        ->and($fire['yearsToFi'])->toBe(0);
+
+    Carbon::setTestNow();
+});
+
 test('fire progress is null years away when contributions never reach the target', function () {
     Carbon::setTestNow(Carbon::parse('2026-08-05'));
 
