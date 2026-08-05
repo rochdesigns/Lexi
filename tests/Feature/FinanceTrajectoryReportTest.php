@@ -74,3 +74,33 @@ test('a transaction can be linked to a debt and is unlinked when the debt is del
 
     expect($transaction->fresh()->debt_id)->toBeNull();
 });
+
+test('debt payments record the principal and interest split and cascade with their transaction', function () {
+    $user = User::factory()->create();
+    $account = Account::factory()->for($user)->create();
+    $debt = Debt::factory()->for($user)->create();
+    $transaction = Transaction::factory()->for($user)->create([
+        'account_id' => $account->id,
+        'debt_id' => $debt->id,
+    ]);
+
+    $payment = \App\Models\DebtPayment::create([
+        'user_id' => $user->id,
+        'debt_id' => $debt->id,
+        'transaction_id' => $transaction->id,
+        'account_id' => $account->id,
+        'amount' => 5000,
+        'principal_amount' => 4200,
+        'interest_amount' => 800,
+        'paid_at' => '2026-08-01',
+    ]);
+
+    expect((float) $payment->fresh()->principal_amount)->toBe(4200.0)
+        ->and($payment->fresh()->paid_at->toDateString())->toBe('2026-08-01')
+        ->and($debt->debtPayments()->count())->toBe(1)
+        ->and($payment->transaction->id)->toBe($transaction->id);
+
+    $transaction->delete();
+
+    expect(\App\Models\DebtPayment::find($payment->id))->toBeNull();
+});
