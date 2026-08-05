@@ -1071,3 +1071,32 @@ test('trajectory page passes a renderable net worth trend to the front end', fun
 
     Carbon::setTestNow();
 });
+
+test('trajectory page exposes every field the debt section renders', function () {
+    Carbon::setTestNow(Carbon::parse('2026-08-05'));
+
+    $user = User::factory()->create();
+    $user->markEmailAsVerified();
+    $account = Account::factory()->for($user)->create();
+    $debt = Debt::factory()->for($user)->create(['name' => 'Card', 'balance' => 10000, 'per_month' => 1000, 'interest_rate' => 18]);
+
+    DebtPayment::factory()->create([
+        'user_id' => $user->id, 'debt_id' => $debt->id, 'account_id' => $account->id,
+        'amount' => 1000, 'principal_amount' => 850, 'interest_amount' => 150, 'paid_at' => '2026-08-02',
+    ]);
+
+    $this->actingAs($user)
+        ->get(route('trajectory'))
+        ->assertInertia(fn ($page) => $page
+            ->where('debt.available', true)
+            ->where('debt.debts.0.name', 'Card')
+            ->where('debt.debts.0.interestRate', 18)
+            ->where('debt.interestThisMonth', 150)
+            ->where('debt.interestYearToDate', 150)
+            ->has('debt.principalInterestTrend', 12)
+            ->has('debt.debtToIncome.trend', 6)
+            ->has('debt.debtFreeDate')
+        );
+
+    Carbon::setTestNow();
+});
