@@ -211,15 +211,21 @@ class DatabaseSeeder extends Seeder
             $month = $today->copy()->startOfMonth()->subMonths($offset);
             $monthEnd = $month->copy()->endOfMonth()->min($today);
 
+            // Small month-to-month wobble (raises/bonuses, seasonal costs) keyed on $offset —
+            // same idea as the balance decay below — so income and spending trends aren't
+            // perfectly flat across the 12 months.
+            $income = round(85000.00 * (1 + 0.04 * sin($offset * 0.85)), 2);
+            $livingCosts = round(42000.00 * (1 + 0.06 * cos($offset * 0.71)), 2);
+
             Transaction::create([
                 'user_id' => $user->id, 'account_id' => $checking->id, 'type' => 'income',
-                'amount' => 85000.00, 'merchant' => 'Salary',
+                'amount' => $income, 'merchant' => 'Salary',
                 'transacted_at' => $month->copy()->startOfMonth()->toDateString(),
             ]);
 
             Transaction::create([
                 'user_id' => $user->id, 'account_id' => $checking->id, 'type' => 'expense',
-                'amount' => 42000.00, 'merchant' => 'Living costs',
+                'amount' => $livingCosts, 'merchant' => 'Living costs',
                 'transacted_at' => $month->copy()->startOfMonth()->addDays(9)->toDateString(),
             ]);
 
@@ -231,9 +237,24 @@ class DatabaseSeeder extends Seeder
 
             foreach ($debts as $debt) {
                 $paidAt = $month->copy()->startOfMonth()->addDays(($debt->due_day ?? 15) - 1);
-                $amount = (float) $debt->per_month;
-                $interest = round($amount * ((float) $debt->interest_rate / 100) / 12 * 12, 2);
-                $interest = round(min($interest, $amount * 0.35), 2);
+
+                // Balance owed as of this month, interpolated linearly between the debt's
+                // original amount (12 months ago) and its current balance (today) — the
+                // same trajectory the month-end DebtBalanceSnapshot below records.
+                $balanceAtMonth = (float) $debt->balance + ((float) $debt->original - (float) $debt->balance) * ($offset / 11);
+
+                $monthlyRate = $debt->interest_rate_period === 'monthly'
+                    ? (float) $debt->interest_rate / 100
+                    : (float) $debt->interest_rate / 100 / 12;
+
+                // A small wobble on top of the scheduled payment (occasional round-up or
+                // extra payment), phase-shifted per debt so the three don't move in lockstep.
+                $amount = round((float) $debt->per_month * (1 + 0.04 * sin($offset * 0.6 + $debt->id)), 2);
+
+                // Interest accrues on the declining balance, so it naturally shrinks as the
+                // debt is paid down — the standard amortization curve — instead of being a
+                // constant fraction of the fixed payment.
+                $interest = round(min($balanceAtMonth * $monthlyRate, $amount * 0.9), 2);
 
                 $transaction = Transaction::create([
                     'user_id' => $user->id, 'account_id' => $checking->id, 'debt_id' => $debt->id,
@@ -250,7 +271,7 @@ class DatabaseSeeder extends Seeder
 
                 DebtBalanceSnapshot::create([
                     'user_id' => $user->id, 'debt_id' => $debt->id,
-                    'balance' => round((float) $debt->balance + ((float) $debt->original - (float) $debt->balance) * ($offset / 11), 2),
+                    'balance' => round($balanceAtMonth, 2),
                     'snapshot_date' => $monthEnd->toDateString(),
                 ]);
             }
