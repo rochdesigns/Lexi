@@ -124,7 +124,10 @@ class DatabaseSeeder extends Seeder
         foreach ([
             ['name' => 'Checking', 'institution' => 'BDO', 'last4' => '4821', 'balance' => 2480.00, 'type' => 'cash'],
             ['name' => 'Savings', 'institution' => 'BDO', 'last4' => '3392', 'balance' => 8120.00, 'type' => 'cash'],
-            ['name' => 'Credit card', 'institution' => 'BPI', 'last4' => '7714', 'balance' => -612.00, 'type' => 'credit'],
+            // A credit balance is money owed, and this card is the counterpart of the
+            // 'Credit card' debt linked to it in seedTrajectoryDemoData() — the two must
+            // agree, because Account::syncLinkedDebt() mirrors this balance onto the debt.
+            ['name' => 'Credit card', 'institution' => 'BPI', 'last4' => '7714', 'balance' => 85000.00, 'type' => 'credit'],
         ] as $account) {
             Account::create(array_merge($account, ['user_id' => $user->id]));
         }
@@ -174,7 +177,9 @@ class DatabaseSeeder extends Seeder
         $creditCard = Account::where('user_id', $user->id)->where('name', 'Credit card')->firstOrFail();
 
         $debts = collect([
-            ['name' => 'Credit card', 'icon' => 'credit_card', 'color' => '#c0512c', 'bg' => '#fbe2d6',
+            // Linked to the 'Credit card' account above so the demo exercises
+            // Account::linkedDebt()/syncLinkedDebt() and the net worth double-counting guard.
+            ['name' => 'Credit card', 'icon' => 'credit_card', 'color' => '#c0512c', 'bg' => '#fbe2d6', 'account_id' => $creditCard->id,
                 'balance' => 85000.00, 'original' => 120000.00, 'per_month' => 8000.00, 'interest_rate' => 18.00, 'due_day' => 15],
             ['name' => 'Car loan', 'icon' => 'directions_car', 'color' => '#3f7fb0', 'bg' => '#dcebf5',
                 'balance' => 240000.00, 'original' => 400000.00, 'per_month' => 12000.00, 'interest_rate' => 7.50, 'due_day' => 5],
@@ -201,7 +206,7 @@ class DatabaseSeeder extends Seeder
         $accountBalances = [
             $checking->id => 2480.00,
             $savings->id => 8120.00,
-            $creditCard->id => -612.00,
+            $creditCard->id => 85000.00,
             $emergency->id => 150000.00,
             $indexFund->id => 420000.00,
             $retirement->id => 280000.00,
@@ -234,6 +239,8 @@ class DatabaseSeeder extends Seeder
                 'type' => 'transfer', 'amount' => 12000.00, 'merchant' => 'Index fund top-up',
                 'transacted_at' => $month->copy()->startOfMonth()->addDays(14)->toDateString(),
             ]);
+
+            $cardBalanceAtMonth = null;
 
             foreach ($debts as $debt) {
                 $paidAt = $month->copy()->startOfMonth()->addDays(($debt->due_day ?? 15) - 1);
@@ -274,12 +281,22 @@ class DatabaseSeeder extends Seeder
                     'balance' => round($balanceAtMonth, 2),
                     'snapshot_date' => $monthEnd->toDateString(),
                 ]);
+
+                if ($debt->account_id === $creditCard->id) {
+                    $cardBalanceAtMonth = round($balanceAtMonth, 2);
+                }
             }
 
             foreach ($accountBalances as $accountId => $currentBalance) {
+                // The card mirrors its linked debt rather than following the generic
+                // decay, so the two histories can't drift apart.
+                $balance = $accountId === $creditCard->id && $cardBalanceAtMonth !== null
+                    ? $cardBalanceAtMonth
+                    : round($currentBalance * (1 - 0.02 * $offset), 2);
+
                 AccountBalanceSnapshot::create([
                     'user_id' => $user->id, 'account_id' => $accountId,
-                    'balance' => round($currentBalance * (1 - 0.02 * $offset), 2),
+                    'balance' => $balance,
                     'snapshot_date' => $monthEnd->toDateString(),
                 ]);
             }
