@@ -1,10 +1,14 @@
 <?php
 
 use App\Models\Account;
+use App\Models\AccountBalanceSnapshot;
 use App\Models\Debt;
+use App\Models\DebtBalanceSnapshot;
 use App\Models\Setting;
 use App\Models\Transaction;
 use App\Models\User;
+use App\Services\TrajectoryReportService;
+use Carbon\Carbon;
 
 test('settings store financial independence planning fields', function () {
     $user = User::factory()->create();
@@ -134,4 +138,77 @@ test('balance snapshots are unique per owner per day', function () {
         'balance' => 999,
         'snapshot_date' => '2026-08-01',
     ]))->toThrow(Illuminate\Database\UniqueConstraintViolationException::class);
+});
+
+test('net worth reports the current figure and a monthly snapshot trend', function () {
+    Carbon::setTestNow(Carbon::parse('2026-08-05'));
+
+    $user = User::factory()->create();
+    $account = Account::factory()->for($user)->create(['balance' => 10000, 'type' => 'cash']);
+    $debt = Debt::factory()->for($user)->create(['balance' => 4000]);
+
+    foreach ([['2026-07-31', 8000], ['2026-08-05', 10000]] as [$date, $balance]) {
+        AccountBalanceSnapshot::create([
+            'user_id' => $user->id, 'account_id' => $account->id,
+            'balance' => $balance, 'snapshot_date' => $date,
+        ]);
+    }
+
+    foreach ([['2026-07-31', 5000], ['2026-08-05', 4000]] as [$date, $balance]) {
+        DebtBalanceSnapshot::create([
+            'user_id' => $user->id, 'debt_id' => $debt->id,
+            'balance' => $balance, 'snapshot_date' => $date,
+        ]);
+    }
+
+    $result = app(TrajectoryReportService::class)->netWorth($user);
+
+    expect($result['available'])->toBeTrue()
+        ->and($result['current'])->toBe(6000.0)
+        ->and($result['accountTotal'])->toBe(10000.0)
+        ->and($result['debtTotal'])->toBe(4000.0)
+        ->and($result['trend'])->toHaveCount(2)
+        ->and($result['trend'][0])->toBe(['month' => '2026-07', 'label' => 'Jul 2026', 'value' => 3000.0])
+        ->and($result['trend'][1]['value'])->toBe(6000.0)
+        ->and($result['changeAmount'])->toBe(3000.0)
+        ->and($result['changePct'])->toBe(100.0);
+
+    Carbon::setTestNow();
+});
+
+test('net worth excludes credit accounts that are linked to a debt', function () {
+    Carbon::setTestNow(Carbon::parse('2026-08-05'));
+
+    $user = User::factory()->create();
+    Account::factory()->for($user)->create(['balance' => 10000, 'type' => 'cash']);
+    $card = Account::factory()->for($user)->create(['balance' => 3000, 'type' => 'credit']);
+    Debt::factory()->for($user)->create(['account_id' => $card->id, 'balance' => 3000]);
+
+    $result = app(TrajectoryReportService::class)->netWorth($user);
+
+    expect($result['accountTotal'])->toBe(10000.0)
+        ->and($result['current'])->toBe(7000.0);
+
+    Carbon::setTestNow();
+});
+
+test('net worth is unavailable without at least two months of snapshots but still reports the headline', function () {
+    Carbon::setTestNow(Carbon::parse('2026-08-05'));
+
+    $user = User::factory()->create();
+    $account = Account::factory()->for($user)->create(['balance' => 10000, 'type' => 'cash']);
+
+    AccountBalanceSnapshot::create([
+        'user_id' => $user->id, 'account_id' => $account->id,
+        'balance' => 10000, 'snapshot_date' => '2026-08-05',
+    ]);
+
+    $result = app(TrajectoryReportService::class)->netWorth($user);
+
+    expect($result['available'])->toBeFalse()
+        ->and($result['reason'])->toBeString()
+        ->and($result['current'])->toBe(10000.0)
+        ->and($result['trend'])->toBe([]);
+
+    Carbon::setTestNow();
 });
