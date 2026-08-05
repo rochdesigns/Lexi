@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Models\Account;
 use App\Models\AccountBalanceSnapshot;
+use App\Models\BudgetCategory;
 use App\Models\Debt;
 use App\Models\DebtBalanceSnapshot;
 use App\Models\DebtPayment;
@@ -168,6 +169,93 @@ class TrajectoryReportService
             'rate' => $current['rate'],
             'trend' => $trend,
             'averageRate' => $rates !== [] ? round(array_sum($rates) / count($rates), 1) : null,
+        ];
+    }
+
+    /**
+     * Income, spending and budget pressure for the CURRENT CALENDAR MONTH.
+     *
+     * Deliberately not the Reports period navigator and not Setting::cycleForDate(): the
+     * trajectory report is a long-horizon view, and a stable calendar month keeps every
+     * month-over-month series on this page directly comparable.
+     *
+     * @return array<string, mixed>
+     */
+    public function monthlyFlow(User $user): array
+    {
+        $month = Carbon::now()->startOfMonth();
+        $start = $month->copy()->startOfMonth()->toDateString();
+        $end = $month->copy()->endOfMonth()->toDateString();
+
+        $totals = $this->monthlyTotals($user, $month);
+        $categories = $user->budgetCategories()->orderBy('name')->get();
+
+        if ($totals['income'] <= 0 && $totals['expenses'] <= 0 && $categories->isEmpty()) {
+            return [
+                'available' => false,
+                'reason' => 'Nothing recorded for '.$month->format('F Y').' yet.',
+            ];
+        }
+
+        $budgetTotal = round((float) $categories->sum('limit_amount'), 2);
+
+        $actuals = $user->transactions()
+            ->where('type', 'expense')
+            ->whereNotNull('budget_category_id')
+            ->whereBetween('transacted_at', [$start, $end])
+            ->selectRaw('budget_category_id, SUM(amount) as total')
+            ->groupBy('budget_category_id')
+            ->pluck('total', 'budget_category_id');
+
+        $over = $categories
+            ->filter(fn (BudgetCategory $category) => (float) $category->limit_amount > 0)
+            ->map(function (BudgetCategory $category) use ($actuals) {
+                $limit = round((float) $category->limit_amount, 2);
+                $actual = round((float) ($actuals[$category->id] ?? 0), 2);
+
+                return [
+                    'id' => $category->id,
+                    'name' => $category->name,
+                    'icon' => $category->icon,
+                    'color' => $category->color,
+                    'limit' => $limit,
+                    'actual' => $actual,
+                    'overAmount' => round($actual - $limit, 2),
+                    'overPct' => round(($actual - $limit) / $limit * 100, 1),
+                ];
+            })
+            ->filter(fn (array $row) => $row['overAmount'] > 0)
+            ->sortByDesc('overPct')
+            ->values();
+
+        $top = $over->take(3)->all();
+        $rest = $over->slice(3);
+
+        $fixedBills = round((float) $user->recurringBills()
+            ->whereBetween('last_paid_at', [$start, $end])
+            ->sum('amount'), 2);
+
+        $fixed = round($fixedBills + $this->debtPaymentTotals($user, $month)['amount'], 2);
+        $variable = round(max(0, $totals['expenses'] - $fixed), 2);
+
+        return [
+            'available' => true,
+            'monthLabel' => $month->format('F Y'),
+            'income' => $totals['income'],
+            'expenses' => $totals['expenses'],
+            'net' => round($totals['income'] - $totals['expenses'], 2),
+            'budgetTotal' => $budgetTotal,
+            'budgetUsedPct' => $budgetTotal > 0 ? round($totals['expenses'] / $budgetTotal * 100, 1) : null,
+            'overBudget' => [
+                'top' => $top,
+                'remainingCount' => $rest->count(),
+                'remainingTotal' => round((float) $rest->sum('overAmount'), 2),
+            ],
+            'fixedVsVariable' => [
+                'fixed' => $fixed,
+                'variable' => $variable,
+                'fixedPct' => $totals['expenses'] > 0 ? round($fixed / $totals['expenses'] * 100, 1) : null,
+            ],
         ];
     }
 

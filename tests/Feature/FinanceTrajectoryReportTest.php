@@ -2,10 +2,12 @@
 
 use App\Models\Account;
 use App\Models\AccountBalanceSnapshot;
+use App\Models\BudgetCategory;
 use App\Models\Debt;
 use App\Models\DebtBalanceSnapshot;
 use App\Models\DebtPayment;
 use App\Models\Goal;
+use App\Models\RecurringBill;
 use App\Models\Setting;
 use App\Models\Transaction;
 use App\Models\User;
@@ -801,4 +803,93 @@ test('investments summary is unavailable with no investment accounts', function 
 
     expect($result['available'])->toBeFalse()
         ->and($result['reason'])->toBeString();
+});
+
+test('monthly flow reports income, expenses and budget usage for the calendar month', function () {
+    Carbon::setTestNow(Carbon::parse('2026-08-05'));
+
+    $user = User::factory()->create();
+    $account = Account::factory()->for($user)->create();
+
+    $categories = collect([
+        ['name' => 'Food', 'limit_amount' => 5000, 'spend' => 7500],
+        ['name' => 'Transport', 'limit_amount' => 2000, 'spend' => 4000],
+        ['name' => 'Fun', 'limit_amount' => 1000, 'spend' => 3000],
+        ['name' => 'Misc', 'limit_amount' => 500, 'spend' => 625],
+        ['name' => 'Unbudgeted', 'limit_amount' => 0, 'spend' => 900],
+    ])->map(function (array $row) use ($user, $account) {
+        $category = BudgetCategory::factory()->for($user)->create([
+            'name' => $row['name'], 'limit_amount' => $row['limit_amount'],
+        ]);
+
+        \App\Models\Transaction::factory()->for($user)->create([
+            'account_id' => $account->id, 'budget_category_id' => $category->id,
+            'type' => 'expense', 'amount' => $row['spend'], 'transacted_at' => '2026-08-03',
+        ]);
+
+        return $category;
+    });
+
+    \App\Models\Transaction::factory()->for($user)->create([
+        'account_id' => $account->id, 'type' => 'income', 'amount' => 50000, 'transacted_at' => '2026-08-01',
+    ]);
+
+    $result = app(TrajectoryReportService::class)->monthlyFlow($user);
+
+    expect($result['available'])->toBeTrue()
+        ->and($result['monthLabel'])->toBe('August 2026')
+        ->and($result['income'])->toBe(50000.0)
+        ->and($result['expenses'])->toBe(16025.0)
+        ->and($result['net'])->toBe(33975.0)
+        ->and($result['budgetTotal'])->toBe(8500.0)
+        ->and($result['budgetUsedPct'])->toBe(188.5)
+        ->and(array_column($result['overBudget']['top'], 'name'))->toBe(['Fun', 'Transport', 'Food'])
+        ->and($result['overBudget']['top'][0]['overPct'])->toBe(200.0)
+        ->and($result['overBudget']['top'][0]['overAmount'])->toBe(2000.0)
+        ->and($result['overBudget']['remainingCount'])->toBe(1)
+        ->and($result['overBudget']['remainingTotal'])->toBe(125.0)
+        ->and($categories)->toHaveCount(5);
+
+    Carbon::setTestNow();
+});
+
+test('monthly flow splits spending into fixed and variable', function () {
+    Carbon::setTestNow(Carbon::parse('2026-08-05'));
+
+    $user = User::factory()->create();
+    $account = Account::factory()->for($user)->create();
+    $debt = Debt::factory()->for($user)->create(['balance' => 50000, 'per_month' => 5000, 'interest_rate' => null]);
+
+    \App\Models\Transaction::factory()->for($user)->create([
+        'account_id' => $account->id, 'type' => 'expense', 'amount' => 16025, 'transacted_at' => '2026-08-03',
+    ]);
+
+    RecurringBill::factory()->for($user)->create(['amount' => 2000, 'last_paid_at' => '2026-08-01']);
+    RecurringBill::factory()->for($user)->create(['amount' => 999, 'last_paid_at' => '2026-07-01']);
+
+    DebtPayment::factory()->create([
+        'user_id' => $user->id, 'debt_id' => $debt->id, 'account_id' => $account->id,
+        'amount' => 5000, 'principal_amount' => 5000, 'interest_amount' => 0, 'paid_at' => '2026-08-02',
+    ]);
+
+    $split = app(TrajectoryReportService::class)->monthlyFlow($user)['fixedVsVariable'];
+
+    expect($split['fixed'])->toBe(7000.0)
+        ->and($split['variable'])->toBe(9025.0)
+        ->and($split['fixedPct'])->toBe(43.7);
+
+    Carbon::setTestNow();
+});
+
+test('monthly flow is unavailable with no activity and no budget', function () {
+    Carbon::setTestNow(Carbon::parse('2026-08-05'));
+
+    $user = User::factory()->create();
+
+    $result = app(TrajectoryReportService::class)->monthlyFlow($user);
+
+    expect($result['available'])->toBeFalse()
+        ->and($result['reason'])->toBeString();
+
+    Carbon::setTestNow();
 });
