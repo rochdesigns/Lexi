@@ -23,6 +23,23 @@ use Illuminate\Support\Collection;
 class TrajectoryReportService
 {
     /**
+     * Memoized per-user grouped-query results, populated lazily on first access within
+     * this request. FinanceTrajectoryController calls up to seven of this class's public
+     * methods on one instance per page load, several of which independently ask for the
+     * same (user, month) totals across a 3-, 6-, or 12-month window — without this cache
+     * that fans out into dozens of near-identical per-month queries per request.
+     *
+     * @var array<int, array<string, array{income: float, expenses: float}>>
+     */
+    private array $monthlyTotalsCache = [];
+
+    /** @var array<int, array<string, array{amount: float, principal: float, interest: float}>> */
+    private array $debtPaymentTotalsCache = [];
+
+    /** @var array<string, array<string, float>> */
+    private array $investmentContributionsCache = [];
+
+    /**
      * @return array<string, mixed>
      */
     public function netWorth(User $user): array
@@ -273,18 +290,40 @@ class TrajectoryReportService
      */
     protected function monthlyTotals(User $user, Carbon $month): array
     {
-        $start = $month->copy()->startOfMonth()->toDateString();
-        $end = $month->copy()->endOfMonth()->toDateString();
+        $cache = $this->monthlyTotalsCache[$user->id] ??= $this->groupedMonthlyTotals($user);
+
+        return $cache[$month->format('Y-m')] ?? ['income' => 0.0, 'expenses' => 0.0];
+    }
+
+    /**
+     * Every recent month's income/expense totals in one grouped query. Bounded to the
+     * widest window any caller in this service actually uses (12 months) plus a small
+     * buffer — every current call site looks back from "now", so this covers all of them;
+     * a future caller needing a wider window would need this bound widened too.
+     *
+     * @return array<string, array{income: float, expenses: float}>
+     */
+    private function groupedMonthlyTotals(User $user): array
+    {
+        $windowStart = Carbon::now()->startOfMonth()->subMonths(12)->toDateString();
 
         $rows = $user->transactions()
-            ->whereBetween('transacted_at', [$start, $end])
             ->whereIn('type', ['income', 'expense'])
-            ->get(['type', 'amount']);
+            ->where('transacted_at', '>=', $windowStart)
+            ->selectRaw("strftime('%Y-%m', transacted_at) as month, type, SUM(amount) as total")
+            ->groupBy('month', 'type')
+            ->get();
 
-        return [
-            'income' => round((float) $rows->where('type', 'income')->sum('amount'), 2),
-            'expenses' => round((float) $rows->where('type', 'expense')->sum('amount'), 2),
-        ];
+        $byMonth = [];
+
+        foreach ($rows as $row) {
+            $byMonth[$row->month][$row->type] = round((float) $row->total, 2);
+        }
+
+        return array_map(fn (array $byType) => [
+            'income' => $byType['income'] ?? 0.0,
+            'expenses' => $byType['expense'] ?? 0.0,
+        ], $byMonth);
     }
 
     /**
@@ -559,18 +598,38 @@ class TrajectoryReportService
      */
     protected function debtPaymentTotals(User $user, Carbon $month): array
     {
-        $rows = DebtPayment::where('user_id', $user->id)
-            ->whereBetween('paid_at', [
-                $month->copy()->startOfMonth()->toDateString(),
-                $month->copy()->endOfMonth()->toDateString(),
-            ])
-            ->get(['amount', 'principal_amount', 'interest_amount']);
+        $cache = $this->debtPaymentTotalsCache[$user->id] ??= $this->groupedDebtPaymentTotals($user);
 
-        return [
-            'amount' => round((float) $rows->sum('amount'), 2),
-            'principal' => round((float) $rows->sum('principal_amount'), 2),
-            'interest' => round((float) $rows->sum('interest_amount'), 2),
-        ];
+        return $cache[$month->format('Y-m')] ?? ['amount' => 0.0, 'principal' => 0.0, 'interest' => 0.0];
+    }
+
+    /**
+     * Every recent month's debt payment totals in one grouped query. Same 12-month
+     * bound and rationale as groupedMonthlyTotals().
+     *
+     * @return array<string, array{amount: float, principal: float, interest: float}>
+     */
+    private function groupedDebtPaymentTotals(User $user): array
+    {
+        $windowStart = Carbon::now()->startOfMonth()->subMonths(12)->toDateString();
+
+        $rows = DebtPayment::where('user_id', $user->id)
+            ->where('paid_at', '>=', $windowStart)
+            ->selectRaw("strftime('%Y-%m', paid_at) as month, SUM(amount) as amount, SUM(principal_amount) as principal, SUM(interest_amount) as interest")
+            ->groupBy('month')
+            ->get();
+
+        $byMonth = [];
+
+        foreach ($rows as $row) {
+            $byMonth[$row->month] = [
+                'amount' => round((float) $row->amount, 2),
+                'principal' => round((float) $row->principal, 2),
+                'interest' => round((float) $row->interest, 2),
+            ];
+        }
+
+        return $byMonth;
     }
 
     protected function debtToIncomeRatio(User $user, Carbon $month, float $scheduledMonthly): ?float
@@ -818,14 +877,38 @@ class TrajectoryReportService
      */
     protected function investmentContributions(User $user, Collection $accountIds, Carbon $month): float
     {
-        return round((float) $user->transactions()
+        $cacheKey = $user->id.':'.$accountIds->sort()->values()->implode(',');
+        $cache = $this->investmentContributionsCache[$cacheKey] ??= $this->groupedInvestmentContributions($user, $accountIds);
+
+        return $cache[$month->format('Y-m')] ?? 0.0;
+    }
+
+    /**
+     * Every recent month's investment contribution total in one grouped query. Same
+     * 12-month bound and rationale as groupedMonthlyTotals().
+     *
+     * @param  Collection<int, int>  $accountIds
+     * @return array<string, float>
+     */
+    private function groupedInvestmentContributions(User $user, Collection $accountIds): array
+    {
+        $windowStart = Carbon::now()->startOfMonth()->subMonths(12)->toDateString();
+
+        $rows = $user->transactions()
             ->where('type', 'transfer')
             ->whereIn('to_account_id', $accountIds)
-            ->whereBetween('transacted_at', [
-                $month->copy()->startOfMonth()->toDateString(),
-                $month->copy()->endOfMonth()->toDateString(),
-            ])
-            ->sum('amount'), 2);
+            ->where('transacted_at', '>=', $windowStart)
+            ->selectRaw("strftime('%Y-%m', transacted_at) as month, SUM(amount) as total")
+            ->groupBy('month')
+            ->get();
+
+        $byMonth = [];
+
+        foreach ($rows as $row) {
+            $byMonth[$row->month] = round((float) $row->total, 2);
+        }
+
+        return $byMonth;
     }
 
     /**
