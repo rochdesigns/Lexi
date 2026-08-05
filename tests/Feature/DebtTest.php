@@ -3,8 +3,10 @@
 use App\Models\Account;
 use App\Models\BudgetCategory;
 use App\Models\Debt;
+use App\Models\DebtPayment;
 use App\Models\Transaction;
 use App\Models\User;
+use Carbon\Carbon;
 
 beforeEach(function (): void {
     $this->user = User::factory()->create();
@@ -525,4 +527,79 @@ test('debt index returns account_id and minimum_payment_rate per debt', function
             ->where('debts.0.account_id', $cc->id)
             ->where('debts.0.minimum_payment_rate', 3)
         );
+});
+
+test('make-payment records a debt payment split into principal and interest', function (): void {
+    $account = Account::factory()->for($this->user)->create(['balance' => 100000]);
+    $debt = Debt::factory()->for($this->user)->create([
+        'balance' => 100000,
+        'interest_rate' => 12,
+        'interest_rate_period' => 'annual',
+        'created_at' => Carbon::parse('2026-07-01'),
+    ]);
+
+    $this->post("/debts/{$debt->id}/payment", [
+        'amount' => 5000,
+        'account_id' => $account->id,
+        'transacted_at' => '2026-08-01',
+    ])->assertRedirect();
+
+    $payment = DebtPayment::where('debt_id', $debt->id)->firstOrFail();
+
+    // 100000 * 0.12 * 31/365 = 1019.178... -> 1019.18
+    expect((float) $payment->interest_amount)->toBe(1019.18)
+        ->and((float) $payment->principal_amount)->toBe(3980.82)
+        ->and((float) $payment->amount)->toBe(5000.0)
+        ->and($payment->paid_at->toDateString())->toBe('2026-08-01')
+        ->and($payment->account_id)->toBe($account->id)
+        ->and($payment->user_id)->toBe($this->user->id);
+
+    expect($payment->transaction->debt_id)->toBe($debt->id);
+
+    // Only the principal reduces the debt
+    expect((float) $debt->fresh()->balance)->toBe(96019.18);
+});
+
+test('make-payment with no interest rate books the whole payment as principal', function (): void {
+    $account = Account::factory()->for($this->user)->create(['balance' => 10000]);
+    $debt = Debt::factory()->for($this->user)->create(['balance' => 500, 'interest_rate' => null]);
+
+    $this->post("/debts/{$debt->id}/payment", [
+        'amount' => 200,
+        'account_id' => $account->id,
+        'transacted_at' => '2026-07-21',
+    ])->assertRedirect();
+
+    $payment = DebtPayment::where('debt_id', $debt->id)->firstOrFail();
+
+    expect((float) $payment->interest_amount)->toBe(0.0)
+        ->and((float) $payment->principal_amount)->toBe(200.0)
+        ->and((float) $debt->fresh()->balance)->toBe(300.0);
+});
+
+test('make-payment accrues interest only since the previous payment', function (): void {
+    $account = Account::factory()->for($this->user)->create(['balance' => 100000]);
+    $debt = Debt::factory()->for($this->user)->create([
+        'balance' => 100000,
+        'interest_rate' => 12,
+        'interest_rate_period' => 'annual',
+        'created_at' => Carbon::parse('2026-01-01'),
+    ]);
+
+    DebtPayment::factory()->create([
+        'user_id' => $this->user->id,
+        'debt_id' => $debt->id,
+        'account_id' => $account->id,
+        'paid_at' => '2026-07-01',
+    ]);
+
+    $this->post("/debts/{$debt->id}/payment", [
+        'amount' => 5000,
+        'account_id' => $account->id,
+        'transacted_at' => '2026-08-01',
+    ])->assertRedirect();
+
+    $latest = DebtPayment::where('debt_id', $debt->id)->orderByDesc('paid_at')->first();
+
+    expect((float) $latest->interest_amount)->toBe(1019.18);
 });

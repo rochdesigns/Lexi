@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\Debt;
+use App\Models\DebtPayment;
 use App\Models\Transaction;
 use Carbon\Carbon;
 use Illuminate\Http\RedirectResponse;
@@ -140,30 +141,80 @@ class DebtController extends Controller
             return back()->withErrors(['amount' => 'Payment amount cannot exceed your account balance.']);
         }
 
-        Transaction::create([
+        $paidAt = Carbon::parse($validated['transacted_at'])->startOfDay();
+        $amount = round((float) $validated['amount'], 2);
+
+        $interestAmount = min(round($this->accruedInterest($debt, $paidAt), 2), $amount);
+        $principalAmount = round($amount - $interestAmount, 2);
+
+        $transaction = Transaction::create([
             'user_id' => $user->id,
             'account_id' => $account->id,
             'budget_category_id' => $debt->budget_category_id,
+            'debt_id' => $debt->id,
             'type' => 'expense',
-            'amount' => $validated['amount'],
+            'amount' => $amount,
             'merchant' => $validated['merchant'] ?? $debt->name,
             'transacted_at' => $validated['transacted_at'],
         ]);
 
-        $account->decrement('balance', $validated['amount']);
+        DebtPayment::create([
+            'user_id' => $user->id,
+            'debt_id' => $debt->id,
+            'transaction_id' => $transaction->id,
+            'account_id' => $account->id,
+            'amount' => $amount,
+            'principal_amount' => $principalAmount,
+            'interest_amount' => $interestAmount,
+            'paid_at' => $paidAt->toDateString(),
+        ]);
+
+        $account->decrement('balance', $amount);
 
         if ($debt->account_id) {
             // CC-linked debt: decrement the CC outstanding balance, then sync
             $ccAccount = $user->accounts()->findOrFail($debt->account_id);
-            $ccAccount->decrement('balance', $validated['amount']);
+            $ccAccount->decrement('balance', $amount);
             $ccAccount->refresh()->syncLinkedDebt();
         } else {
-            // Unlinked debt: manually reduce balance
-            $newBalance = max(0, (float) $debt->balance - (float) $validated['amount']);
+            // Unlinked debt: only the principal portion reduces what is owed
+            $newBalance = max(0, round((float) $debt->balance - $principalAmount, 2));
             $debt->update(['balance' => $newBalance]);
         }
 
         return back();
+    }
+
+    /**
+     * Interest accrued on a debt's current balance since its last recorded payment
+     * (or since the debt was created, when it has never been paid).
+     *
+     * annualRate = interest_rate / 100, multiplied by 12 when the stored rate is monthly.
+     * accrued = balance * annualRate * (daysElapsed / 365).
+     */
+    private function accruedInterest(Debt $debt, Carbon $paidAt): float
+    {
+        if ($debt->interest_rate === null || (float) $debt->interest_rate <= 0) {
+            return 0.0;
+        }
+
+        $annualRate = $debt->interest_rate_period === 'monthly'
+            ? (float) $debt->interest_rate / 100 * 12
+            : (float) $debt->interest_rate / 100;
+
+        $lastPaidAt = $debt->debtPayments()->max('paid_at');
+
+        $since = $lastPaidAt !== null
+            ? Carbon::parse($lastPaidAt)->startOfDay()
+            : Carbon::parse($debt->created_at)->startOfDay();
+
+        $days = (int) round(abs($since->diffInDays($paidAt)));
+
+        if ($days <= 0) {
+            return 0.0;
+        }
+
+        return (float) $debt->balance * $annualRate * ($days / 365);
     }
 
     public function destroy(Request $request, Debt $debt): RedirectResponse
