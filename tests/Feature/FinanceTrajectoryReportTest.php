@@ -1,5 +1,6 @@
 <?php
 
+use App\Models\Account;
 use App\Models\Setting;
 use App\Models\User;
 
@@ -33,4 +34,21 @@ test('financial independence fields fall back to sensible defaults', function ()
         ->and((float) $setting->fi_expected_return_rate)->toBe(6.0)
         ->and($setting->emergency_fund_target_months)->toBe(6)
         ->and($setting->investment_monthly_contribution_target)->toBeNull();
+});
+
+test('accounts store cost basis and emergency fund flag', function () {
+    $user = User::factory()->create();
+
+    $investment = Account::factory()->investment()->for($user)->create([
+        'balance' => 120000,
+        'cost_basis' => 100000,
+    ])->fresh();
+
+    $emergency = Account::factory()->emergencyFund()->for($user)->create()->fresh();
+
+    expect((float) $investment->cost_basis)->toBe(100000.0)
+        ->and($investment->type)->toBe('investment')
+        ->and($investment->is_emergency_fund)->toBeFalse()
+        ->and($emergency->is_emergency_fund)->toBeTrue()
+        ->and($emergency->type)->toBe('cash');
 });

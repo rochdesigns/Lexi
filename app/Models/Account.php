@@ -11,9 +11,13 @@ class Account extends Model
 {
     use HasFactory;
 
-    protected $fillable = ['user_id', 'name', 'institution', 'last4', 'balance', 'type'];
+    protected $fillable = ['user_id', 'name', 'institution', 'last4', 'balance', 'cost_basis', 'type', 'is_emergency_fund'];
 
-    protected $casts = ['balance' => 'decimal:2'];
+    protected $casts = [
+        'balance' => 'decimal:2',
+        'cost_basis' => 'decimal:2',
+        'is_emergency_fund' => 'boolean',
+    ];
 
     public function user(): BelongsTo
     {
