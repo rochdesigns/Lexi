@@ -249,3 +249,68 @@ test('net worth omits a month from the trend when the user has debts but no debt
 
     Carbon::setTestNow();
 });
+
+test('savings rate reports the current month and a six month trend', function () {
+    Carbon::setTestNow(Carbon::parse('2026-08-05'));
+
+    $user = User::factory()->create();
+    $account = Account::factory()->for($user)->create();
+
+    $book = function (string $type, float $amount, string $date) use ($user, $account) {
+        \App\Models\Transaction::factory()->for($user)->create([
+            'account_id' => $account->id, 'type' => $type, 'amount' => $amount, 'transacted_at' => $date,
+        ]);
+    };
+
+    $book('income', 50000, '2026-08-02');
+    $book('expense', 30000, '2026-08-03');
+    $book('income', 40000, '2026-07-02');
+    $book('expense', 40000, '2026-07-03');
+
+    $result = app(TrajectoryReportService::class)->savingsRate($user);
+
+    expect($result['available'])->toBeTrue()
+        ->and($result['income'])->toBe(50000.0)
+        ->and($result['expenses'])->toBe(30000.0)
+        ->and($result['net'])->toBe(20000.0)
+        ->and($result['rate'])->toBe(40.0)
+        ->and($result['trend'])->toHaveCount(6)
+        ->and($result['trend'][5])->toBe(['month' => '2026-08', 'label' => 'Aug 2026', 'income' => 50000.0, 'expenses' => 30000.0, 'rate' => 40.0])
+        ->and($result['trend'][4]['rate'])->toBe(0.0)
+        ->and($result['trend'][0]['rate'])->toBeNull()
+        ->and($result['averageRate'])->toBe(20.0);
+
+    Carbon::setTestNow();
+});
+
+test('savings rate is null rather than zero when there is no income this month', function () {
+    Carbon::setTestNow(Carbon::parse('2026-08-05'));
+
+    $user = User::factory()->create();
+    $account = Account::factory()->for($user)->create();
+
+    \App\Models\Transaction::factory()->for($user)->create([
+        'account_id' => $account->id, 'type' => 'expense', 'amount' => 1000, 'transacted_at' => '2026-08-02',
+    ]);
+
+    $result = app(TrajectoryReportService::class)->savingsRate($user);
+
+    expect($result['available'])->toBeTrue()
+        ->and($result['rate'])->toBeNull()
+        ->and($result['expenses'])->toBe(1000.0);
+
+    Carbon::setTestNow();
+});
+
+test('savings rate is unavailable with no transactions in the window', function () {
+    Carbon::setTestNow(Carbon::parse('2026-08-05'));
+
+    $user = User::factory()->create();
+
+    $result = app(TrajectoryReportService::class)->savingsRate($user);
+
+    expect($result['available'])->toBeFalse()
+        ->and($result['reason'])->toBeString();
+
+    Carbon::setTestNow();
+});
