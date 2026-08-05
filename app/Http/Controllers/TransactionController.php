@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\Account;
+use App\Models\DebtPayment;
 use App\Models\Transaction;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -30,6 +31,23 @@ class TransactionController extends Controller
         // Reverse the goal top-up when its transaction is deleted
         if ($transaction->type === 'expense' && $transaction->goal_id) {
             $transaction->goal?->decrement('saved', $transaction->amount);
+        }
+
+        // Reverse the debt side of a debt payment. The DebtPayment row is removed by the
+        // transaction_id foreign key's cascade, so read it before deleting the transaction.
+        if ($transaction->debt_id) {
+            $debtPayment = DebtPayment::where('transaction_id', $transaction->id)->first();
+            $debt = $transaction->debt;
+
+            if ($debt && $debtPayment) {
+                if ($debt->account_id) {
+                    $creditAccount = $debt->account;
+                    $creditAccount?->increment('balance', $debtPayment->amount);
+                    $creditAccount?->refresh()->syncLinkedDebt();
+                } else {
+                    $debt->increment('balance', $debtPayment->principal_amount);
+                }
+            }
         }
 
         $transaction->delete();
