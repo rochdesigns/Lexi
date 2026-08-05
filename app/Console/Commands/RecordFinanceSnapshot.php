@@ -6,6 +6,7 @@ use App\Models\Account;
 use App\Models\AccountBalanceSnapshot;
 use App\Models\Debt;
 use App\Models\DebtBalanceSnapshot;
+use App\Models\DebtPayment;
 use App\Models\User;
 use Carbon\Carbon;
 use Illuminate\Console\Command;
@@ -77,7 +78,11 @@ class RecordFinanceSnapshot extends Command
     }
 
     /**
-     * Signed effect each dated transaction had on this account's balance.
+     * Signed effect each day had on this account's balance.
+     *
+     * Mirrors TransactionController::applyEffect() exactly, including its credit-account
+     * convention: a credit balance is money owed, so an expense increases it and income
+     * (a payment toward the card) decreases it.
      *
      * @return array<string, float>
      */
@@ -95,7 +100,11 @@ class RecordFinanceSnapshot extends Command
             $effect = 0.0;
 
             if ($transaction->account_id === $account->id) {
-                $effect += $transaction->type === 'income' ? $amount : -$amount;
+                $effect += match ($transaction->type) {
+                    'income' => $account->type === 'credit' ? -$amount : $amount,
+                    'transfer' => -$amount,
+                    default => $account->type === 'credit' ? $amount : -$amount,
+                };
             }
 
             if ($transaction->to_account_id === $account->id) {
@@ -103,6 +112,20 @@ class RecordFinanceSnapshot extends Command
             }
 
             $effects[$date] = round(($effects[$date] ?? 0.0) + $effect, 2);
+        }
+
+        // A debt payment against a card-linked debt reduces the card's balance directly
+        // (DebtController::makePayment) without a transaction row pointing at the card,
+        // so it has to be folded in separately.
+        $linkedDebtId = $account->linkedDebt()->value('id');
+
+        if ($linkedDebtId !== null) {
+            $payments = DebtPayment::where('debt_id', $linkedDebtId)->get(['amount', 'paid_at']);
+
+            foreach ($payments as $payment) {
+                $date = $payment->paid_at->toDateString();
+                $effects[$date] = round(($effects[$date] ?? 0.0) - (float) $payment->amount, 2);
+            }
         }
 
         return $effects;
@@ -113,68 +136,52 @@ class RecordFinanceSnapshot extends Command
         $earliest = $today->copy()->subDays($days - 1);
 
         foreach ($user->debts()->get() as $debt) {
-            $history = $this->reconstructDebtHistory($debt, $today);
-            $final = $history[$today->toDateString()] ?? null;
+            $effects = $this->dailyDebtEffects($user, $debt);
+            $running = round((float) $debt->balance, 2);
 
-            if ($final === null || abs($final - (float) $debt->balance) > 1.00) {
-                $this->warn("Skipping debt #{$debt->id} ({$debt->name}): reconstructed balance does not reconcile with the current balance.");
-
-                continue;
-            }
-
-            for ($cursor = $earliest->copy(); $cursor->lte($today); $cursor->addDay()) {
-                $date = $cursor->toDateString();
-
-                if (! array_key_exists($date, $history)) {
-                    continue;
-                }
-
+            for ($cursor = $today->copy(); $cursor->gte($earliest); $cursor->subDay()) {
                 DebtBalanceSnapshot::firstOrCreate(
                     ['debt_id' => $debt->id, 'snapshot_date' => $cursor->copy()],
-                    ['user_id' => $user->id, 'balance' => $history[$date]],
+                    ['user_id' => $user->id, 'balance' => $running],
                 );
+
+                $running = round($running - ($effects[$cursor->toDateString()] ?? 0.0), 2);
             }
         }
     }
 
     /**
-     * Walk forward from the debt's original amount, compounding interest on each monthly
-     * anniversary of its creation date and subtracting recorded payments on their paid_at.
+     * Signed effect each day had on this debt's outstanding balance.
+     *
+     * Anchored on the live balance and walked backward, exactly like backfillAccounts():
+     * the current balance is known-true, so every earlier day is derived from it by
+     * reversing that day's recorded movement. Nothing is inferred from `original` or
+     * `created_at`, and there is no reconciliation gate to fail.
+     *
+     * Two shapes of debt, matching how DebtController::makePayment() moves the balance:
+     *  - Card-linked: `debts.balance` mirrors the credit account (Account::syncLinkedDebt),
+     *    so the account's own daily effects are the debt's daily effects.
+     *  - Standalone: only the principal portion of a payment reduces what is owed. The
+     *    interest portion is already carved out of `principal_amount` when the payment is
+     *    recorded, so reversing principal alone is exact at every interest rate.
      *
      * @return array<string, float>
      */
-    private function reconstructDebtHistory(Debt $debt, Carbon $today): array
+    private function dailyDebtEffects(User $user, Debt $debt): array
     {
-        $monthlyRate = $debt->interest_rate === null ? 0.0
-            : ($debt->interest_rate_period === 'monthly'
-                ? (float) $debt->interest_rate / 100
-                : (float) $debt->interest_rate / 100 / 12);
+        if ($debt->account_id !== null) {
+            $account = $debt->account;
 
-        $start = Carbon::parse($debt->created_at)->startOfDay();
-
-        if ($start->gt($today)) {
-            return [];
+            return $account !== null ? $this->dailyAccountEffects($user, $account) : [];
         }
 
-        $paymentsByDate = $debt->debtPayments()
-            ->get(['amount', 'paid_at'])
-            ->groupBy(fn ($payment) => $payment->paid_at->toDateString())
-            ->map(fn ($group) => (float) $group->sum('amount'));
+        $effects = [];
 
-        $balance = (float) $debt->original;
-        $anniversaryDay = $start->day;
-        $history = [];
-
-        for ($cursor = $start->copy(); $cursor->lte($today); $cursor->addDay()) {
-            if ($monthlyRate > 0 && ! $cursor->isSameDay($start) && $cursor->day === $anniversaryDay) {
-                $balance *= (1 + $monthlyRate);
-            }
-
-            $balance = max(0, $balance - ($paymentsByDate[$cursor->toDateString()] ?? 0.0));
-
-            $history[$cursor->toDateString()] = round($balance, 2);
+        foreach ($debt->debtPayments()->get(['principal_amount', 'paid_at']) as $payment) {
+            $date = $payment->paid_at->toDateString();
+            $effects[$date] = round(($effects[$date] ?? 0.0) - (float) $payment->principal_amount, 2);
         }
 
-        return $history;
+        return $effects;
     }
 }
