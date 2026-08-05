@@ -4,6 +4,8 @@ use App\Models\Account;
 use App\Models\AccountBalanceSnapshot;
 use App\Models\Debt;
 use App\Models\DebtBalanceSnapshot;
+use App\Models\DebtPayment;
+use App\Models\Transaction;
 use App\Models\User;
 use Carbon\Carbon;
 
@@ -62,6 +64,117 @@ test('finance:snapshot keeps each users records separate', function () {
 
     expect(AccountBalanceSnapshot::where('user_id', $alice->id)->count())->toBe(1)
         ->and(AccountBalanceSnapshot::where('user_id', $bob->id)->count())->toBe(1);
+
+    Carbon::setTestNow();
+});
+
+test('finance:snapshot --backfill reconstructs account balances by reversing transactions', function () {
+    Carbon::setTestNow(Carbon::parse('2026-08-05'));
+
+    $user = User::factory()->create();
+    $account = Account::factory()->for($user)->create(['balance' => 5000]);
+
+    Transaction::factory()->for($user)->create([
+        'account_id' => $account->id,
+        'type' => 'expense',
+        'amount' => 1000,
+        'transacted_at' => '2026-08-05',
+    ]);
+
+    Transaction::factory()->for($user)->create([
+        'account_id' => $account->id,
+        'type' => 'income',
+        'amount' => 2000,
+        'transacted_at' => '2026-08-04',
+    ]);
+
+    $this->artisan('finance:snapshot', ['--backfill' => 3])->assertSuccessful();
+
+    $byDate = AccountBalanceSnapshot::where('account_id', $account->id)
+        ->get()
+        ->mapWithKeys(fn ($s) => [$s->snapshot_date->toDateString() => (float) $s->balance]);
+
+    expect($byDate['2026-08-05'])->toBe(5000.0)
+        ->and($byDate['2026-08-04'])->toBe(6000.0)
+        ->and($byDate['2026-08-03'])->toBe(4000.0)
+        ->and($byDate)->toHaveCount(3);
+
+    Carbon::setTestNow();
+});
+
+test('finance:snapshot --backfill leaves existing snapshots untouched', function () {
+    Carbon::setTestNow(Carbon::parse('2026-08-05'));
+
+    $user = User::factory()->create();
+    $account = Account::factory()->for($user)->create(['balance' => 5000]);
+
+    AccountBalanceSnapshot::create([
+        'user_id' => $user->id,
+        'account_id' => $account->id,
+        'balance' => 999,
+        'snapshot_date' => '2026-08-04',
+    ]);
+
+    $this->artisan('finance:snapshot', ['--backfill' => 3])->assertSuccessful();
+
+    expect((float) AccountBalanceSnapshot::whereDate('snapshot_date', '2026-08-04')->value('balance'))->toBe(999.0)
+        ->and(AccountBalanceSnapshot::count())->toBe(3);
+
+    Carbon::setTestNow();
+});
+
+test('finance:snapshot --backfill reconstructs a debt that reconciles with its current balance', function () {
+    Carbon::setTestNow(Carbon::parse('2026-08-05'));
+
+    $user = User::factory()->create();
+    $account = Account::factory()->for($user)->create();
+    $debt = Debt::factory()->for($user)->create([
+        'original' => 100000,
+        'balance' => 90000,
+        'interest_rate' => null,
+        'created_at' => Carbon::parse('2026-06-05'),
+    ]);
+
+    DebtPayment::factory()->create([
+        'user_id' => $user->id,
+        'debt_id' => $debt->id,
+        'account_id' => $account->id,
+        'amount' => 10000,
+        'principal_amount' => 10000,
+        'interest_amount' => 0,
+        'paid_at' => '2026-07-10',
+    ]);
+
+    $this->artisan('finance:snapshot', ['--backfill' => 3])->assertSuccessful();
+
+    $byDate = DebtBalanceSnapshot::where('debt_id', $debt->id)
+        ->get()
+        ->mapWithKeys(fn ($s) => [$s->snapshot_date->toDateString() => (float) $s->balance]);
+
+    expect($byDate)->toHaveCount(3)
+        ->and($byDate['2026-08-05'])->toBe(90000.0)
+        ->and($byDate['2026-08-03'])->toBe(90000.0);
+
+    Carbon::setTestNow();
+});
+
+test('finance:snapshot --backfill skips and warns about a debt that does not reconcile', function () {
+    Carbon::setTestNow(Carbon::parse('2026-08-05'));
+
+    $user = User::factory()->create();
+    Debt::factory()->for($user)->create([
+        'name' => 'Mystery loan',
+        'original' => 100000,
+        'balance' => 12345,
+        'interest_rate' => null,
+        'created_at' => Carbon::parse('2026-06-05'),
+    ]);
+
+    $this->artisan('finance:snapshot', ['--backfill' => 3])
+        ->expectsOutputToContain('Mystery loan')
+        ->assertSuccessful();
+
+    expect(DebtBalanceSnapshot::count())->toBe(0);
 
     Carbon::setTestNow();
 });
