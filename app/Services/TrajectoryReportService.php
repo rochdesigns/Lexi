@@ -838,4 +838,112 @@ class TrajectoryReportService
 
         return null;
     }
+
+    /**
+     * The headline "is my money outrunning my debt?" figure: investment gain net of
+     * contributions, minus the interest bled on debt, for each of the last 12 months.
+     *
+     * @return array<string, mixed>
+     */
+    public function signatureMetric(User $user): array
+    {
+        $investmentIds = $user->accounts()->where('type', 'investment')->pluck('id');
+
+        if ($investmentIds->isEmpty()) {
+            return [
+                'available' => false,
+                'reason' => 'No investment accounts yet — this metric compares investment growth against debt interest.',
+            ];
+        }
+
+        $windowStart = Carbon::now()->startOfMonth()->subMonths(11)->toDateString();
+
+        $snapshots = AccountBalanceSnapshot::where('user_id', $user->id)
+            ->whereIn('account_id', $investmentIds)
+            ->where('snapshot_date', '>=', $windowStart)
+            ->orderBy('snapshot_date')
+            ->get();
+
+        $firstByMonth = $this->firstBalancePerMonth($snapshots, 'account_id');
+        $lastByMonth = $this->lastBalancePerMonth($snapshots, 'account_id');
+
+        $trend = [];
+
+        foreach ($this->monthWindow(12) as $month) {
+            $key = $month->format('Y-m');
+
+            if (! array_key_exists($key, $firstByMonth)) {
+                continue;
+            }
+
+            $gain = round(
+                $lastByMonth[$key] - $firstByMonth[$key] - $this->investmentContributions($user, $investmentIds, $month),
+                2,
+            );
+            $interest = $this->debtPaymentTotals($user, $month)['interest'];
+
+            $trend[] = [
+                'month' => $key,
+                'label' => $month->format('M Y'),
+                'value' => round($gain - $interest, 2),
+                'investmentGain' => $gain,
+                'debtInterest' => $interest,
+            ];
+        }
+
+        if ($trend === []) {
+            return [
+                'available' => false,
+                'reason' => 'No investment balance snapshots recorded yet.',
+            ];
+        }
+
+        $crossedIndex = null;
+
+        for ($index = 1; $index < count($trend); $index++) {
+            if ($trend[$index]['value'] > 0 && $trend[$index - 1]['value'] <= 0) {
+                $crossedIndex = $index;
+
+                break;
+            }
+        }
+
+        return [
+            'available' => true,
+            'currentValue' => $trend[count($trend) - 1]['value'],
+            'trend' => $trend,
+            'crossedZeroMonth' => $crossedIndex !== null ? $trend[$crossedIndex]['month'] : null,
+            'crossedZeroLabel' => $crossedIndex !== null ? $trend[$crossedIndex]['label'] : null,
+        ];
+    }
+
+    /**
+     * Sum of each owner's earliest snapshot within each calendar month.
+     *
+     * @param  Collection<int, AccountBalanceSnapshot|DebtBalanceSnapshot>  $snapshots
+     * @param  'account_id'|'debt_id'  $ownerKey
+     * @return array<string, float>
+     */
+    private function firstBalancePerMonth(Collection $snapshots, string $ownerKey): array
+    {
+        $earliest = [];
+
+        foreach ($snapshots as $snapshot) {
+            $month = $snapshot->snapshot_date->format('Y-m');
+            $owner = $snapshot->{$ownerKey};
+            $date = $snapshot->snapshot_date->toDateString();
+
+            if (! isset($earliest[$month][$owner]) || $earliest[$month][$owner]['date'] > $date) {
+                $earliest[$month][$owner] = ['date' => $date, 'balance' => (float) $snapshot->balance];
+            }
+        }
+
+        $totals = [];
+
+        foreach ($earliest as $month => $owners) {
+            $totals[$month] = round(array_sum(array_column($owners, 'balance')), 2);
+        }
+
+        return $totals;
+    }
 }

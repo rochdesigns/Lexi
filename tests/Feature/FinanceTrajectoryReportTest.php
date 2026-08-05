@@ -893,3 +893,91 @@ test('monthly flow is unavailable with no activity and no budget', function () {
 
     Carbon::setTestNow();
 });
+
+test('signature metric nets investment gain against debt interest each month', function () {
+    Carbon::setTestNow(Carbon::parse('2026-08-05'));
+
+    $user = User::factory()->create();
+    $cash = Account::factory()->for($user)->create(['type' => 'cash', 'balance' => 50000]);
+    $fund = Account::factory()->investment()->for($user)->create(['balance' => 112000, 'cost_basis' => 100000]);
+    $debt = Debt::factory()->for($user)->create(['balance' => 50000, 'per_month' => 5000, 'interest_rate' => null]);
+
+    foreach ([['2026-07-01', 100000], ['2026-07-31', 110000], ['2026-08-01', 110000], ['2026-08-05', 112000]] as [$date, $balance]) {
+        AccountBalanceSnapshot::create([
+            'user_id' => $user->id, 'account_id' => $fund->id, 'balance' => $balance, 'snapshot_date' => $date,
+        ]);
+    }
+
+    \App\Models\Transaction::factory()->for($user)->create([
+        'account_id' => $cash->id, 'to_account_id' => $fund->id,
+        'type' => 'transfer', 'amount' => 4000, 'transacted_at' => '2026-07-15',
+    ]);
+
+    foreach ([['2026-07-05', 1000], ['2026-08-02', 3000]] as [$date, $interest]) {
+        DebtPayment::factory()->create([
+            'user_id' => $user->id, 'debt_id' => $debt->id, 'account_id' => $cash->id,
+            'amount' => 5000 + $interest, 'principal_amount' => 5000, 'interest_amount' => $interest,
+            'paid_at' => $date,
+        ]);
+    }
+
+    $result = app(TrajectoryReportService::class)->signatureMetric($user);
+
+    expect($result['available'])->toBeTrue()
+        ->and($result['trend'])->toHaveCount(2)
+        ->and($result['trend'][0])->toBe([
+            'month' => '2026-07', 'label' => 'Jul 2026',
+            'value' => 5000.0, 'investmentGain' => 6000.0, 'debtInterest' => 1000.0,
+        ])
+        ->and($result['trend'][1]['value'])->toBe(-1000.0)
+        ->and($result['currentValue'])->toBe(-1000.0)
+        ->and($result['crossedZeroMonth'])->toBeNull();
+
+    Carbon::setTestNow();
+});
+
+test('signature metric reports the month it first crossed above zero', function () {
+    Carbon::setTestNow(Carbon::parse('2026-08-05'));
+
+    $user = User::factory()->create();
+    $cash = Account::factory()->for($user)->create(['type' => 'cash']);
+    $fund = Account::factory()->investment()->for($user)->create(['balance' => 110000, 'cost_basis' => 100000]);
+    $debt = Debt::factory()->for($user)->create(['balance' => 50000, 'per_month' => 5000, 'interest_rate' => null]);
+
+    foreach ([['2026-06-01', 100000], ['2026-06-30', 100500], ['2026-07-01', 100500], ['2026-07-31', 110000]] as [$date, $balance]) {
+        AccountBalanceSnapshot::create([
+            'user_id' => $user->id, 'account_id' => $fund->id, 'balance' => $balance, 'snapshot_date' => $date,
+        ]);
+    }
+
+    foreach ([['2026-06-05', 2000], ['2026-07-05', 1000]] as [$date, $interest]) {
+        DebtPayment::factory()->create([
+            'user_id' => $user->id, 'debt_id' => $debt->id, 'account_id' => $cash->id,
+            'amount' => 5000 + $interest, 'principal_amount' => 5000, 'interest_amount' => $interest,
+            'paid_at' => $date,
+        ]);
+    }
+
+    $result = app(TrajectoryReportService::class)->signatureMetric($user);
+
+    expect($result['trend'][0]['value'])->toBe(-1500.0)
+        ->and($result['trend'][1]['value'])->toBe(8500.0)
+        ->and($result['crossedZeroMonth'])->toBe('2026-07')
+        ->and($result['crossedZeroLabel'])->toBe('Jul 2026');
+
+    Carbon::setTestNow();
+});
+
+test('signature metric is unavailable without investment snapshots', function () {
+    Carbon::setTestNow(Carbon::parse('2026-08-05'));
+
+    $user = User::factory()->create();
+    Account::factory()->investment()->for($user)->create(['balance' => 1000, 'cost_basis' => 1000]);
+
+    $result = app(TrajectoryReportService::class)->signatureMetric($user);
+
+    expect($result['available'])->toBeFalse()
+        ->and($result['reason'])->toBeString();
+
+    Carbon::setTestNow();
+});
