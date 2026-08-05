@@ -46,11 +46,36 @@ class BudgetController extends Controller
             ? max(0.0, $cycleBudget - $prevCycleSpent - $saPerMonth)
             : 0.0;
 
-        $readyToAssign = $totalAccountBalance - $totalSaSaved - $cycleBudget + $prevCycleLeftover;
+        $categories = $user->budgetCategories()
+            ->orderBy('name')
+            ->get()
+            ->map(function ($cat) use ($cycleStart, $cycleEnd) {
+                $spent = (float) $cat->transactions()
+                    ->whereDate('transacted_at', '>=', $cycleStart)
+                    ->whereDate('transacted_at', '<=', $cycleEnd)
+                    ->where('type', 'expense')
+                    ->sum('amount');
+
+                return [
+                    'id' => $cat->id,
+                    'name' => $cat->name,
+                    'group' => $cat->group,
+                    'icon' => $cat->icon,
+                    'color' => $cat->color,
+                    'limit_amount' => (float) $cat->limit_amount,
+                    'spent' => $spent,
+                ];
+            });
+
+        // Add back spending within each category's limit so that paying a budgeted expense
+        // doesn't reduce RTA twice (once when the category limit was set, once when paid).
+        $categorySpentOffset = $categories->sum(fn ($cat) => min($cat['spent'], $cat['limit_amount']));
+        $readyToAssign = $totalAccountBalance - $totalSaSaved - $cycleBudget + $categorySpentOffset + $prevCycleLeftover;
 
         $transactions = $user->transactions()
             ->with(['budgetCategory', 'account'])
-            ->whereBetween('transacted_at', [$cycleStart->toDateString(), $cycleEnd->toDateString()])
+            ->whereDate('transacted_at', '>=', $cycleStart)
+            ->whereDate('transacted_at', '<=', $cycleEnd)
             ->orderByDesc('transacted_at')
             ->get();
 
@@ -65,26 +90,6 @@ class BudgetController extends Controller
         $today = Carbon::now()->startOfDay();
         $daysLeft = max(0, (int) $today->diffInDays($cycleEnd->copy()->startOfDay(), false) + 1);
         $dailyBudget = $daysLeft > 0 ? max(0, round($safeToSpend / $daysLeft)) : 0;
-
-        $categories = $user->budgetCategories()
-            ->orderBy('name')
-            ->get()
-            ->map(function ($cat) use ($cycleStart, $cycleEnd) {
-                $spent = (float) $cat->transactions()
-                    ->whereBetween('transacted_at', [$cycleStart->toDateString(), $cycleEnd->toDateString()])
-                    ->where('type', 'expense')
-                    ->sum('amount');
-
-                return [
-                    'id' => $cat->id,
-                    'name' => $cat->name,
-                    'group' => $cat->group,
-                    'icon' => $cat->icon,
-                    'color' => $cat->color,
-                    'limit_amount' => (float) $cat->limit_amount,
-                    'spent' => $spent,
-                ];
-            });
 
         $accounts = $user->accounts()->orderBy('name')->get()->map(fn ($a) => [
             'id' => $a->id,
@@ -155,6 +160,11 @@ class BudgetController extends Controller
                 }
 
                 if (! $dueDate) {
+                    return null;
+                }
+
+                // Skip if already paid this cycle
+                if ($bill->last_paid_at && $bill->last_paid_at->greaterThanOrEqualTo($cycleStart)) {
                     return null;
                 }
 

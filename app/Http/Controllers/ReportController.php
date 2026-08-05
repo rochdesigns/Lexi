@@ -201,30 +201,56 @@ class ReportController extends Controller
             ->all();
     }
 
-    private function computeCashFlow(User $user, string $periodType, Carbon $start, Carbon $end, bool $isCurrent, float $budgetTotal): array
+    /**
+     * @return array<int, array{start: Carbon, end: Carbon, label: string}>
+     */
+    private function makeCashFlowBuckets(string $periodType, Carbon $rangeStart, Carbon $rangeEnd): array
     {
         $buckets = [];
 
         if ($periodType === 'month') {
-            $cursor = $start->copy();
-            while ($cursor->lte($end)) {
+            $cursor = $rangeStart->copy();
+            while ($cursor->lte($rangeEnd)) {
                 $bucketEnd = $cursor->copy()->addDays(6);
-                if ($bucketEnd->gt($end)) {
-                    $bucketEnd = $end->copy();
+                if ($bucketEnd->gt($rangeEnd)) {
+                    $bucketEnd = $rangeEnd->copy();
                 }
                 $buckets[] = ['start' => $cursor->copy(), 'end' => $bucketEnd->copy(), 'label' => $cursor->format('M j')];
                 $cursor = $bucketEnd->copy()->addDay();
             }
         } else {
-            $cursor = $start->copy()->startOfMonth();
-            while ($cursor->lte($end)) {
+            $cursor = $rangeStart->copy()->startOfMonth();
+            while ($cursor->lte($rangeEnd)) {
                 $bucketEnd = $cursor->copy()->endOfMonth();
-                if ($bucketEnd->gt($end)) {
-                    $bucketEnd = $end->copy();
+                if ($bucketEnd->gt($rangeEnd)) {
+                    $bucketEnd = $rangeEnd->copy();
                 }
                 $buckets[] = ['start' => $cursor->copy(), 'end' => $bucketEnd->copy(), 'label' => $cursor->format('M')];
                 $cursor = $cursor->copy()->addMonthNoOverflow()->startOfMonth();
             }
+        }
+
+        return $buckets;
+    }
+
+    private function computeCashFlow(User $user, string $periodType, Carbon $start, Carbon $end, bool $isCurrent, float $budgetTotal): array
+    {
+        $buckets = $this->makeCashFlowBuckets($periodType, $start, $end);
+
+        // When viewing the current, in-progress period, extend the chart one
+        // more period of the same type forward (next month/quarter/year) so
+        // the trend/budget projection lines keep going past the period end
+        // instead of stopping cold. Only ever applied to the current period —
+        // browsing to a past period never previews further into the future.
+        if ($isCurrent) {
+            $extensionStart = $end->copy()->addDay();
+            $extensionEnd = match ($periodType) {
+                'quarter' => $end->copy()->addQuarterNoOverflow()->endOfQuarter(),
+                'year' => $end->copy()->addYear()->endOfYear(),
+                default => $end->copy()->addMonthNoOverflow()->endOfMonth(),
+            };
+
+            $buckets = array_merge($buckets, $this->makeCashFlowBuckets($periodType, $extensionStart, $extensionEnd));
         }
 
         $today = Carbon::now()->startOfDay();
@@ -273,7 +299,8 @@ class ReportController extends Controller
                 ->whereDate('transacted_at', '<=', $today)
                 ->sum('amount');
 
-            $dailyTrendRate = $expensesSoFar / $elapsedDays;
+            $dailyExpenseTrendRate = $expensesSoFar / $elapsedDays;
+            $dailyIncomeTrendRate = $incomeSoFar / $elapsedDays;
             $dailyBudgetRate = $budgetTotal / $totalDays;
 
             $netSoFar = $incomeSoFar - $expensesSoFar;
@@ -300,8 +327,11 @@ class ReportController extends Controller
                     continue;
                 }
 
-                $runningTrend -= $dailyTrendRate * $remainingDays;
-                $runningBudget -= $dailyBudgetRate * $remainingDays;
+                // Both lines assume income keeps arriving at its observed daily pace —
+                // otherwise a long projection window (e.g. a full extra year) reads as
+                // spending draining to a huge negative number with no offsetting income.
+                $runningTrend += ($dailyIncomeTrendRate - $dailyExpenseTrendRate) * $remainingDays;
+                $runningBudget += ($dailyIncomeTrendRate - $dailyBudgetRate) * $remainingDays;
                 $trendLine[] = round($runningTrend, 2);
                 $budgetLine[] = round($runningBudget, 2);
             }

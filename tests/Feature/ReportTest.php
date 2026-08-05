@@ -210,31 +210,88 @@ test('reports cash flow buckets the month weekly with actuals and projections', 
     $this->actingAs($user)
         ->get(route('reports'))
         ->assertInertia(fn ($page) => $page
-            ->has('cashFlow.series', 5)
+            ->has('cashFlow.series', 10)
             ->where('cashFlow.series.0.label', 'Aug 1')
             ->where('cashFlow.series.0.expenses', 750)
             ->where('cashFlow.series.0.net', -750)
             ->where('cashFlow.series.1.expenses', 0)
             ->where('cashFlow.series.3.expenses', null)
             ->where('cashFlow.series.4.expenses', null)
-            ->where('cashFlow.trendLine', [null, null, -1050, -1400, -1550])
-            ->where('cashFlow.budgetLine', [null, null, -1350, -2050, -2350])
+            ->where('cashFlow.series.5.label', 'Sep 1')
+            ->where('cashFlow.series.5.expenses', null)
+            ->where('cashFlow.series.9.label', 'Sep 29')
+            ->where('cashFlow.series.9.expenses', null)
+            ->where('cashFlow.trendLine', [null, null, -1050, -1400, -1550, -1900, -2250, -2600, -2950, -3050])
+            ->where('cashFlow.budgetLine', [null, null, -1350, -2050, -2350, -3050, -3750, -4450, -5150, -5350])
         );
 
     Carbon::setTestNow();
 });
 
-test('reports cash flow buckets a quarter into 3 monthly buckets', function () {
+test('reports cash flow buckets a quarter into 3 monthly buckets, extended one quarter forward', function () {
     Carbon::setTestNow(Carbon::parse('2026-08-15'));
     $user = User::factory()->create();
 
     $this->actingAs($user)
         ->get(route('reports', ['period' => 'quarter']))
         ->assertInertia(fn ($page) => $page
-            ->has('cashFlow.series', 3)
+            ->has('cashFlow.series', 6)
             ->where('cashFlow.series.0.label', 'Jul')
             ->where('cashFlow.series.1.label', 'Aug')
             ->where('cashFlow.series.2.label', 'Sep')
+            ->where('cashFlow.series.3.label', 'Oct')
+            ->where('cashFlow.series.4.label', 'Nov')
+            ->where('cashFlow.series.5.label', 'Dec')
+        );
+
+    Carbon::setTestNow();
+});
+
+test('reports cash flow buckets a year into 12 monthly buckets, extended one year forward', function () {
+    Carbon::setTestNow(Carbon::parse('2026-08-15'));
+    $user = User::factory()->create();
+
+    $this->actingAs($user)
+        ->get(route('reports', ['period' => 'year']))
+        ->assertInertia(fn ($page) => $page
+            ->has('cashFlow.series', 24)
+            ->where('cashFlow.series.0.label', 'Jan')
+            ->where('cashFlow.series.11.label', 'Dec')
+            ->where('cashFlow.series.12.label', 'Jan')
+            ->where('cashFlow.series.23.label', 'Dec')
+        );
+
+    Carbon::setTestNow();
+});
+
+test('reports cash flow does not extend forward when viewing a past month', function () {
+    Carbon::setTestNow(Carbon::parse('2026-08-15'));
+    $user = User::factory()->create();
+
+    $this->actingAs($user)
+        ->get(route('reports', ['period' => 'month', 'date' => '2026-06-01']))
+        ->assertInertia(fn ($page) => $page->has('cashFlow.series', 5));
+
+    Carbon::setTestNow();
+});
+
+test('reports cash flow projections account for income continuing, not just expenses draining', function () {
+    Carbon::setTestNow(Carbon::parse('2026-08-15'));
+    $user = User::factory()->create();
+    $account = Account::factory()->create(['user_id' => $user->id]);
+    BudgetCategory::factory()->create(['user_id' => $user->id, 'limit_amount' => 3100]);
+
+    // 15 elapsed days: income 1500 (100/day) and expenses 750 (50/day) -> net daily
+    // trend rate of +50/day, and a budget daily rate (3100/31=100/day) that exactly
+    // matches the income rate -> budget-line net trend should be flat, not draining.
+    Transaction::factory()->create(['user_id' => $user->id, 'account_id' => $account->id, 'type' => 'income', 'amount' => 1500, 'transacted_at' => '2026-08-05']);
+    Transaction::factory()->create(['user_id' => $user->id, 'account_id' => $account->id, 'type' => 'expense', 'amount' => 750, 'transacted_at' => '2026-08-05']);
+
+    $this->actingAs($user)
+        ->get(route('reports'))
+        ->assertInertia(fn ($page) => $page
+            ->where('cashFlow.trendLine', [null, null, 1050, 1400, 1550, 1900, 2250, 2600, 2950, 3050])
+            ->where('cashFlow.budgetLine', [null, null, 750, 750, 750, 750, 750, 750, 750, 750])
         );
 
     Carbon::setTestNow();

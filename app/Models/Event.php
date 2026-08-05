@@ -6,13 +6,14 @@ use Carbon\Carbon;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\SoftDeletes;
 
 class Event extends Model
 {
-    use HasFactory;
+    use HasFactory, SoftDeletes;
 
     protected $fillable = [
-        'user_id', 'title', 'date', 'time', 'tag', 'color',
+        'user_id', 'title', 'date', 'time', 'end_time', 'tag', 'color', 'source',
         'recurrence_type', 'recurrence_interval', 'recurrence_days', 'recurrence_ends_on',
     ];
 
@@ -147,6 +148,7 @@ class Event extends Model
             'title' => $event->title,
             'date' => $date,
             'time' => $event->time,
+            'end_time' => $event->end_time,
             'tag' => $event->tag,
             'color' => $event->color,
             'bg' => $event->bg,

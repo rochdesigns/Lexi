@@ -62,6 +62,7 @@ Route::middleware(['auth', 'verified'])->group(function (): void {
     Route::post('/recurring-bills', [RecurringBillController::class, 'store'])->name('recurring-bills.store');
     Route::patch('/recurring-bills/{recurringBill}', [RecurringBillController::class, 'update'])->name('recurring-bills.update');
     Route::delete('/recurring-bills/{recurringBill}', [RecurringBillController::class, 'destroy'])->name('recurring-bills.destroy');
+    Route::post('/recurring-bills/{recurringBill}/pay', [RecurringBillController::class, 'pay'])->name('recurring-bills.pay');
     Route::get('/set-asides', [SinkingFundController::class, 'index'])->name('set-asides');
     Route::post('/sinking-funds', [SinkingFundController::class, 'store'])->name('sinking-funds.store');
     Route::patch('/sinking-funds/{sinkingFund}', [SinkingFundController::class, 'update'])->name('sinking-funds.update');

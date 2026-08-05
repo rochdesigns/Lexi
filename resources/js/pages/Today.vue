@@ -3,7 +3,7 @@ import { Head, Link, router } from '@inertiajs/vue3';
 import { computed, ref } from 'vue';
 import type { HabitatTheme } from '@/types';
 
-type TodayEvent = { id: number; title: string; time: string; tag: string; color: string };
+type TodayEvent = { id: number; title: string; time: string; end_time: string | null; tag: string; color: string };
 type TodayTask = { id: number; label: string; section_id: number; done: boolean };
 type MoneySummary = { safeToSpend: number; budget: number; spent: number };
 type Habit = { id: number; name: string; icon: string; color: string; pct: number; streak: number };
@@ -103,6 +103,13 @@ const tagColors: Record<string, { bg: string; text: string }> = {
 function tagStyle(tag: string): { bg: string; text: string } {
     return tagColors[tag] ?? { bg: '#f1ede3', text: '#8a8172' };
 }
+
+function formatTime12h(time: string): string {
+    const [h, m] = time.split(':').map(Number);
+    const period = h >= 12 ? 'PM' : 'AM';
+    const hour = h % 12 || 12;
+    return `${hour}:${String(m).padStart(2, '0')} ${period}`;
+}
 </script>
 
 <template>
@@ -159,8 +166,8 @@ function tagStyle(tag: string): { bg: string; text: string } {
                             style="background: var(--hab-hairline)"
                         ></div>
                         <div class="flex items-center gap-3">
-                            <span class="w-16 shrink-0 text-[12px] tabular-nums" style="color: var(--hab-muted)">
-                                {{ event.time }}
+                            <span class="w-28 shrink-0 text-[12px] tabular-nums" style="color: var(--hab-muted)">
+                                {{ formatTime12h(event.time) }}{{ event.end_time ? ' – ' + formatTime12h(event.end_time) : '' }}
                             </span>
                             <span
                                 class="h-2 w-2 shrink-0 rounded-full"

@@ -20,10 +20,11 @@ class TodayController extends Controller
         $user = $request->user();
         $today = Carbon::today();
 
-        $todayEvents = Event::where('user_id', $user->id)
-            ->whereDate('date', $today)
-            ->orderBy('time')
-            ->get(['id', 'title', 'time', 'tag', 'color']);
+        $todayStart = $today->copy()->startOfDay();
+        $todayEnd = $today->copy()->endOfDay();
+        $todayEvents = collect(Event::expandRecurring($todayStart, $todayEnd, $user->id))
+            ->sortBy('time')
+            ->values();
 
         $firstSection = TaskSection::where('user_id', $user->id)
             ->orderBy('position')

@@ -6,6 +6,7 @@ use App\Models\BudgetCategory;
 use App\Models\RecurringBill;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Carbon;
 
 class RecurringBillController extends Controller
 {
@@ -50,6 +51,37 @@ class RecurringBillController extends Controller
         } elseif ($oldCategoryId && $oldAmount !== $newAmount) {
             $this->adjustCategoryLimit($userId, $oldCategoryId, $newAmount - $oldAmount);
         }
+
+        return back();
+    }
+
+    public function pay(Request $request, RecurringBill $recurringBill): RedirectResponse
+    {
+        abort_if($recurringBill->user_id !== $request->user()->id, 403);
+
+        $validated = $request->validate([
+            'amount' => ['required', 'numeric', 'min:0.01'],
+            'merchant' => ['nullable', 'string', 'max:100'],
+            'account_id' => ['required', 'integer', 'exists:accounts,id'],
+            'budget_category_id' => ['nullable', 'integer', 'exists:budget_categories,id'],
+            'transacted_at' => ['required', 'date'],
+        ]);
+
+        $user = $request->user();
+        $account = $user->accounts()->findOrFail($validated['account_id']);
+
+        $user->transactions()->create([
+            'type' => 'expense',
+            'amount' => $validated['amount'],
+            'merchant' => $validated['merchant'],
+            'account_id' => $validated['account_id'],
+            'budget_category_id' => $validated['budget_category_id'] ?? null,
+            'transacted_at' => $validated['transacted_at'],
+        ]);
+
+        $account->decrement('balance', $validated['amount']);
+
+        $recurringBill->update(['last_paid_at' => Carbon::parse($validated['transacted_at'])->toDateString()]);
 
         return back();
     }

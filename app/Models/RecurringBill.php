@@ -12,11 +12,12 @@ class RecurringBill extends Model
     /** @use HasFactory<RecurringBillFactory> */
     use HasFactory;
 
-    protected $fillable = ['user_id', 'budget_category_id', 'name', 'icon', 'color', 'bg', 'amount', 'day_of_month'];
+    protected $fillable = ['user_id', 'budget_category_id', 'name', 'icon', 'color', 'bg', 'amount', 'day_of_month', 'last_paid_at'];
 
     protected $casts = [
         'amount' => 'decimal:2',
         'day_of_month' => 'integer',
+        'last_paid_at' => 'date',
     ];
 
     public function user(): BelongsTo

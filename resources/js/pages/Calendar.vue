@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { Head, router } from '@inertiajs/vue3';
-import { ref, computed, watch } from 'vue';
+import { ref, computed, watch, onMounted, nextTick } from 'vue';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { index as calendarIndex } from '@/actions/App/Http/Controllers/CalendarController';
 import { store, update, destroy } from '@/actions/App/Http/Controllers/EventController';
@@ -10,6 +10,7 @@ type Occurrence = {
     title: string;
     date: string;
     time: string;
+    end_time: string | null;
     tag: string;
     color: string;
     bg: string;
@@ -43,21 +44,54 @@ function toLocalDateStr(d: Date): string {
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 }
 
+function formatTime12h(time: string): string {
+    const [h, m] = time.split(':').map(Number);
+    const period = h >= 12 ? 'PM' : 'AM';
+    const hour = h % 12 || 12;
+    return `${hour}:${String(m).padStart(2, '0')} ${period}`;
+}
+
+function formatHourLabel(hour: number): string {
+    if (hour === 12) return '12 PM';
+    return hour < 12 ? `${hour} AM` : `${hour - 12} PM`;
+}
+
+function eventTop(time: string): number {
+    const [h, m] = time.split(':').map(Number);
+    return h * 60 + m;
+}
+
+function eventHeight(time: string, endTime: string | null): number {
+    if (!endTime) return 52;
+    const top = eventTop(time);
+    const bottom = eventTop(endTime);
+    return Math.max(bottom - top, 30);
+}
+
 // ── state ──────────────────────────────────────────────────────────────────
 
 const today = new Date();
 const todayStr = toLocalDateStr(today);
 
-const view = ref<'month' | 'week'>((localStorage.getItem('cal-view') as 'month' | 'week') ?? 'month');
-const selectedDate = ref(todayStr);
+const view = ref<'month' | 'week'>((localStorage.getItem('cal-view') as 'month' | 'week') ?? 'week');
+const urlDate = new URLSearchParams(window.location.search).get('date');
+const selectedDate = ref(urlDate ?? todayStr);
 const showModal = ref(false);
 const editingEvent = ref<Occurrence | null>(null);
+const timeGridRef = ref<HTMLElement | null>(null);
+
+onMounted(() => {
+    if (view.value === 'week' && timeGridRef.value) {
+        timeGridRef.value.scrollTop = 7 * 60;
+    }
+});
 
 // Form state
 const form = ref({
     title: '',
     date: todayStr,
     time: '09:00',
+    end_time: '10:00',
     tag: 'Work' as string,
     color: TAG_COLORS['Work'],
     recurrence_enabled: false,
@@ -67,7 +101,13 @@ const form = ref({
     recurrence_ends_on: '',
 });
 
-watch(view, (v) => localStorage.setItem('cal-view', v));
+watch(view, async (v) => {
+    localStorage.setItem('cal-view', v);
+    if (v === 'week') {
+        await nextTick();
+        if (timeGridRef.value) timeGridRef.value.scrollTop = 7 * 60;
+    }
+});
 
 // ── computed: month grid ──────────────────────────────────────────────────
 
@@ -147,7 +187,7 @@ function navigateMonth(delta: number) {
     const [year, month] = props.currentMonth.split('-').map(Number);
     const d = new Date(year, month - 1 + delta, 1);
     const newMonth = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
-    router.get(calendarIndex({ month: newMonth }).url, {}, { preserveState: false });
+    router.get(calendarIndex({ query: { month: newMonth } }).url, {}, { preserveState: false });
 }
 
 function navigateWeek(delta: number) {
@@ -157,7 +197,16 @@ function navigateWeek(delta: number) {
     const newMonth = newDateStr.slice(0, 7);
     selectedDate.value = newDateStr;
     if (newMonth !== props.currentMonth) {
-        router.get(calendarIndex({ month: newMonth }).url, {}, { preserveState: false });
+        router.get(calendarIndex({ query: { month: newMonth, date: newDateStr } }).url, {}, { preserveState: false });
+    }
+}
+
+function goToToday() {
+    const todayMonth = todayStr.slice(0, 7);
+    selectedDate.value = todayStr;
+    if (todayMonth !== props.currentMonth) {
+        const query = view.value === 'week' ? { month: todayMonth, date: todayStr } : { month: todayMonth };
+        router.get(calendarIndex({ query }).url, {}, { preserveState: false });
     }
 }
 
@@ -169,6 +218,7 @@ function openNew() {
         title: '',
         date: selectedDate.value,
         time: '09:00',
+        end_time: '10:00',
         tag: 'Work',
         color: TAG_COLORS['Work'],
         recurrence_enabled: false,
@@ -186,6 +236,7 @@ function openEdit(event: Occurrence) {
         title: event.title,
         date: event.date,
         time: event.time,
+        end_time: event.end_time ?? '',
         tag: event.tag,
         color: event.color,
         recurrence_enabled: event.is_recurring,
@@ -220,6 +271,7 @@ function submitForm() {
         title: form.value.title,
         date: form.value.date,
         time: form.value.time,
+        end_time: form.value.end_time || null,
         tag: form.value.tag,
         color: form.value.color,
     };
@@ -260,8 +312,10 @@ function deleteEvent() {
     <div>
         <Head title="Calendar" />
 
+        <div class="mx-auto w-full max-w-[1180px] px-4 sm:px-6 lg:px-[30px] pt-6 pb-[46px] flex flex-col gap-5">
+
         <!-- Page header -->
-    <div class="flex items-end gap-4 flex-wrap">
+        <div class="flex items-end gap-4 flex-wrap">
         <div>
             <h1 style="font-family:'Bricolage Grotesque';font-weight:700;font-size:28px;letter-spacing:-.02em;line-height:1">Calendar</h1>
             <p style="color:#8a8172;font-size:14px;margin-top:4px">Your month at a glance</p>
@@ -283,7 +337,7 @@ function deleteEvent() {
                 @click="openNew"
                 style="display:flex;align-items:center;gap:7px;background:#211d17;color:#fdfbf5;border:none;border-radius:12px;padding:0 16px;height:42px;font-family:'Instrument Sans';font-weight:600;font-size:13.5px;cursor:pointer"
             >
-                <span class="msr" style="font-size:18px">add</span> New event
+                <span class="material-symbols-rounded" style="font-size:18px">add</span> New event
             </button>
         </div>
     </div>
@@ -296,11 +350,12 @@ function deleteEvent() {
             <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">
                 <div style="font-family:'Bricolage Grotesque';font-weight:700;font-size:18px">{{ calendarTitle }}</div>
                 <div style="display:flex;gap:6px">
+                    <button @click="goToToday" style="height:32px;padding:0 11px;border:none;background:#f1ede3;border-radius:9px;cursor:pointer;color:#6b6355;font-family:'Instrument Sans';font-size:12px;font-weight:600">Today</button>
                     <button @click="navigateMonth(-1)" style="width:32px;height:32px;border:none;background:#f1ede3;border-radius:9px;cursor:pointer;color:#6b6355;display:flex;align-items:center;justify-content:center">
-                        <span class="msr" style="font-size:20px">chevron_left</span>
+                        <span class="material-symbols-rounded" style="font-size:20px">chevron_left</span>
                     </button>
                     <button @click="navigateMonth(1)" style="width:32px;height:32px;border:none;background:#f1ede3;border-radius:9px;cursor:pointer;color:#6b6355;display:flex;align-items:center;justify-content:center">
-                        <span class="msr" style="font-size:20px">chevron_right</span>
+                        <span class="material-symbols-rounded" style="font-size:20px">chevron_right</span>
                     </button>
                 </div>
             </div>
@@ -349,7 +404,9 @@ function deleteEvent() {
                 <div :style="`width:9px;height:9px;border-radius:50%;background:${event.color};flex:none`" />
                 <div style="min-width:0;flex:1">
                     <div style="font-weight:600;font-size:14px;color:#211d17">{{ event.title }}</div>
-                    <div style="font-size:12px;color:#8a8172">{{ event.time }}</div>
+                    <div style="font-size:12px;color:#8a8172">
+                        {{ formatTime12h(event.time) }}{{ event.end_time ? ' – ' + formatTime12h(event.end_time) : '' }}
+                    </div>
                 </div>
                 <span :style="`font-size:11.5px;font-weight:600;color:${event.color};background:${event.bg};padding:2px 9px;border-radius:20px`">
                     {{ event.tag }}
@@ -359,46 +416,91 @@ function deleteEvent() {
                     class="opacity-0 group-hover/event:opacity-100"
                     style="border:none;background:transparent;cursor:pointer;color:#8a8172;padding:2px;flex:none;display:flex;align-items:center"
                 >
-                    <span class="msr" style="font-size:16px">edit</span>
+                    <span class="material-symbols-rounded" style="font-size:16px">edit</span>
                 </button>
             </div>
         </div>
     </div>
 
     <!-- ── Week view ── -->
-    <div v-else style="background:#fffdf8;border:1px solid #e0dacd;border-radius:24px;padding:22px 24px;box-shadow:0 8px 24px -20px rgba(60,48,20,.5)">
-        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">
+    <div v-else style="background:#fffdf8;border:1px solid #e0dacd;border-radius:24px;overflow:hidden;box-shadow:0 8px 24px -20px rgba(60,48,20,.5)">
+
+        <!-- Header: title + nav only -->
+        <div style="padding:22px 24px 18px;display:flex;align-items:center;justify-content:space-between">
             <div style="font-family:'Bricolage Grotesque';font-weight:700;font-size:18px">{{ weekRangeLabel }}</div>
             <div style="display:flex;gap:6px">
+                <button @click="goToToday" style="height:32px;padding:0 11px;border:none;background:#f1ede3;border-radius:9px;cursor:pointer;color:#6b6355;font-family:'Instrument Sans';font-size:12px;font-weight:600">Today</button>
                 <button @click="navigateWeek(-1)" style="width:32px;height:32px;border:none;background:#f1ede3;border-radius:9px;cursor:pointer;color:#6b6355;display:flex;align-items:center;justify-content:center">
-                    <span class="msr" style="font-size:20px">chevron_left</span>
+                    <span class="material-symbols-rounded" style="font-size:20px">chevron_left</span>
                 </button>
                 <button @click="navigateWeek(1)" style="width:32px;height:32px;border:none;background:#f1ede3;border-radius:9px;cursor:pointer;color:#6b6355;display:flex;align-items:center;justify-content:center">
-                    <span class="msr" style="font-size:20px">chevron_right</span>
+                    <span class="material-symbols-rounded" style="font-size:20px">chevron_right</span>
                 </button>
             </div>
         </div>
 
-        <div style="display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:8px;align-items:start">
-            <div v-for="col in weekColumns" :key="col.dateStr" style="display:flex;flex-direction:column;gap:8px;min-height:220px">
-                <!-- Day header -->
+        <!-- Scrollable time grid (headers inside so columns always share same width) -->
+        <div ref="timeGridRef" style="overflow-y:scroll;max-height:580px">
+
+            <!-- Sticky day column headers -->
+            <div style="position:sticky;top:0;z-index:10;background:#fffdf8;display:grid;grid-template-columns:52px repeat(7,minmax(0,1fr));border-bottom:1px solid #e0dacd;padding:8px 0">
+                <div />
                 <div
-                    :style="`display:flex;flex-direction:column;align-items:center;gap:1px;padding:8px 0;border-radius:10px;
-                        ${col.isToday ? 'background:var(--hab-accent);color:#fff' : 'color:#4a4436'}`"
+                    v-for="col in weekColumns"
+                    :key="col.dateStr"
+                    style="display:flex;flex-direction:column;align-items:center;gap:2px;padding:5px 0;border-radius:10px"
+                    :style="col.isToday ? 'background:var(--hab-accent)' : ''"
                 >
-                    <span style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.03em;opacity:.75">{{ col.dow.slice(0, 3) }}</span>
-                    <span style="font-family:'Bricolage Grotesque';font-weight:700;font-size:17px">{{ col.dateNum }}</span>
+                    <span style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.03em" :style="col.isToday ? 'color:#fff;opacity:.8' : 'color:#a49b8a'">{{ col.dow }}</span>
+                    <span style="font-family:'Bricolage Grotesque';font-weight:700;font-size:17px" :style="col.isToday ? 'color:#fff' : 'color:#211d17'">{{ col.dateNum }}</span>
                 </div>
-                <!-- Event chips -->
-                <div
-                    v-for="event in col.events"
-                    :key="event.id + event.date"
-                    @click="openEdit(event)"
-                    :style="`background:${event.bg};border-left:3px solid ${event.color};border-radius:8px;padding:7px 9px;cursor:pointer`"
-                >
-                    <div :style="`font-size:11px;color:${event.color};font-weight:600`">{{ event.time }}</div>
-                    <div style="font-size:12.5px;font-weight:600;color:#211d17;line-height:1.2;margin-top:1px">{{ event.title }}</div>
+            </div>
+
+            <div style="display:flex">
+
+                <!-- Time labels -->
+                <div style="width:52px;flex:none;position:relative;height:1440px">
+                    <div
+                        v-for="hour in 23"
+                        :key="hour"
+                        :style="`position:absolute;top:${hour * 60 - 8}px;right:10px;font-size:10.5px;color:#b0a898;white-space:nowrap`"
+                    >{{ formatHourLabel(hour) }}</div>
                 </div>
+
+                <!-- Day columns -->
+                <div style="flex:1;display:grid;grid-template-columns:repeat(7,minmax(0,1fr))">
+                    <div
+                        v-for="col in weekColumns"
+                        :key="col.dateStr"
+                        style="position:relative;height:1440px;border-left:1px solid #efe9dc"
+                    >
+                        <!-- Hour lines -->
+                        <div
+                            v-for="hour in 24"
+                            :key="'hr' + hour"
+                            :style="`position:absolute;top:${hour * 60}px;left:0;right:0;border-top:1px solid #efe9dc`"
+                        />
+                        <!-- Half-hour lines -->
+                        <div
+                            v-for="hour in 24"
+                            :key="'hh' + hour"
+                            :style="`position:absolute;top:${hour * 60 + 30}px;left:0;right:0;border-top:1px dashed #f3ede3`"
+                        />
+                        <!-- Events -->
+                        <div
+                            v-for="event in col.events"
+                            :key="event.id + event.date"
+                            @click="openEdit(event)"
+                            :style="`position:absolute;top:${eventTop(event.time)}px;left:4px;right:4px;height:${eventHeight(event.time, event.end_time)}px;background:${event.bg};border-left:3px solid ${event.color};border-radius:8px;padding:5px 8px;cursor:pointer;overflow:hidden;z-index:1`"
+                        >
+                            <div :style="`font-size:10px;color:${event.color};font-weight:700`">
+                                {{ formatTime12h(event.time) }}{{ event.end_time ? ' – ' + formatTime12h(event.end_time) : '' }}
+                            </div>
+                            <div style="font-size:11.5px;font-weight:600;color:#211d17;line-height:1.2;margin-top:2px">{{ event.title }}</div>
+                        </div>
+                    </div>
+                </div>
+
             </div>
         </div>
     </div>
@@ -424,7 +526,7 @@ function deleteEvent() {
                 </div>
 
                 <!-- Date + Time row -->
-                <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+                <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px">
                     <div>
                         <label style="font-size:12.5px;font-weight:600;color:#6b6355;display:block;margin-bottom:4px">Date</label>
                         <input
@@ -434,9 +536,17 @@ function deleteEvent() {
                         />
                     </div>
                     <div>
-                        <label style="font-size:12.5px;font-weight:600;color:#6b6355;display:block;margin-bottom:4px">Time</label>
+                        <label style="font-size:12.5px;font-weight:600;color:#6b6355;display:block;margin-bottom:4px">Start</label>
                         <input
                             v-model="form.time"
+                            type="time"
+                            style="width:100%;padding:9px 12px;border:1px solid #e0dacd;border-radius:11px;font-family:'Instrument Sans';font-size:14px;color:#211d17;background:#fffdf8;outline:none"
+                        />
+                    </div>
+                    <div>
+                        <label style="font-size:12.5px;font-weight:600;color:#6b6355;display:block;margin-bottom:4px">End</label>
+                        <input
+                            v-model="form.end_time"
                             type="time"
                             style="width:100%;padding:9px 12px;border:1px solid #e0dacd;border-radius:11px;font-family:'Instrument Sans';font-size:14px;color:#211d17;background:#fffdf8;outline:none"
                         />
@@ -546,5 +656,7 @@ function deleteEvent() {
             </div>
         </DialogContent>
     </Dialog>
+
+        </div><!-- end page container -->
     </div>
 </template>

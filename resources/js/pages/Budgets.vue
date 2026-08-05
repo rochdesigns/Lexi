@@ -426,6 +426,7 @@ function cancelDeleteRawBill() {
 
 const txModalOpen = ref(false);
 const editingTx = ref<Transaction | null>(null);
+const payingBillId = ref<number | null>(null);
 const txForm = reactive({
     type: 'expense' as 'expense' | 'income' | 'transfer',
     amount: '',
@@ -452,6 +453,7 @@ function openEditTx(tx: Transaction) {
 
 function openPayBill(bill: UpcomingBill) {
     editingTx.value = null;
+    payingBillId.value = bill.type === 'recurring' ? parseInt(bill.id.replace('rb-', '')) : null;
     Object.assign(txForm, {
         type: 'expense',
         amount: String(bill.amount),
@@ -465,21 +467,39 @@ function openPayBill(bill: UpcomingBill) {
 }
 
 function submitTxModal() {
-    const payload = {
-        type: txForm.type,
-        amount: txAmountEvaluated.value ?? parseFloat(txForm.amount),
-        merchant: txForm.merchant || null,
-        account_id: txForm.account_id,
-        to_account_id: txForm.type === 'transfer' ? txForm.to_account_id : null,
-        budget_category_id: txForm.type === 'expense' ? txForm.budget_category_id : null,
-        transacted_at: txForm.transacted_at,
-    };
-
-    const opts = { onSuccess: () => { txModalOpen.value = false; }, preserveScroll: true };
+    const amount = txAmountEvaluated.value ?? parseFloat(txForm.amount);
+    const opts = { onSuccess: () => { txModalOpen.value = false; payingBillId.value = null; }, preserveScroll: true };
 
     if (editingTx.value) {
+        const payload = {
+            type: txForm.type,
+            amount,
+            merchant: txForm.merchant || null,
+            account_id: txForm.account_id,
+            to_account_id: txForm.type === 'transfer' ? txForm.to_account_id : null,
+            budget_category_id: txForm.type === 'expense' ? txForm.budget_category_id : null,
+            transacted_at: txForm.transacted_at,
+        };
         router.patch(updateTransaction({ transaction: editingTx.value.id }).url, payload, opts);
+    } else if (payingBillId.value) {
+        const payload = {
+            amount,
+            merchant: txForm.merchant || null,
+            account_id: txForm.account_id,
+            budget_category_id: txForm.budget_category_id,
+            transacted_at: txForm.transacted_at,
+        };
+        router.post(`/recurring-bills/${payingBillId.value}/pay`, payload, opts);
     } else {
+        const payload = {
+            type: txForm.type,
+            amount,
+            merchant: txForm.merchant || null,
+            account_id: txForm.account_id,
+            to_account_id: txForm.type === 'transfer' ? txForm.to_account_id : null,
+            budget_category_id: txForm.type === 'expense' ? txForm.budget_category_id : null,
+            transacted_at: txForm.transacted_at,
+        };
         router.post(storeTransaction().url, payload, opts);
     }
 }
@@ -1116,7 +1136,7 @@ function cancelDeleteTx() {
                 </div>
 
                 <div style="display: flex; gap: 8px; justify-content: flex-end; margin-top: 4px">
-                    <button type="button" @click="txModalOpen = false"
+                    <button type="button" @click="txModalOpen = false; payingBillId = null"
                         style="padding: 0 16px; height: 40px; border: 1px solid #e0dacd; background: #fffdf8; border-radius: 10px; cursor: pointer; font-family: 'Instrument Sans'; font-weight: 600; font-size: 13.5px; color: #6b6355">
                         Cancel
                     </button>
