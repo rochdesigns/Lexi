@@ -1,8 +1,8 @@
 <script setup lang="ts">
 import { computed } from 'vue';
 import ReportLineChart from '@/components/reports/ReportLineChart.vue';
-import UnavailableNote from '@/components/trajectory/UnavailableNote.vue';
 import { formatMoney, formatPct } from '@/components/trajectory/format';
+import UnavailableNote from '@/components/trajectory/UnavailableNote.vue';
 import type { SavingsRate } from '@/pages/Trajectory.vue';
 
 const props = defineProps<{ savingsRate: SavingsRate }>();

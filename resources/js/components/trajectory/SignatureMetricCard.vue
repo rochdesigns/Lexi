@@ -1,8 +1,8 @@
 <script setup lang="ts">
 import { computed } from 'vue';
 import ReportLineChart from '@/components/reports/ReportLineChart.vue';
-import UnavailableNote from '@/components/trajectory/UnavailableNote.vue';
 import { formatMoney, formatSigned } from '@/components/trajectory/format';
+import UnavailableNote from '@/components/trajectory/UnavailableNote.vue';
 import type { SignatureMetric } from '@/pages/Trajectory.vue';
 
 const props = defineProps<{ signature: SignatureMetric }>();

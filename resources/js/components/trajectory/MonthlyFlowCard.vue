@@ -1,15 +1,20 @@
 <script setup lang="ts">
 import { computed } from 'vue';
-import UnavailableNote from '@/components/trajectory/UnavailableNote.vue';
 import { formatMoney, formatPct } from '@/components/trajectory/format';
+import UnavailableNote from '@/components/trajectory/UnavailableNote.vue';
 import type { MonthlyFlow } from '@/pages/Trajectory.vue';
 
 const props = defineProps<{ monthlyFlow: MonthlyFlow }>();
 
 const fixedWidth = computed(() => {
     const split = props.monthlyFlow.fixedVsVariable;
-    if (!split) return 0;
+
+    if (!split) {
+        return 0;
+    }
+
     const total = split.fixed + split.variable;
+
     return total > 0 ? (split.fixed / total) * 100 : 0;
 });
 </script>
