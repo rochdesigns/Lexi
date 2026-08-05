@@ -1,8 +1,14 @@
 <script setup lang="ts">
-import { formatMoney, formatSigned } from '@/components/trajectory/format';
+import { formatMoney, formatPct, formatSigned } from '@/components/trajectory/format';
 import type { Vehicle } from '@/pages/Trajectory.vue';
 
-defineProps<{ vehicles: Vehicle[]; costBasisComplete: boolean }>();
+defineProps<{
+    vehicles: Vehicle[];
+    costBasisComplete: boolean;
+    totalCostBasis: number;
+    gainLoss: number | null;
+    gainLossPct: number | null;
+}>();
 </script>
 
 <template>
@@ -12,6 +18,19 @@ defineProps<{ vehicles: Vehicle[]; costBasisComplete: boolean }>();
         <div v-if="!costBasisComplete" style="font-size: 12.5px; color: #d98a2b; margin-top: 6px">
             Add a cost basis to every investment account to see total gain.
         </div>
+
+        <!-- Only a complete cost basis makes the total meaningful; a partial sum would
+             read as the whole portfolio's basis and overstate the gain. -->
+        <template v-else-if="gainLoss !== null">
+            <div style="font-family: 'Bricolage Grotesque'; font-weight: 700; font-size: 22px; margin-top: 6px"
+                 :style="{ color: gainLoss >= 0 ? '#2f7d5b' : '#c0512c' }">
+                {{ formatSigned(gainLoss) }}
+                <span v-if="gainLossPct !== null" style="font-size: 15px; font-weight: 600">({{ formatPct(gainLossPct) }})</span>
+            </div>
+            <div style="font-size: 12px; color: #8a8172; margin-top: 2px">
+                Unrealised, against {{ formatMoney(totalCostBasis) }} invested
+            </div>
+        </template>
 
         <div style="margin-top: 12px; overflow-x: auto">
             <table style="width: 100%; border-collapse: collapse; font-size: 13.5px; min-width: 460px">

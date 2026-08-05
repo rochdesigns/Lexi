@@ -137,6 +137,14 @@ class DebtController extends Controller
 
         $account = $user->accounts()->findOrFail($validated['account_id']);
 
+        // A credit account's balance is money owed, not money available. The decrement
+        // below assumes a cash-style balance, so a credit account would have its debt
+        // silently reduced by the payment (and the balance check above is meaningless
+        // for it). The picker in Debt.vue already hides these; this is the backstop.
+        if ($account->type === 'credit') {
+            return back()->withErrors(['account_id' => 'Payments cannot be made from a credit account.']);
+        }
+
         if ((float) $validated['amount'] > (float) $account->balance) {
             return back()->withErrors(['amount' => 'Payment amount cannot exceed your account balance.']);
         }

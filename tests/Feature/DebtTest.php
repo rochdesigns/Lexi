@@ -129,7 +129,7 @@ test('update returns 403 for another user\'s debt', function (): void {
 });
 
 test('make-payment decrements debt balance and account balance, creates transaction', function (): void {
-    $account = Account::factory()->for($this->user)->create(['balance' => 10000]);
+    $account = Account::factory()->for($this->user)->create(['type' => 'cash', 'balance' => 10000]);
     $debt = Debt::factory()->for($this->user)->create(['balance' => 500, 'name' => 'Car loan']);
 
     $this->post("/debts/{$debt->id}/payment", [
@@ -144,7 +144,7 @@ test('make-payment decrements debt balance and account balance, creates transact
 });
 
 test('make-payment rejects amount exceeding account balance', function (): void {
-    $account = Account::factory()->for($this->user)->create(['balance' => 100]);
+    $account = Account::factory()->for($this->user)->create(['type' => 'cash', 'balance' => 100]);
     $debt = Debt::factory()->for($this->user)->create(['balance' => 500]);
 
     $this->post("/debts/{$debt->id}/payment", [
@@ -158,7 +158,7 @@ test('make-payment rejects amount exceeding account balance', function (): void 
 });
 
 test('make-payment floors debt balance at zero', function (): void {
-    $account = Account::factory()->for($this->user)->create(['balance' => 10000]);
+    $account = Account::factory()->for($this->user)->create(['type' => 'cash', 'balance' => 10000]);
     $debt = Debt::factory()->for($this->user)->create(['balance' => 100]);
 
     $this->post("/debts/{$debt->id}/payment", [
@@ -171,7 +171,7 @@ test('make-payment floors debt balance at zero', function (): void {
 });
 
 test('make-payment defaults merchant to debt name', function (): void {
-    $account = Account::factory()->for($this->user)->create(['balance' => 10000]);
+    $account = Account::factory()->for($this->user)->create(['type' => 'cash', 'balance' => 10000]);
     $debt = Debt::factory()->for($this->user)->create(['balance' => 500, 'name' => 'iPhone installment']);
 
     $this->post("/debts/{$debt->id}/payment", [
@@ -186,7 +186,7 @@ test('make-payment defaults merchant to debt name', function (): void {
 
 test('make-payment returns 403 for another user\'s debt', function (): void {
     $other = User::factory()->create();
-    $account = Account::factory()->for($this->user)->create(['balance' => 10000]);
+    $account = Account::factory()->for($this->user)->create(['type' => 'cash', 'balance' => 10000]);
     $debt = Debt::factory()->for($other)->create(['balance' => 500]);
 
     $this->post("/debts/{$debt->id}/payment", [
@@ -258,7 +258,7 @@ test('budget_category_id is returned in the debts index', function (): void {
 
 test('make-payment stamps budget_category_id on the transaction', function (): void {
     $category = BudgetCategory::factory()->for($this->user)->create();
-    $account = Account::factory()->for($this->user)->create(['balance' => 10000]);
+    $account = Account::factory()->for($this->user)->create(['type' => 'cash', 'balance' => 10000]);
     $debt = Debt::factory()->for($this->user)->create([
         'balance' => 500,
         'budget_category_id' => $category->id,
@@ -275,7 +275,7 @@ test('make-payment stamps budget_category_id on the transaction', function (): v
 });
 
 test('make-payment transaction has null budget_category_id when debt has no category', function (): void {
-    $account = Account::factory()->for($this->user)->create(['balance' => 10000]);
+    $account = Account::factory()->for($this->user)->create(['type' => 'cash', 'balance' => 10000]);
     $debt = Debt::factory()->for($this->user)->create(['balance' => 500, 'budget_category_id' => null]);
 
     $this->post("/debts/{$debt->id}/payment", [
@@ -430,6 +430,24 @@ test('makePayment on unlinked debt still works as before', function (): void {
     expect((float) $debt->fresh()->balance)->toBe(6000.0);
 });
 
+test('makePayment rejects a credit account as the paying account', function (): void {
+    $card = Account::factory()->for($this->user)->create(['type' => 'credit', 'balance' => 10000]);
+    $debt = Debt::factory()->for($this->user)->create(['balance' => 8000, 'per_month' => 500]);
+
+    $this->post("/debts/{$debt->id}/payment", [
+        'amount' => 2000,
+        'account_id' => $card->id,
+        'merchant' => 'Loan Payment',
+        'transacted_at' => '2026-08-01',
+    ])->assertSessionHasErrors('account_id');
+
+    // Nothing moved: no balance change on either side, and no ledger rows written.
+    expect((float) $card->fresh()->balance)->toBe(10000.0)
+        ->and((float) $debt->fresh()->balance)->toBe(8000.0)
+        ->and(DebtPayment::count())->toBe(0)
+        ->and(Transaction::count())->toBe(0);
+});
+
 test('debt index passes creditAccounts prop', function (): void {
     Account::factory()->for($this->user)->create(['type' => 'credit', 'name' => 'HSBC CC']);
     Account::factory()->for($this->user)->create(['type' => 'cash', 'name' => 'BPI Savings']);
@@ -530,7 +548,7 @@ test('debt index returns account_id and minimum_payment_rate per debt', function
 });
 
 test('make-payment records a debt payment split into principal and interest', function (): void {
-    $account = Account::factory()->for($this->user)->create(['balance' => 100000]);
+    $account = Account::factory()->for($this->user)->create(['type' => 'cash', 'balance' => 100000]);
     $debt = Debt::factory()->for($this->user)->create([
         'balance' => 100000,
         'interest_rate' => 12,
@@ -561,7 +579,7 @@ test('make-payment records a debt payment split into principal and interest', fu
 });
 
 test('make-payment with no interest rate books the whole payment as principal', function (): void {
-    $account = Account::factory()->for($this->user)->create(['balance' => 10000]);
+    $account = Account::factory()->for($this->user)->create(['type' => 'cash', 'balance' => 10000]);
     $debt = Debt::factory()->for($this->user)->create(['balance' => 500, 'interest_rate' => null]);
 
     $this->post("/debts/{$debt->id}/payment", [
@@ -578,7 +596,7 @@ test('make-payment with no interest rate books the whole payment as principal', 
 });
 
 test('make-payment accrues interest only since the previous payment', function (): void {
-    $account = Account::factory()->for($this->user)->create(['balance' => 100000]);
+    $account = Account::factory()->for($this->user)->create(['type' => 'cash', 'balance' => 100000]);
     $debt = Debt::factory()->for($this->user)->create([
         'balance' => 100000,
         'interest_rate' => 12,

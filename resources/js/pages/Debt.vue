@@ -225,10 +225,15 @@ const payForm = useForm({
     transacted_at: '',
 });
 
+// A credit account's balance is money owed, not money available, so paying a debt
+// from one would raise what you owe rather than settle it. DebtController::makePayment
+// rejects these too; this just keeps them out of the picker.
+const payableAccounts = computed(() => props.accounts.filter((a) => a.type !== 'credit'));
+
 function openPayment(debt: Debt) {
     payingDebt.value = debt;
     payForm.amount = String(debt.per_month || '');
-    payForm.account_id = props.accounts[0]?.id ?? 0;
+    payForm.account_id = payableAccounts.value[0]?.id ?? 0;
     payForm.merchant = debt.name;
     payForm.transacted_at = new Date().toISOString().split('T')[0];
     payForm.clearErrors();
@@ -785,7 +790,7 @@ const calcResult = computed((): CalcResult | null => {
                         <label style="font-size: 13px; font-weight: 600; color: #4a4436">Paid from account</label>
                         <select v-model.number="payForm.account_id" required
                             style="height: 40px; border: 1px solid #e0dacd; border-radius: 10px; padding: 0 12px; font-family: 'Instrument Sans'; font-size: 14px; background: #fffdf8; width: 100%; box-sizing: border-box; outline: none; appearance: none">
-                            <option v-for="a in accounts" :key="a.id" :value="a.id">{{ a.name }}</option>
+                            <option v-for="a in payableAccounts" :key="a.id" :value="a.id">{{ a.name }}</option>
                         </select>
                         <div v-if="payForm.errors.account_id" style="font-size: 12px; color: #c0512c">{{ payForm.errors.account_id }}</div>
                     </div>

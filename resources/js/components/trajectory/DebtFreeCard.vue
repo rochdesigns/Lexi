@@ -38,8 +38,14 @@ function applyExtra() {
             At least one debt's payment doesn't cover its own interest.
         </div>
 
-        <div v-else-if="debt.monthsSaved" style="font-size: 13px; color: #2f7d5b; margin-top: 4px">
+        <div v-else-if="debt.monthsSaved !== null && debt.monthsSaved > 0" style="font-size: 13px; color: #2f7d5b; margin-top: 4px">
             {{ debt.monthsSaved }} month(s) sooner than the baseline plan.
+        </div>
+
+        <!-- A computed-but-zero saving is a real answer, not the absence of one:
+             without this the input silently looks like it did nothing. -->
+        <div v-else-if="debt.monthsSaved === 0" style="font-size: 13px; color: #6b6355; margin-top: 4px">
+            That extra payment doesn't move the payoff date yet — try a larger amount.
         </div>
 
         <div style="display: flex; align-items: center; gap: 8px; margin-top: 14px; flex-wrap: wrap">

@@ -125,7 +125,6 @@ export type SignatureMetric = {
 
 defineProps<{
     netWorth: NetWorth;
-    extraMonthly: number;
     debt: DebtSummary;
     savings: SavingsSummary;
     investments: InvestmentsSummary;
@@ -164,11 +163,14 @@ defineProps<{
         </template>
         <UnavailableNote v-else :reason="debt.reason" />
 
-        <div class="grid gap-3 lg:grid-cols-2">
-            <EmergencyFundProgress :emergency-fund="savings.emergencyFund" />
-            <SavingsGoalsList :goals="savings.goals" />
-        </div>
-        <CashBufferTrend :cash-buffer="savings.cashBuffer" />
+        <template v-if="savings.available">
+            <div class="grid gap-3 lg:grid-cols-2">
+                <EmergencyFundProgress :emergency-fund="savings.emergencyFund" />
+                <SavingsGoalsList :goals="savings.goals" />
+            </div>
+            <CashBufferTrend :cash-buffer="savings.cashBuffer" />
+        </template>
+        <UnavailableNote v-else :reason="savings.reason" />
 
         <template v-if="investments.available">
             <div class="grid gap-3 lg:grid-cols-2">
@@ -180,7 +182,13 @@ defineProps<{
                 <FireProgress :fire="investments.fire" :total-value="investments.totalValue" />
             </div>
             <div class="grid gap-3 lg:grid-cols-2">
-                <InvestmentVehicleTable :vehicles="investments.vehicles" :cost-basis-complete="investments.costBasisComplete" />
+                <InvestmentVehicleTable
+                    :vehicles="investments.vehicles"
+                    :cost-basis-complete="investments.costBasisComplete"
+                    :total-cost-basis="investments.totalCostBasis"
+                    :gain-loss="investments.gainLoss"
+                    :gain-loss-pct="investments.gainLossPct"
+                />
                 <AllocationChart :vehicles="investments.vehicles" />
             </div>
         </template>
