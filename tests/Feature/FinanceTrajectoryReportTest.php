@@ -232,11 +232,10 @@ test('net worth omits a month from the trend when the user has debts but no debt
         ]);
     }
 
-    // Debt snapshots exist for June and August but NOT July — simulating a month
-    // where RecordFinanceSnapshot's backfill declined to write debt history
-    // because it didn't reconcile within tolerance (Task 9). July's debt balance
-    // is unknown, not zero, so July must be dropped from the trend rather than
-    // computed as if the debt didn't exist that month.
+    // Debt snapshots exist for June and August but NOT July — e.g. the daily
+    // command never ran that month. July's debt balance is unknown, not zero, so
+    // July must be dropped from the trend rather than computed as if the debt
+    // didn't exist that month.
     foreach ([['2026-06-30', 1000], ['2026-08-05', 1500]] as [$date, $balance]) {
         DebtBalanceSnapshot::create([
             'user_id' => $user->id, 'debt_id' => $debt->id,
@@ -251,6 +250,79 @@ test('net worth omits a month from the trend when the user has debts but no debt
         ->and(collect($result['trend'])->pluck('month')->all())->toBe(['2026-06', '2026-08'])
         ->and($result['trend'][0]['value'])->toBe(4000.0)
         ->and($result['trend'][1]['value'])->toBe(5500.0);
+
+    Carbon::setTestNow();
+});
+
+test('net worth omits a month where only some of the users debts were snapshotted', function () {
+    Carbon::setTestNow(Carbon::parse('2026-08-05'));
+
+    $user = User::factory()->create();
+    $account = Account::factory()->for($user)->create(['balance' => 7000, 'type' => 'cash']);
+    $card = Debt::factory()->for($user)->create(['balance' => 1500]);
+    $carLoan = Debt::factory()->for($user)->create(['balance' => 2000]);
+
+    foreach ([['2026-06-30', 5000], ['2026-07-31', 6000], ['2026-08-05', 7000]] as [$date, $balance]) {
+        AccountBalanceSnapshot::create([
+            'user_id' => $user->id, 'account_id' => $account->id,
+            'balance' => $balance, 'snapshot_date' => $date,
+        ]);
+    }
+
+    // Both debts reported in June and August; only the card reported in July.
+    // Counting July would silently value the car loan at ₱0 and overstate net worth.
+    foreach ([['2026-06-30', 1000], ['2026-07-31', 1200], ['2026-08-05', 1500]] as [$date, $balance]) {
+        DebtBalanceSnapshot::create([
+            'user_id' => $user->id, 'debt_id' => $card->id,
+            'balance' => $balance, 'snapshot_date' => $date,
+        ]);
+    }
+
+    foreach ([['2026-06-30', 2500], ['2026-08-05', 2000]] as [$date, $balance]) {
+        DebtBalanceSnapshot::create([
+            'user_id' => $user->id, 'debt_id' => $carLoan->id,
+            'balance' => $balance, 'snapshot_date' => $date,
+        ]);
+    }
+
+    $result = app(TrajectoryReportService::class)->netWorth($user);
+
+    expect($result['available'])->toBeTrue()
+        ->and(collect($result['trend'])->pluck('month')->all())->toBe(['2026-06', '2026-08'])
+        ->and($result['trend'][0]['value'])->toBe(1500.0)
+        ->and($result['trend'][1]['value'])->toBe(3500.0);
+
+    Carbon::setTestNow();
+});
+
+test('net worth omits a month where only some of the users accounts were snapshotted', function () {
+    Carbon::setTestNow(Carbon::parse('2026-08-05'));
+
+    $user = User::factory()->create();
+    $checking = Account::factory()->for($user)->create(['balance' => 7000, 'type' => 'cash']);
+    $savings = Account::factory()->for($user)->create(['balance' => 20000, 'type' => 'cash']);
+
+    foreach ([['2026-06-30', 5000], ['2026-07-31', 6000], ['2026-08-05', 7000]] as [$date, $balance]) {
+        AccountBalanceSnapshot::create([
+            'user_id' => $user->id, 'account_id' => $checking->id,
+            'balance' => $balance, 'snapshot_date' => $date,
+        ]);
+    }
+
+    // Savings missed July, so July's account total would be understated by ₱18,000.
+    foreach ([['2026-06-30', 18000], ['2026-08-05', 20000]] as [$date, $balance]) {
+        AccountBalanceSnapshot::create([
+            'user_id' => $user->id, 'account_id' => $savings->id,
+            'balance' => $balance, 'snapshot_date' => $date,
+        ]);
+    }
+
+    $result = app(TrajectoryReportService::class)->netWorth($user);
+
+    expect($result['available'])->toBeTrue()
+        ->and(collect($result['trend'])->pluck('month')->all())->toBe(['2026-06', '2026-08'])
+        ->and($result['trend'][0]['value'])->toBe(23000.0)
+        ->and($result['trend'][1]['value'])->toBe(27000.0);
 
     Carbon::setTestNow();
 });

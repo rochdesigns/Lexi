@@ -38,7 +38,7 @@ class TrajectoryReportService
 
         $windowStart = Carbon::now()->startOfMonth()->subMonths(11);
 
-        $accountByMonth = $this->lastBalancePerMonth(
+        $accountByMonth = $this->lastBalanceDetailPerMonth(
             AccountBalanceSnapshot::where('user_id', $user->id)
                 ->whereNotIn('account_id', $linkedCreditIds)
                 ->where('snapshot_date', '>=', $windowStart->toDateString())
@@ -47,7 +47,7 @@ class TrajectoryReportService
             'account_id',
         );
 
-        $debtByMonth = $this->lastBalancePerMonth(
+        $debtByMonth = $this->lastBalanceDetailPerMonth(
             DebtBalanceSnapshot::where('user_id', $user->id)
                 ->where('snapshot_date', '>=', $windowStart->toDateString())
                 ->orderBy('snapshot_date')
@@ -55,29 +55,36 @@ class TrajectoryReportService
             'debt_id',
         );
 
-        $hasDebts = $user->debts()->exists();
+        $expectedAccountIds = $user->accounts()->whereNotIn('id', $linkedCreditIds)->pluck('id')->all();
+        $expectedDebtIds = $user->debts()->pluck('id')->all();
+        $hasDebts = $expectedDebtIds !== [];
 
         $trend = [];
 
         foreach ($this->monthWindow(12) as $month) {
             $key = $month->format('Y-m');
 
-            if (! array_key_exists($key, $accountByMonth)) {
+            // A partially snapshotted month understates the total: the accounts or
+            // debts that did not report would silently read as ₱0. Both sides must be
+            // fully covered before a month can join the trend.
+            if (! array_key_exists($key, $accountByMonth)
+                || ! $this->coversEveryOwner($accountByMonth[$key]['owners'], $expectedAccountIds)) {
                 continue;
             }
 
             // A user with debts but no debt snapshot for this month has unknown
-            // (not zero) debt for that month — e.g. backfill can decline to write
-            // a debt's history when it doesn't reconcile within tolerance. Only a
-            // user with no debts at all can safely treat missing as zero.
-            if ($hasDebts && ! array_key_exists($key, $debtByMonth)) {
+            // (not zero) debt for that month. Only a user with no debts at all can
+            // safely treat missing as zero.
+            if ($hasDebts
+                && (! array_key_exists($key, $debtByMonth)
+                    || ! $this->coversEveryOwner($debtByMonth[$key]['owners'], $expectedDebtIds))) {
                 continue;
             }
 
             $trend[] = [
                 'month' => $key,
                 'label' => $month->format('M Y'),
-                'value' => round($accountByMonth[$key] - ($debtByMonth[$key] ?? 0.0), 2),
+                'value' => round($accountByMonth[$key]['total'] - ($debtByMonth[$key]['total'] ?? 0.0), 2),
             ];
         }
 
@@ -289,6 +296,23 @@ class TrajectoryReportService
      */
     private function lastBalancePerMonth(Collection $snapshots, string $ownerKey): array
     {
+        return array_map(
+            fn (array $month) => $month['total'],
+            $this->lastBalanceDetailPerMonth($snapshots, $ownerKey),
+        );
+    }
+
+    /**
+     * Sum of each owner's latest snapshot within each calendar month, alongside the
+     * owners that actually reported one — a total is only trustworthy when every
+     * account (or debt) contributed to it.
+     *
+     * @param  Collection<int, AccountBalanceSnapshot|DebtBalanceSnapshot>  $snapshots
+     * @param  'account_id'|'debt_id'  $ownerKey
+     * @return array<string, array{total: float, owners: list<int>}>
+     */
+    private function lastBalanceDetailPerMonth(Collection $snapshots, string $ownerKey): array
+    {
         $latest = [];
 
         foreach ($snapshots as $snapshot) {
@@ -301,13 +325,33 @@ class TrajectoryReportService
             }
         }
 
-        $totals = [];
+        $detail = [];
 
         foreach ($latest as $month => $owners) {
-            $totals[$month] = round(array_sum(array_column($owners, 'balance')), 2);
+            $detail[$month] = [
+                'total' => round(array_sum(array_column($owners, 'balance')), 2),
+                'owners' => array_map('intval', array_keys($owners)),
+            ];
         }
 
-        return $totals;
+        return $detail;
+    }
+
+    /**
+     * Whether every expected owner reported a snapshot for a month.
+     *
+     * Simplification: `$expected` is the user's CURRENT set of accounts (or debts)
+     * rather than the set that existed as of that month, which is not recoverable
+     * from the schema. An account opened today therefore invalidates earlier months
+     * instead of letting them read as a smaller net worth — the conservative
+     * direction, and consistent with this report never showing misleading zeros.
+     *
+     * @param  list<int>  $reported
+     * @param  list<int>  $expected
+     */
+    private function coversEveryOwner(array $reported, array $expected): bool
+    {
+        return array_diff($expected, $reported) === [];
     }
 
     /**
