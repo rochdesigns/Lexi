@@ -770,7 +770,7 @@ class TrajectoryReportService
     /**
      * Transfers into the given investment accounts within one calendar month.
      *
-     * @param  \Illuminate\Support\Collection<int, int>  $accountIds
+     * @param  Collection<int, int>  $accountIds
      */
     protected function investmentContributions(User $user, Collection $accountIds, Carbon $month): float
     {

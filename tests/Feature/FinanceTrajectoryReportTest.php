@@ -13,6 +13,7 @@ use App\Models\Transaction;
 use App\Models\User;
 use App\Services\TrajectoryReportService;
 use Carbon\Carbon;
+use Illuminate\Database\UniqueConstraintViolationException;
 
 test('settings store financial independence planning fields', function () {
     $user = User::factory()->create();
@@ -92,7 +93,7 @@ test('debt payments record the principal and interest split and cascade with the
         'debt_id' => $debt->id,
     ]);
 
-    $payment = \App\Models\DebtPayment::create([
+    $payment = DebtPayment::create([
         'user_id' => $user->id,
         'debt_id' => $debt->id,
         'transaction_id' => $transaction->id,
@@ -110,22 +111,22 @@ test('debt payments record the principal and interest split and cascade with the
 
     $transaction->delete();
 
-    expect(\App\Models\DebtPayment::find($payment->id))->toBeNull();
+    expect(DebtPayment::find($payment->id))->toBeNull();
 });
 
 test('balance snapshots are unique per owner per day', function () {
     $user = User::factory()->create();
     $account = Account::factory()->for($user)->create();
-    $debt = \App\Models\Debt::factory()->for($user)->create();
+    $debt = Debt::factory()->for($user)->create();
 
-    \App\Models\AccountBalanceSnapshot::create([
+    AccountBalanceSnapshot::create([
         'user_id' => $user->id,
         'account_id' => $account->id,
         'balance' => 1200.50,
         'snapshot_date' => '2026-08-01',
     ]);
 
-    \App\Models\DebtBalanceSnapshot::create([
+    DebtBalanceSnapshot::create([
         'user_id' => $user->id,
         'debt_id' => $debt->id,
         'balance' => 90000,
@@ -136,12 +137,12 @@ test('balance snapshots are unique per owner per day', function () {
         ->and((float) $account->balanceSnapshots()->first()->balance)->toBe(1200.50)
         ->and($debt->balanceSnapshots()->count())->toBe(1);
 
-    expect(fn () => \App\Models\AccountBalanceSnapshot::create([
+    expect(fn () => AccountBalanceSnapshot::create([
         'user_id' => $user->id,
         'account_id' => $account->id,
         'balance' => 999,
         'snapshot_date' => '2026-08-01',
-    ]))->toThrow(Illuminate\Database\UniqueConstraintViolationException::class);
+    ]))->toThrow(UniqueConstraintViolationException::class);
 });
 
 test('net worth reports the current figure and a monthly snapshot trend', function () {
@@ -261,7 +262,7 @@ test('savings rate reports the current month and a six month trend', function ()
     $account = Account::factory()->for($user)->create();
 
     $book = function (string $type, float $amount, string $date) use ($user, $account) {
-        \App\Models\Transaction::factory()->for($user)->create([
+        Transaction::factory()->for($user)->create([
             'account_id' => $account->id, 'type' => $type, 'amount' => $amount, 'transacted_at' => $date,
         ]);
     };
@@ -293,7 +294,7 @@ test('savings rate is null rather than zero when there is no income this month',
     $user = User::factory()->create();
     $account = Account::factory()->for($user)->create();
 
-    \App\Models\Transaction::factory()->for($user)->create([
+    Transaction::factory()->for($user)->create([
         'account_id' => $account->id, 'type' => 'expense', 'amount' => 1000, 'transacted_at' => '2026-08-02',
     ]);
 
@@ -416,7 +417,7 @@ test('debt to income uses recorded payments and falls back to scheduled payments
     $account = Account::factory()->for($user)->create();
     $debt = Debt::factory()->for($user)->create(['balance' => 50000, 'per_month' => 4000, 'interest_rate' => null]);
 
-    \App\Models\Transaction::factory()->for($user)->create([
+    Transaction::factory()->for($user)->create([
         'account_id' => $account->id, 'type' => 'income', 'amount' => 50000, 'transacted_at' => '2026-08-01',
     ]);
 
@@ -526,7 +527,7 @@ test('savings summary reports emergency fund coverage against the configured tar
     $spending = Account::factory()->for($user)->create(['type' => 'cash']);
 
     foreach (['2026-08-02', '2026-07-02', '2026-06-02'] as $date) {
-        \App\Models\Transaction::factory()->for($user)->create([
+        Transaction::factory()->for($user)->create([
             'account_id' => $spending->id, 'type' => 'expense', 'amount' => 30000, 'transacted_at' => $date,
         ]);
     }
@@ -645,7 +646,7 @@ test('investments summary reports value, cost basis and allocation per vehicle',
     $indexFund = Account::factory()->investment()->for($user)->create(['name' => 'Index Fund', 'balance' => 300000, 'cost_basis' => 250000]);
     Account::factory()->investment()->for($user)->create(['name' => 'Bonds', 'balance' => 200000, 'cost_basis' => 180000]);
 
-    \App\Models\Transaction::factory()->for($user)->create([
+    Transaction::factory()->for($user)->create([
         'account_id' => $cash->id, 'to_account_id' => $indexFund->id,
         'type' => 'transfer', 'amount' => 20000, 'transacted_at' => '2026-08-03',
     ]);
@@ -697,7 +698,7 @@ test('fire progress projects years to financial independence', function () {
     $cash = Account::factory()->for($user)->create(['type' => 'cash', 'balance' => 100000]);
     $fund = Account::factory()->investment()->for($user)->create(['balance' => 500000, 'cost_basis' => 500000]);
 
-    \App\Models\Transaction::factory()->for($user)->create([
+    Transaction::factory()->for($user)->create([
         'account_id' => $cash->id, 'to_account_id' => $fund->id,
         'type' => 'transfer', 'amount' => 20000, 'transacted_at' => '2026-08-03',
     ]);
@@ -822,7 +823,7 @@ test('monthly flow reports income, expenses and budget usage for the calendar mo
             'name' => $row['name'], 'limit_amount' => $row['limit_amount'],
         ]);
 
-        \App\Models\Transaction::factory()->for($user)->create([
+        Transaction::factory()->for($user)->create([
             'account_id' => $account->id, 'budget_category_id' => $category->id,
             'type' => 'expense', 'amount' => $row['spend'], 'transacted_at' => '2026-08-03',
         ]);
@@ -830,7 +831,7 @@ test('monthly flow reports income, expenses and budget usage for the calendar mo
         return $category;
     });
 
-    \App\Models\Transaction::factory()->for($user)->create([
+    Transaction::factory()->for($user)->create([
         'account_id' => $account->id, 'type' => 'income', 'amount' => 50000, 'transacted_at' => '2026-08-01',
     ]);
 
@@ -860,7 +861,7 @@ test('monthly flow splits spending into fixed and variable', function () {
     $account = Account::factory()->for($user)->create();
     $debt = Debt::factory()->for($user)->create(['balance' => 50000, 'per_month' => 5000, 'interest_rate' => null]);
 
-    \App\Models\Transaction::factory()->for($user)->create([
+    Transaction::factory()->for($user)->create([
         'account_id' => $account->id, 'type' => 'expense', 'amount' => 16025, 'transacted_at' => '2026-08-03',
     ]);
 
@@ -908,7 +909,7 @@ test('signature metric nets investment gain against debt interest each month', f
         ]);
     }
 
-    \App\Models\Transaction::factory()->for($user)->create([
+    Transaction::factory()->for($user)->create([
         'account_id' => $cash->id, 'to_account_id' => $fund->id,
         'type' => 'transfer', 'amount' => 4000, 'transacted_at' => '2026-07-15',
     ]);
@@ -1143,10 +1144,10 @@ test('trajectory page exposes every field the flow and signature sections render
     $account = Account::factory()->for($user)->create(['type' => 'cash', 'balance' => 40000]);
     $category = BudgetCategory::factory()->for($user)->create(['name' => 'Food', 'limit_amount' => 5000]);
 
-    \App\Models\Transaction::factory()->for($user)->create([
+    Transaction::factory()->for($user)->create([
         'account_id' => $account->id, 'type' => 'income', 'amount' => 50000, 'transacted_at' => '2026-08-01',
     ]);
-    \App\Models\Transaction::factory()->for($user)->create([
+    Transaction::factory()->for($user)->create([
         'account_id' => $account->id, 'budget_category_id' => $category->id,
         'type' => 'expense', 'amount' => 7500, 'transacted_at' => '2026-08-03',
     ]);
