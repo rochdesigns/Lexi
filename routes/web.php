@@ -6,6 +6,7 @@ use App\Http\Controllers\BudgetController;
 use App\Http\Controllers\CalendarController;
 use App\Http\Controllers\DebtController;
 use App\Http\Controllers\EventController;
+use App\Http\Controllers\FinanceTrajectoryController;
 use App\Http\Controllers\GoalController;
 use App\Http\Controllers\RecurringBillController;
 use App\Http\Controllers\ReportController;
@@ -74,6 +75,7 @@ Route::middleware(['auth', 'verified'])->group(function (): void {
     Route::delete('/debts/{debt}', [DebtController::class, 'destroy'])->name('debts.destroy');
     Route::post('/debts/{debt}/payment', [DebtController::class, 'makePayment'])->name('debts.payment');
     Route::get('/reports', [ReportController::class, 'index'])->name('reports');
+    Route::get('/trajectory', [FinanceTrajectoryController::class, 'index'])->name('trajectory');
     Route::inertia('/photos', 'Stub')->name('photos');
 
     // Legacy redirect — keeps old dashboard links working

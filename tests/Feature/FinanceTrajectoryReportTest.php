@@ -981,3 +981,60 @@ test('signature metric is unavailable without investment snapshots', function ()
 
     Carbon::setTestNow();
 });
+
+test('guest is redirected from the trajectory page', function () {
+    $this->get(route('trajectory'))->assertRedirect(route('login'));
+});
+
+test('trajectory page renders every report section', function () {
+    Carbon::setTestNow(Carbon::parse('2026-08-05'));
+
+    $user = User::factory()->create();
+    $user->markEmailAsVerified();
+    Account::factory()->for($user)->create(['type' => 'cash', 'balance' => 10000]);
+    Debt::factory()->for($user)->create(['balance' => 5000, 'per_month' => 1000, 'interest_rate' => null]);
+
+    $this->actingAs($user)
+        ->get(route('trajectory'))
+        ->assertInertia(fn ($page) => $page
+            ->component('Trajectory')
+            ->where('netWorth.current', 5000)
+            ->where('debt.available', true)
+            ->where('extraMonthly', 0)
+            ->has('savingsRate')
+            ->has('savings')
+            ->has('investments')
+            ->has('monthlyFlow')
+            ->has('signature')
+        );
+
+    Carbon::setTestNow();
+});
+
+test('trajectory page applies an extra monthly payment to the debt projection', function () {
+    Carbon::setTestNow(Carbon::parse('2026-08-05'));
+
+    $user = User::factory()->create();
+    $user->markEmailAsVerified();
+    Debt::factory()->for($user)->create(['balance' => 10000, 'per_month' => 1000, 'interest_rate' => null]);
+
+    $this->actingAs($user)
+        ->get(route('trajectory', ['extra_monthly' => 1000]))
+        ->assertInertia(fn ($page) => $page
+            ->where('extraMonthly', 1000)
+            ->where('debt.debtFreeMonths', 5)
+            ->where('debt.baselineDebtFreeMonths', 10)
+            ->where('debt.monthsSaved', 5)
+        );
+
+    Carbon::setTestNow();
+});
+
+test('trajectory page rejects a negative extra monthly payment', function () {
+    $user = User::factory()->create();
+    $user->markEmailAsVerified();
+
+    $this->actingAs($user)
+        ->get(route('trajectory', ['extra_monthly' => -50]))
+        ->assertSessionHasErrors('extra_monthly');
+});
