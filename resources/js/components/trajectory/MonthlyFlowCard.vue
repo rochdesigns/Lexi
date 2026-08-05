@@ -62,7 +62,7 @@ const fixedWidth = computed(() => {
                 <div style="font-size: 12px; color: #8a8172">Furthest over budget</div>
                 <div v-for="row in monthlyFlow.overBudget.top" :key="row.id"
                      style="display: flex; align-items: center; gap: 8px; margin-top: 8px; font-size: 13.5px">
-                    <span class="material-symbols-rounded" :style="{ fontSize: '18px', color: row.color }">{{ row.icon }}</span>
+                    <span class="material-symbols-rounded" aria-hidden="true" :style="{ fontSize: '18px', color: row.color }">{{ row.icon }}</span>
                     <span style="color: #211d17; font-weight: 600">{{ row.name }}</span>
                     <span style="margin-left: auto; color: #c0512c; font-weight: 600">
                         +{{ formatMoney(row.overAmount) }} ({{ row.overPct.toFixed(0) }}%)

@@ -46,7 +46,7 @@ const datasets = computed(() => [
         </div>
 
         <div v-if="netWorth.available" style="margin-top: 14px">
-            <ReportLineChart :labels="labels" :datasets="datasets" />
+            <ReportLineChart :labels="labels" :datasets="datasets" ariaLabel="Line chart of your net worth over the last 12 months" />
         </div>
         <UnavailableNote v-else :reason="netWorth.reason" />
     </section>

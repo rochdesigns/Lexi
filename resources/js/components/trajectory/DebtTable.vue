@@ -24,7 +24,7 @@ defineProps<{ debts: DebtRow[] }>();
                     <tr v-for="row in debts" :key="row.id" style="border-top: 1px solid #e0dacd">
                         <td style="padding: 9px 8px">
                             <span style="display: inline-flex; align-items: center; gap: 8px">
-                                <span class="material-symbols-rounded"
+                                <span class="material-symbols-rounded" aria-hidden="true"
                                       :style="{ fontSize: '18px', color: row.color, background: row.bg, borderRadius: '8px', padding: '4px' }">{{ row.icon }}</span>
                                 <span style="color: #211d17; font-weight: 600">{{ row.name }}</span>
                             </span>

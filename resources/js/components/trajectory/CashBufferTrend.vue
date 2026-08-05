@@ -23,7 +23,7 @@ const datasets = computed(() => [
     <section style="background: #fffdf8; border: 1px solid #e0dacd; border-radius: 14px; padding: 18px 20px">
         <div style="font-size: 12px; color: #8a8172; text-transform: uppercase; letter-spacing: .06em">Cash buffer low point</div>
         <div v-if="cashBuffer.available" style="margin-top: 12px">
-            <ReportLineChart :labels="labels" :datasets="datasets" />
+            <ReportLineChart :labels="labels" :datasets="datasets" ariaLabel="Line chart of your lowest cash balance reached each month, over the last 12 months" />
         </div>
         <UnavailableNote v-else :reason="cashBuffer.reason" />
     </section>

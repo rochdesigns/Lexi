@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import { Bar } from 'vue-chartjs';
 import { BarElement, CategoryScale, Chart as ChartJS, Legend, LinearScale, Title, Tooltip } from 'chart.js';
+import { Bar } from 'vue-chartjs';
 
 ChartJS.register(Title, Tooltip, Legend, BarElement, CategoryScale, LinearScale);
 
@@ -15,6 +15,7 @@ const props = defineProps<{
     labels: string[];
     datasets: Dataset[];
     showLegend?: boolean;
+    ariaLabel: string;
 }>();
 
 const options = {
@@ -27,6 +28,6 @@ const options = {
 
 <template>
     <div style="height: 220px">
-        <Bar :data="{ labels, datasets }" :options="options" />
+        <Bar :data="{ labels, datasets }" :options="options" role="img" :aria-label="ariaLabel" />
     </div>
 </template>

@@ -85,6 +85,7 @@ function navigateDate(date: string) {
 function formatMoney(n: number): string {
     const abs = Math.abs(n);
     const formatted = '₱' + abs.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
     return n < 0 ? `-${formatted}` : formatted;
 }
 </script>
@@ -194,10 +195,11 @@ function formatMoney(n: number): string {
                 <ReportBarChart
                     :labels="spending.map(s => s.category.name)"
                     :datasets="[{ data: spending.map(s => s.amount), backgroundColor: spending.map(s => s.category.color), borderRadius: 6 }]"
+                    ariaLabel="Bar chart of spending by category for the selected period"
                 />
                 <div style="display: flex; flex-direction: column; gap: 8px; margin-top: 16px">
                     <div v-for="item in spending" :key="item.category.id ?? 'uncategorized'" style="display: flex; align-items: center; gap: 10px">
-                        <span class="material-symbols-rounded" style="font-size: 18px" :style="{ color: item.category.color }">{{ item.category.icon }}</span>
+                        <span class="material-symbols-rounded" aria-hidden="true" style="font-size: 18px" :style="{ color: item.category.color }">{{ item.category.icon }}</span>
                         <span style="font-size: 13.5px; font-weight: 500; flex: 1">{{ item.category.name }}</span>
                         <span style="font-size: 12px; color: #8a8172">{{ Math.round(item.pct * 100) }}%</span>
                         <span style="font-size: 13.5px; font-weight: 700; width: 100px; text-align: right">{{ formatMoney(item.amount) }}</span>
@@ -219,10 +221,11 @@ function formatMoney(n: number): string {
                         { label: 'Actual', data: budgetVsActual.map(b => b.actual), backgroundColor: budgetVsActual.map(b => b.status === 'over' ? '#c0512c' : '#2f7d5b'), borderRadius: 6 },
                     ]"
                     :show-legend="true"
+                    ariaLabel="Bar chart comparing budgeted versus actual spending by category"
                 />
                 <div style="display: flex; flex-direction: column; gap: 8px; margin-top: 16px">
                     <div v-for="item in budgetVsActual" :key="item.category.id" style="display: flex; align-items: center; gap: 10px">
-                        <span class="material-symbols-rounded" style="font-size: 18px" :style="{ color: item.category.color }">{{ item.category.icon }}</span>
+                        <span class="material-symbols-rounded" aria-hidden="true" style="font-size: 18px" :style="{ color: item.category.color }">{{ item.category.icon }}</span>
                         <span style="font-size: 13.5px; font-weight: 500; flex: 1">{{ item.category.name }}</span>
                         <span
                             style="font-size: 11px; font-weight: 600; padding: 2px 8px; border-radius: 20px"
@@ -247,6 +250,7 @@ function formatMoney(n: number): string {
                     ...(cashFlow.trendLine ? [{ label: 'Trend projection', data: cashFlow.trendLine, borderColor: '#3f7fb0', borderDash: [6, 4], spanGaps: false }] : []),
                     ...(cashFlow.budgetLine ? [{ label: 'Budget projection', data: cashFlow.budgetLine, borderColor: '#2f7d5b', borderDash: [6, 4], spanGaps: false }] : []),
                 ]"
+                ariaLabel="Line chart of net cash flow for the selected period, with optional trend and budget projections"
             />
         </div>
 

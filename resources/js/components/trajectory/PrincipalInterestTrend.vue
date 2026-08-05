@@ -19,7 +19,7 @@ const datasets = computed(() => [
     <section style="background: #fffdf8; border: 1px solid #e0dacd; border-radius: 14px; padding: 18px 20px">
         <div style="font-size: 12px; color: #8a8172; text-transform: uppercase; letter-spacing: .06em">Principal vs interest</div>
         <div v-if="hasData" style="margin-top: 12px">
-            <ReportBarChart :labels="labels" :datasets="datasets" :show-legend="true" />
+            <ReportBarChart :labels="labels" :datasets="datasets" :show-legend="true" ariaLabel="Bar chart of principal versus interest paid on debt, by month, over the last 12 months" />
         </div>
         <UnavailableNote v-else reason="No debt payments recorded yet — make a payment to start the split." />
     </section>

@@ -17,7 +17,7 @@ const colors = computed(() => props.vehicles.map((_, index) => palette[index % p
     <section style="background: #fffdf8; border: 1px solid #e0dacd; border-radius: 14px; padding: 18px 20px">
         <div style="font-size: 12px; color: #8a8172; text-transform: uppercase; letter-spacing: .06em">Allocation</div>
         <div v-if="vehicles.length > 0" style="margin-top: 12px">
-            <ReportDonutChart :labels="labels" :data="data" :colors="colors" />
+            <ReportDonutChart :labels="labels" :data="data" :colors="colors" ariaLabel="Donut chart of investment value allocated across your investment vehicles" />
         </div>
         <UnavailableNote v-else reason="No investment accounts to allocate." />
     </section>

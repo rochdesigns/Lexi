@@ -34,7 +34,14 @@ const tone = computed(() => {
         </div>
 
         <div style="display: flex; align-items: flex-end; gap: 6px; height: 46px; margin-top: 14px">
-            <div v-for="point in dti.trend" :key="point.month" style="flex: 1; display: flex; flex-direction: column; align-items: center; gap: 4px">
+            <div
+                v-for="point in dti.trend"
+                :key="point.month"
+                role="img"
+                :aria-label="`${point.label}: ${point.ratio === null ? 'not calculated' : formatPct(point.ratio)}`"
+                :title="`${point.label}: ${point.ratio === null ? 'not calculated' : formatPct(point.ratio)}`"
+                style="flex: 1; display: flex; flex-direction: column; align-items: center; gap: 4px"
+            >
                 <div :style="{
                     width: '100%',
                     height: `${Math.min(100, point.ratio ?? 0)}%`,

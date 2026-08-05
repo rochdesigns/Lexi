@@ -33,7 +33,7 @@ const datasets = computed(() => [
                 · 6-month average {{ formatPct(savingsRate.averageRate) }}
             </div>
             <div style="margin-top: 12px">
-                <ReportLineChart :labels="labels" :datasets="datasets" />
+                <ReportLineChart :labels="labels" :datasets="datasets" ariaLabel="Line chart of your savings rate over the last 6 months" />
             </div>
         </template>
         <UnavailableNote v-else :reason="savingsRate.reason" />

@@ -15,7 +15,7 @@ defineProps<{ goals: GoalRow[] }>();
         <div v-else style="display: flex; flex-direction: column; gap: 14px; margin-top: 12px">
             <div v-for="goal in goals" :key="goal.id">
                 <div style="display: flex; align-items: center; gap: 8px">
-                    <span class="material-symbols-rounded"
+                    <span class="material-symbols-rounded" aria-hidden="true"
                           :style="{ fontSize: '18px', color: goal.color, background: goal.bg, borderRadius: '8px', padding: '4px' }">{{ goal.icon }}</span>
                     <span style="font-weight: 600; color: #211d17; font-size: 14px">{{ goal.name }}</span>
                     <span style="margin-left: auto; font-size: 13px; color: #6b6355">

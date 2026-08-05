@@ -39,12 +39,12 @@ const winning = computed(() => (props.signature.currentValue ?? 0) > 0);
                     : 'Your debt cost you more this month than your investments earned.' }}
             </div>
             <div v-if="signature.crossedZeroLabel" style="display: inline-flex; align-items: center; gap: 6px; margin-top: 8px; padding: 4px 10px; border-radius: 999px; background: rgba(47, 125, 91, 0.12)">
-                <span class="material-symbols-rounded" style="font-size: 16px; color: #2f7d5b">celebration</span>
+                <span class="material-symbols-rounded" aria-hidden="true" style="font-size: 16px; color: #2f7d5b">celebration</span>
                 <span style="font-size: 12.5px; color: #2f7d5b; font-weight: 600">First pulled ahead in {{ signature.crossedZeroLabel }}</span>
             </div>
 
             <div style="margin-top: 14px">
-                <ReportLineChart :labels="labels" :datasets="datasets" />
+                <ReportLineChart :labels="labels" :datasets="datasets" ariaLabel="Line chart of investment gains minus debt interest, over the last 12 months" />
             </div>
 
             <div v-if="signature.trend.length > 0" style="font-size: 12px; color: #8a8172; margin-top: 8px">

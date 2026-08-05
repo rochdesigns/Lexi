@@ -8,6 +8,7 @@ defineProps<{
     labels: string[];
     data: number[];
     colors: string[];
+    ariaLabel: string;
 }>();
 
 const options = {
@@ -20,6 +21,6 @@ const options = {
 
 <template>
     <div style="height: 240px">
-        <Doughnut :data="{ labels, datasets: [{ data, backgroundColor: colors, borderWidth: 0 }] }" :options="options" />
+        <Doughnut :data="{ labels, datasets: [{ data, backgroundColor: colors, borderWidth: 0 }] }" :options="options" role="img" :aria-label="ariaLabel" />
     </div>
 </template>
