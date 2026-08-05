@@ -1134,3 +1134,38 @@ test('trajectory page exposes every field the savings and investment sections re
 
     Carbon::setTestNow();
 });
+
+test('trajectory page exposes every field the flow and signature sections render', function () {
+    Carbon::setTestNow(Carbon::parse('2026-08-05'));
+
+    $user = User::factory()->create();
+    $user->markEmailAsVerified();
+    $account = Account::factory()->for($user)->create(['type' => 'cash', 'balance' => 40000]);
+    $category = BudgetCategory::factory()->for($user)->create(['name' => 'Food', 'limit_amount' => 5000]);
+
+    \App\Models\Transaction::factory()->for($user)->create([
+        'account_id' => $account->id, 'type' => 'income', 'amount' => 50000, 'transacted_at' => '2026-08-01',
+    ]);
+    \App\Models\Transaction::factory()->for($user)->create([
+        'account_id' => $account->id, 'budget_category_id' => $category->id,
+        'type' => 'expense', 'amount' => 7500, 'transacted_at' => '2026-08-03',
+    ]);
+
+    $this->actingAs($user)
+        ->get(route('trajectory'))
+        ->assertInertia(fn ($page) => $page
+            ->where('savingsRate.available', true)
+            // Whole-number floats collapse to ints across the JSON round-trip (see the
+            // note on the netWorth.changePct assertion above) — assert the int 85 that
+            // the wire format actually delivers, not the float 85.0.
+            ->where('savingsRate.rate', 85)
+            ->has('savingsRate.trend', 6)
+            ->where('monthlyFlow.available', true)
+            ->where('monthlyFlow.monthLabel', 'August 2026')
+            ->where('monthlyFlow.overBudget.top.0.name', 'Food')
+            ->where('monthlyFlow.fixedVsVariable.variable', 7500)
+            ->where('signature.available', false)
+        );
+
+    Carbon::setTestNow();
+});

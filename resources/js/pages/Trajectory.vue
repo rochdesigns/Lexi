@@ -10,9 +10,12 @@ import FireProgress from '@/components/trajectory/FireProgress.vue';
 import InterestBleedingCard from '@/components/trajectory/InterestBleedingCard.vue';
 import InvestmentContributions from '@/components/trajectory/InvestmentContributions.vue';
 import InvestmentVehicleTable from '@/components/trajectory/InvestmentVehicleTable.vue';
+import MonthlyFlowCard from '@/components/trajectory/MonthlyFlowCard.vue';
 import NetWorthCard from '@/components/trajectory/NetWorthCard.vue';
 import PrincipalInterestTrend from '@/components/trajectory/PrincipalInterestTrend.vue';
 import SavingsGoalsList from '@/components/trajectory/SavingsGoalsList.vue';
+import SavingsRateCard from '@/components/trajectory/SavingsRateCard.vue';
+import SignatureMetricCard from '@/components/trajectory/SignatureMetricCard.vue';
 import UnavailableNote from '@/components/trajectory/UnavailableNote.vue';
 
 export type TrendPoint = { month: string; label: string; value: number };
@@ -91,12 +94,44 @@ export type InvestmentsSummary = {
     vehicles: Vehicle[]; fire: Fire;
 };
 
+export type SavingsRatePoint = { month: string; label: string; income: number; expenses: number; rate: number | null };
+
+export type SavingsRate = {
+    available: boolean; reason?: string;
+    income: number; expenses: number; net: number;
+    rate: number | null; trend: SavingsRatePoint[]; averageRate: number | null;
+};
+
+export type OverBudgetRow = {
+    id: number; name: string; icon: string; color: string;
+    limit: number; actual: number; overAmount: number; overPct: number;
+};
+
+export type MonthlyFlow = {
+    available: boolean; reason?: string; monthLabel?: string;
+    income: number; expenses: number; net: number;
+    budgetTotal: number; budgetUsedPct: number | null;
+    overBudget: { top: OverBudgetRow[]; remainingCount: number; remainingTotal: number };
+    fixedVsVariable: { fixed: number; variable: number; fixedPct: number | null };
+};
+
+export type SignaturePoint = { month: string; label: string; value: number; investmentGain: number; debtInterest: number };
+
+export type SignatureMetric = {
+    available: boolean; reason?: string;
+    currentValue: number | null; trend: SignaturePoint[];
+    crossedZeroMonth: string | null; crossedZeroLabel: string | null;
+};
+
 defineProps<{
     netWorth: NetWorth;
     extraMonthly: number;
     debt: DebtSummary;
     savings: SavingsSummary;
     investments: InvestmentsSummary;
+    savingsRate: SavingsRate;
+    monthlyFlow: MonthlyFlow;
+    signature: SignatureMetric;
 }>();
 </script>
 
@@ -109,7 +144,14 @@ defineProps<{
             <p style="color: #8a8172; font-size: 14px; margin-top: 4px">Are you actually getting ahead?</p>
         </div>
 
+        <SignatureMetricCard :signature="signature" />
+
         <NetWorthCard :net-worth="netWorth" />
+
+        <div class="grid gap-3 lg:grid-cols-2">
+            <SavingsRateCard :savings-rate="savingsRate" />
+            <MonthlyFlowCard :monthly-flow="monthlyFlow" />
+        </div>
 
         <template v-if="debt.available">
             <div class="grid gap-3 lg:grid-cols-3">
