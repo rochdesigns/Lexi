@@ -104,3 +104,34 @@ test('debt payments record the principal and interest split and cascade with the
 
     expect(\App\Models\DebtPayment::find($payment->id))->toBeNull();
 });
+
+test('balance snapshots are unique per owner per day', function () {
+    $user = User::factory()->create();
+    $account = Account::factory()->for($user)->create();
+    $debt = \App\Models\Debt::factory()->for($user)->create();
+
+    \App\Models\AccountBalanceSnapshot::create([
+        'user_id' => $user->id,
+        'account_id' => $account->id,
+        'balance' => 1200.50,
+        'snapshot_date' => '2026-08-01',
+    ]);
+
+    \App\Models\DebtBalanceSnapshot::create([
+        'user_id' => $user->id,
+        'debt_id' => $debt->id,
+        'balance' => 90000,
+        'snapshot_date' => '2026-08-01',
+    ]);
+
+    expect($account->balanceSnapshots()->count())->toBe(1)
+        ->and((float) $account->balanceSnapshots()->first()->balance)->toBe(1200.50)
+        ->and($debt->balanceSnapshots()->count())->toBe(1);
+
+    expect(fn () => \App\Models\AccountBalanceSnapshot::create([
+        'user_id' => $user->id,
+        'account_id' => $account->id,
+        'balance' => 999,
+        'snapshot_date' => '2026-08-01',
+    ]))->toThrow(Illuminate\Database\UniqueConstraintViolationException::class);
+});

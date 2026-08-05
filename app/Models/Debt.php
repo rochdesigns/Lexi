@@ -49,4 +49,9 @@ class Debt extends Model
     {
         return $this->hasMany(DebtPayment::class);
     }
+
+    public function balanceSnapshots(): HasMany
+    {
+        return $this->hasMany(DebtBalanceSnapshot::class);
+    }
 }

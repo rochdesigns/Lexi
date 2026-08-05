@@ -5,6 +5,7 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
 
 class Account extends Model
@@ -27,6 +28,11 @@ class Account extends Model
     public function linkedDebt(): HasOne
     {
         return $this->hasOne(Debt::class, 'account_id');
+    }
+
+    public function balanceSnapshots(): HasMany
+    {
+        return $this->hasMany(AccountBalanceSnapshot::class);
     }
 
     public function syncLinkedDebt(): void
