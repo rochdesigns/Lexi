@@ -1038,3 +1038,36 @@ test('trajectory page rejects a negative extra monthly payment', function () {
         ->get(route('trajectory', ['extra_monthly' => -50]))
         ->assertSessionHasErrors('extra_monthly');
 });
+
+test('trajectory page passes a renderable net worth trend to the front end', function () {
+    Carbon::setTestNow(Carbon::parse('2026-08-05'));
+
+    $user = User::factory()->create();
+    $user->markEmailAsVerified();
+    $account = Account::factory()->for($user)->create(['type' => 'cash', 'balance' => 10000]);
+
+    foreach ([['2026-07-31', 8000], ['2026-08-05', 10000]] as [$date, $balance]) {
+        AccountBalanceSnapshot::create([
+            'user_id' => $user->id, 'account_id' => $account->id,
+            'balance' => $balance, 'snapshot_date' => $date,
+        ]);
+    }
+
+    $this->actingAs($user)
+        ->get(route('trajectory'))
+        ->assertInertia(fn ($page) => $page
+            ->component('Trajectory')
+            ->where('netWorth.available', true)
+            ->has('netWorth.trend', 2)
+            ->where('netWorth.trend.0.label', 'Jul 2026')
+            // Inertia's assertInertia round-trips props through json_encode/json_decode
+            // (AssertableInertia::fromTestResponse), and PHP's default JSON encoding
+            // collapses whole-number floats (25.0 -> "25"), which decodes back as an
+            // int. assertSame() is strict, so asserting the float 25.0 here would fail
+            // on type alone even though the computed value is correct. Assert the int
+            // that the wire format actually delivers.
+            ->where('netWorth.changePct', 25)
+        );
+
+    Carbon::setTestNow();
+});
