@@ -446,3 +446,69 @@ test('debt summary is unavailable with no outstanding debts', function () {
     expect($result['available'])->toBeFalse()
         ->and($result['reason'])->toBeString();
 });
+
+test('an extra payment targets the highest rate debt, not the lowest, among genuinely different rates', function () {
+    Carbon::setTestNow(Carbon::parse('2026-08-05'));
+
+    $user = User::factory()->create();
+    Debt::factory()->for($user)->create(['name' => 'High', 'balance' => 1000, 'per_month' => 200, 'interest_rate' => 5, 'interest_rate_period' => 'monthly']);
+    Debt::factory()->for($user)->create(['name' => 'Mid', 'balance' => 1000, 'per_month' => 200, 'interest_rate' => 1, 'interest_rate_period' => 'monthly']);
+    Debt::factory()->for($user)->create(['name' => 'None', 'balance' => 1000, 'per_month' => 200, 'interest_rate' => null]);
+
+    $service = app(TrajectoryReportService::class);
+
+    // Baseline: with no extra, High and Mid (the two interest-bearing debts) both
+    // take 6 months since neither is favored — the 200/mo payment barely outpaces
+    // interest either way. This confirms the divergence below comes from the extra,
+    // not from some incidental effect of the rates alone.
+    $baseline = $service->debtSummary($user);
+    expect(array_column($baseline['debts'], 'months'))->toBe([6, 6, 5]);
+
+    // With a 200/mo extra, avalanche targeting must send it to High (5%/mo) first.
+    // High clears in 3 months instead of 6. Once High clears, the extra cascades to
+    // Mid (1%/mo, the next-highest active rate), so Mid also finishes early (5
+    // instead of 6). If the comparator direction were reversed — sending the extra
+    // to the *lowest*-rate active debt instead — the extra would go to None first,
+    // then cascade to Mid, leaving High untouched at its baseline 6 months and
+    // clearing None in 3. That is the mirror image of the correct result below, so
+    // asserting High=3 (not 6) and None=5 (not 3) fails outright under a reversed
+    // comparator.
+    $boosted = $service->debtSummary($user, 200.0);
+
+    expect(array_column($boosted['debts'], 'name'))->toBe(['High', 'Mid', 'None'])
+        ->and($boosted['debts'][0]['months'])->toBe(3)
+        ->and($boosted['debts'][1]['months'])->toBe(5)
+        ->and($boosted['debts'][2]['months'])->toBe(5)
+        ->and($boosted['debtFreeMonths'])->toBe(5);
+
+    Carbon::setTestNow();
+});
+
+test('a cleared debt does not redistribute its freed monthly payment to the remaining debt', function () {
+    Carbon::setTestNow(Carbon::parse('2026-08-05'));
+
+    $user = User::factory()->create();
+    Debt::factory()->for($user)->create(['name' => 'Small', 'balance' => 2000, 'per_month' => 1000, 'interest_rate' => null]);
+    Debt::factory()->for($user)->create(['name' => 'Big', 'balance' => 9000, 'per_month' => 500, 'interest_rate' => null]);
+
+    $result = app(TrajectoryReportService::class)->debtSummary($user, 500.0);
+
+    // Small (the avalanche target, tied at rate 0 but first by input order) receives
+    // the extra for months 1-2 and clears in month 2, leaving Big at balance 8,000
+    // (9,000 - 500/mo for 2 months, unaffected by the extra). From month 3 on, Big
+    // is the sole active debt and — per the documented simplification — receives
+    // only its own per_month (500) plus the explicit extra (500) = 1,000/mo, NOT
+    // Small's freed 1,000/mo on top of that. Correct (no redistribution): Big's
+    // remaining 8,000 balance / 1,000 per month takes 8 more months, clearing at
+    // month 10 — so debtFreeMonths = 10.
+    // If Small's freed per_month were (incorrectly) folded into Big's payment once
+    // Small cleared, Big would pay 2,000/mo from month 3 and clear at month 6
+    // instead — a different, smaller debtFreeMonths. Asserting 10 (not 6) fails
+    // outright under that hypothesis.
+    expect(array_column($result['debts'], 'name'))->toBe(['Small', 'Big'])
+        ->and($result['debts'][0]['months'])->toBe(2)
+        ->and($result['debts'][1]['months'])->toBe(10)
+        ->and($result['debtFreeMonths'])->toBe(10);
+
+    Carbon::setTestNow();
+});
