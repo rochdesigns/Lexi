@@ -50,12 +50,22 @@ class TrajectoryReportService
             'debt_id',
         );
 
+        $hasDebts = $user->debts()->exists();
+
         $trend = [];
 
         foreach ($this->monthWindow(12) as $month) {
             $key = $month->format('Y-m');
 
             if (! array_key_exists($key, $accountByMonth)) {
+                continue;
+            }
+
+            // A user with debts but no debt snapshot for this month has unknown
+            // (not zero) debt for that month — e.g. backfill can decline to write
+            // a debt's history when it doesn't reconcile within tolerance. Only a
+            // user with no debts at all can safely treat missing as zero.
+            if ($hasDebts && ! array_key_exists($key, $debtByMonth)) {
                 continue;
             }
 

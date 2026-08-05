@@ -212,3 +212,40 @@ test('net worth is unavailable without at least two months of snapshots but stil
 
     Carbon::setTestNow();
 });
+
+test('net worth omits a month from the trend when the user has debts but no debt snapshot for that month', function () {
+    Carbon::setTestNow(Carbon::parse('2026-08-05'));
+
+    $user = User::factory()->create();
+    $account = Account::factory()->for($user)->create(['balance' => 7000, 'type' => 'cash']);
+    $debt = Debt::factory()->for($user)->create(['balance' => 1500]);
+
+    foreach ([['2026-06-30', 5000], ['2026-07-31', 6000], ['2026-08-05', 7000]] as [$date, $balance]) {
+        AccountBalanceSnapshot::create([
+            'user_id' => $user->id, 'account_id' => $account->id,
+            'balance' => $balance, 'snapshot_date' => $date,
+        ]);
+    }
+
+    // Debt snapshots exist for June and August but NOT July — simulating a month
+    // where RecordFinanceSnapshot's backfill declined to write debt history
+    // because it didn't reconcile within tolerance (Task 9). July's debt balance
+    // is unknown, not zero, so July must be dropped from the trend rather than
+    // computed as if the debt didn't exist that month.
+    foreach ([['2026-06-30', 1000], ['2026-08-05', 1500]] as [$date, $balance]) {
+        DebtBalanceSnapshot::create([
+            'user_id' => $user->id, 'debt_id' => $debt->id,
+            'balance' => $balance, 'snapshot_date' => $date,
+        ]);
+    }
+
+    $result = app(TrajectoryReportService::class)->netWorth($user);
+
+    expect($result['available'])->toBeTrue()
+        ->and($result['trend'])->toHaveCount(2)
+        ->and(collect($result['trend'])->pluck('month')->all())->toBe(['2026-06', '2026-08'])
+        ->and($result['trend'][0]['value'])->toBe(4000.0)
+        ->and($result['trend'][1]['value'])->toBe(5500.0);
+
+    Carbon::setTestNow();
+});
