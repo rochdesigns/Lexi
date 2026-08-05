@@ -42,9 +42,11 @@ function applyExtra() {
             {{ debt.monthsSaved }} month(s) sooner than the baseline plan.
         </div>
 
-        <!-- A computed-but-zero saving is a real answer, not the absence of one:
-             without this the input silently looks like it did nothing. -->
-        <div v-else-if="debt.monthsSaved === 0" style="font-size: 13px; color: #6b6355; margin-top: 4px">
+        <!-- A computed-but-zero saving is a real answer, not the absence of one — but only
+             when the user actually applied an extra payment. Without the extraMonthly guard,
+             this also fires on a plain page load (extraMonthly absent, monthsSaved defaults
+             to 0 since baseline === projected), claiming a payment the user never made. -->
+        <div v-else-if="debt.extraMonthly > 0 && debt.monthsSaved === 0" style="font-size: 13px; color: #6b6355; margin-top: 4px">
             That extra payment doesn't move the payoff date yet — try a larger amount.
         </div>
 

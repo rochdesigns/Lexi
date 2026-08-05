@@ -263,6 +263,19 @@ const balanceField = computed(() => (form as any).balance as string);
 const balanceEvaluated = computed(() => evaluateArithmetic(balanceField.value));
 const balanceHasExpr = computed(() => hasArithmetic(balanceField.value) && balanceEvaluated.value !== null);
 
+// Net worth sums a credit account's balance as-is, so a positive balance on an unlinked
+// card is silently counted as an asset instead of debt. Nudge toward the negative convention
+// rather than block submission — a positive balance is correct once the card is linked to a Debt.
+const showCreditBalanceHint = computed(() => {
+    if (form.type !== 'credit') {
+        return false;
+    }
+
+    const parsed = balanceEvaluated.value ?? parseFloat(form.balance);
+
+    return Number.isFinite(parsed) && parsed > 0;
+});
+
 function submitEditTx() {
     if (!editingTx.value) { return; }
     router.patch(updateTransaction({ transaction: editingTx.value.id }).url, {
@@ -771,6 +784,9 @@ function formatDate(iso: string): string {
                         style="width: 100%; height: 40px; border: 1px solid #e0dacd; border-radius: 10px; padding: 0 12px; font-family: 'Instrument Sans'; font-size: 14px; background: #fffdf8; outline: none; color: #211d17" />
                     <div v-if="balanceHasExpr" style="font-size: 12px; color: #8a8172; margin-top: 3px">= {{ balanceEvaluated !== null && balanceEvaluated < 0 ? '-' : '' }}₱{{ Math.abs(balanceEvaluated ?? 0).toLocaleString('en-PH', { minimumFractionDigits: 2 }) }}</div>
                     <div style="font-size: 12px; color: #8a8172; margin-top: 4px">Enter a negative number for debt you owe</div>
+                    <div v-if="showCreditBalanceHint" style="font-size: 12px; color: #d98a2b; margin-top: 4px">
+                        A positive balance on a credit account counts as an asset in your net worth. If you owe money on this card, use a negative number instead — unless it's linked to a debt payoff plan on the Debt page.
+                    </div>
                 </div>
                 <div>
                     <label style="font-size: 13px; font-weight: 600; color: #4a4436; display: block; margin-bottom: 8px">Type *</label>
