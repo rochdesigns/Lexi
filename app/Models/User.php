@@ -106,6 +106,11 @@ class User extends Authenticatable implements PasskeyUser
         return $this->hasMany(Goal::class);
     }
 
+    public function visionBoardItems(): HasMany
+    {
+        return $this->hasMany(VisionBoardItem::class);
+    }
+
     public function taskSections(): HasMany
     {
         return $this->hasMany(TaskSection::class);
