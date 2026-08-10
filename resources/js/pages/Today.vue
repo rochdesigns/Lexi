@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { Head, Link, router, useForm } from '@inertiajs/vue3';
-import { computed, ref } from 'vue';
+import { computed, ref, watch } from 'vue';
 import {
     store as storeVisionBoardItem,
     update as updateVisionBoardItem,
@@ -129,13 +129,26 @@ const visionForm = useForm<{ image: File | null; caption: string }>({
     caption: '',
 });
 
+// Tracks whether the current preview URL is a blob we created (and must
+// revoke) versus a real server URL (imageUrl) that must be left alone.
+let visionImagePreviewIsBlob = false;
+
+function setVisionPreview(url: string | null, isBlob: boolean): void {
+    if (visionImagePreviewIsBlob && visionImagePreview.value) {
+        URL.revokeObjectURL(visionImagePreview.value);
+    }
+    visionImagePreview.value = url;
+    visionImagePreviewIsBlob = isBlob;
+}
+
 const emptyVisionSlots = computed(() => Math.max(0, 6 - props.visionBoardItems.length));
 
 function openAddVisionItem(): void {
     editingVisionItem.value = null;
     visionForm.reset();
     visionForm.clearErrors();
-    visionImagePreview.value = null;
+    setVisionPreview(null, false);
+    cancelDeleteVisionItem();
     visionModalOpen.value = true;
 }
 
@@ -144,7 +157,8 @@ function openEditVisionItem(item: VisionBoardItem): void {
     visionForm.reset();
     visionForm.caption = item.caption;
     visionForm.clearErrors();
-    visionImagePreview.value = item.imageUrl;
+    setVisionPreview(item.imageUrl, false);
+    cancelDeleteVisionItem();
     visionModalOpen.value = true;
 }
 
@@ -153,7 +167,7 @@ function onVisionImageChange(event: Event): void {
     visionForm.image = file;
 
     if (file) {
-        visionImagePreview.value = URL.createObjectURL(file);
+        setVisionPreview(URL.createObjectURL(file), true);
     }
 }
 
@@ -179,18 +193,54 @@ function submitVisionForm(): void {
     }
 }
 
-function deleteVisionItem(): void {
+// ── Two-step delete ────────────────────────────────────────────────────────────
+
+const visionDeleteArmed = ref(false);
+let visionDeleteTimer: ReturnType<typeof setTimeout> | null = null;
+
+function startDeleteVisionItem(): void {
     if (!editingVisionItem.value) {
         return;
     }
 
-    router.delete(destroyVisionBoardItem(editingVisionItem.value.id).url, {
-        preserveScroll: true,
-        onSuccess: () => {
-            visionModalOpen.value = false;
-        },
-    });
+    if (visionDeleteArmed.value) {
+        if (visionDeleteTimer) {
+            clearTimeout(visionDeleteTimer);
+        }
+
+        visionDeleteArmed.value = false;
+        router.delete(destroyVisionBoardItem(editingVisionItem.value.id).url, {
+            preserveScroll: true,
+            onSuccess: () => {
+                visionModalOpen.value = false;
+            },
+        });
+    } else {
+        if (visionDeleteTimer) {
+            clearTimeout(visionDeleteTimer);
+        }
+
+        visionDeleteArmed.value = true;
+        visionDeleteTimer = setTimeout(() => {
+            visionDeleteArmed.value = false;
+        }, 3000);
+    }
 }
+
+function cancelDeleteVisionItem(): void {
+    if (visionDeleteTimer) {
+        clearTimeout(visionDeleteTimer);
+    }
+
+    visionDeleteArmed.value = false;
+}
+
+// Reset the armed delete state whenever the modal closes or reopens.
+watch(visionModalOpen, (open) => {
+    if (!open) {
+        cancelDeleteVisionItem();
+    }
+});
 </script>
 
 <template>
@@ -469,7 +519,7 @@ function deleteVisionItem(): void {
                     </span>
                     <button
                         type="button"
-                        class="absolute right-2 top-2 flex h-7 w-7 items-center justify-center rounded-full opacity-0 transition-opacity group-hover:opacity-100"
+                        class="absolute right-2 top-2 flex h-7 w-7 items-center justify-center rounded-full opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100 focus-visible:opacity-100"
                         style="background: rgba(0,0,0,.55)"
                         @click="openEditVisionItem(item)"
                     >
@@ -499,9 +549,9 @@ function deleteVisionItem(): void {
                     </DialogTitle>
                 </DialogHeader>
 
-                <div class="flex flex-col gap-4 pt-2">
+                <form class="flex flex-col gap-4 pt-2" @submit.prevent="submitVisionForm">
                     <div>
-                        <label class="mb-1.5 block text-[13px] font-medium" style="color: var(--hab-ink)">Image</label>
+                        <label for="vision-image-input" class="mb-1.5 block text-[13px] font-medium" style="color: var(--hab-ink)">Image</label>
                         <div
                             v-if="visionImagePreview"
                             class="mb-2 flex aspect-video w-full items-center justify-center overflow-hidden rounded-[12px]"
@@ -510,6 +560,7 @@ function deleteVisionItem(): void {
                             <img :src="visionImagePreview" alt="Preview" class="h-full w-full object-cover" />
                         </div>
                         <input
+                            id="vision-image-input"
                             type="file"
                             accept="image/jpeg,image/png,image/webp"
                             class="text-[13px]"
@@ -521,8 +572,9 @@ function deleteVisionItem(): void {
                     </div>
 
                     <div>
-                        <label class="mb-1.5 block text-[13px] font-medium" style="color: var(--hab-ink)">Caption</label>
+                        <label for="vision-caption-input" class="mb-1.5 block text-[13px] font-medium" style="color: var(--hab-ink)">Caption</label>
                         <input
+                            id="vision-caption-input"
                             v-model="visionForm.caption"
                             type="text"
                             maxlength="80"
@@ -539,11 +591,13 @@ function deleteVisionItem(): void {
                         <button
                             v-if="editingVisionItem"
                             type="button"
-                            class="text-[13px] font-medium"
-                            style="color: #c0512c"
-                            @click="deleteVisionItem"
+                            class="rounded-full text-[13px] font-medium transition-colors"
+                            :style="visionDeleteArmed
+                                ? 'color: #c0512c; background: #fbe2d6; padding: 4px 10px'
+                                : 'color: #c0512c'"
+                            @click="startDeleteVisionItem"
                         >
-                            Delete
+                            {{ visionDeleteArmed ? 'Confirm delete?' : 'Delete' }}
                         </button>
                         <div class="ml-auto flex gap-2">
                             <button
@@ -555,17 +609,16 @@ function deleteVisionItem(): void {
                                 Cancel
                             </button>
                             <button
-                                type="button"
+                                type="submit"
                                 class="rounded-full px-4 py-2 text-[13px] font-semibold text-white"
                                 style="background: var(--hab-accent)"
                                 :disabled="visionForm.processing"
-                                @click="submitVisionForm"
                             >
                                 Save
                             </button>
                         </div>
                     </div>
-                </div>
+                </form>
             </DialogContent>
         </Dialog>
     </div>

@@ -48,6 +48,15 @@ test('store rejects non-image files', function (): void {
     ])->assertSessionHasErrors('image');
 });
 
+test('store rejects oversized image files', function (): void {
+    $file = UploadedFile::fake()->image('big.jpg')->size(6000);
+
+    $this->post('/vision-board-items', [
+        'image' => $file,
+        'caption' => 'Too big',
+    ])->assertSessionHasErrors('image');
+});
+
 test('store rejects a 7th item when the board is full', function (): void {
     VisionBoardItem::factory()->for($this->user)->count(6)->create();
 
