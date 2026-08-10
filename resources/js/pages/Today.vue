@@ -1,6 +1,12 @@
 <script setup lang="ts">
-import { Head, Link, router } from '@inertiajs/vue3';
+import { Head, Link, router, useForm } from '@inertiajs/vue3';
 import { computed, ref } from 'vue';
+import {
+    store as storeVisionBoardItem,
+    update as updateVisionBoardItem,
+    destroy as destroyVisionBoardItem,
+} from '@/actions/App/Http/Controllers/VisionBoardItemController';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import type { HabitatTheme } from '@/types';
 
 type TodayEvent = { id: number; title: string; time: string; end_time: string | null; tag: string; color: string };
@@ -8,6 +14,7 @@ type TodayTask = { id: number; label: string; section_id: number; done: boolean 
 type MoneySummary = { safeToSpend: number; budget: number; spent: number };
 type Habit = { id: number; name: string; icon: string; color: string; pct: number; streak: number };
 type HealthMetric = { name: string; value: string; sub: string; pct: number; color: string; icon: string };
+type VisionBoardItem = { id: number; imageUrl: string; caption: string };
 
 const props = defineProps<{
     user: { name: string; firstName: string; theme: HabitatTheme };
@@ -16,6 +23,7 @@ const props = defineProps<{
     moneySummary: MoneySummary;
     habits: Habit[];
     healthMetrics: HealthMetric[];
+    visionBoardItems: VisionBoardItem[];
 }>();
 
 // Optimistic task toggle
@@ -109,6 +117,79 @@ function formatTime12h(time: string): string {
     const period = h >= 12 ? 'PM' : 'AM';
     const hour = h % 12 || 12;
     return `${hour}:${String(m).padStart(2, '0')} ${period}`;
+}
+
+// Vision board
+const visionModalOpen = ref(false);
+const editingVisionItem = ref<VisionBoardItem | null>(null);
+const visionImagePreview = ref<string | null>(null);
+
+const visionForm = useForm<{ image: File | null; caption: string }>({
+    image: null,
+    caption: '',
+});
+
+const emptyVisionSlots = computed(() => Math.max(0, 6 - props.visionBoardItems.length));
+
+function openAddVisionItem(): void {
+    editingVisionItem.value = null;
+    visionForm.reset();
+    visionForm.clearErrors();
+    visionImagePreview.value = null;
+    visionModalOpen.value = true;
+}
+
+function openEditVisionItem(item: VisionBoardItem): void {
+    editingVisionItem.value = item;
+    visionForm.reset();
+    visionForm.caption = item.caption;
+    visionForm.clearErrors();
+    visionImagePreview.value = item.imageUrl;
+    visionModalOpen.value = true;
+}
+
+function onVisionImageChange(event: Event): void {
+    const file = (event.target as HTMLInputElement).files?.[0] ?? null;
+    visionForm.image = file;
+
+    if (file) {
+        visionImagePreview.value = URL.createObjectURL(file);
+    }
+}
+
+function submitVisionForm(): void {
+    if (editingVisionItem.value) {
+        const itemId = editingVisionItem.value.id;
+        visionForm.transform((data) => ({ ...data, _method: 'patch' }));
+        visionForm.post(updateVisionBoardItem(itemId).url, {
+            preserveScroll: true,
+            onSuccess: () => {
+                visionModalOpen.value = false;
+            },
+        });
+    } else {
+        visionForm.transform((data) => data);
+        visionForm.post(storeVisionBoardItem().url, {
+            preserveScroll: true,
+            onSuccess: () => {
+                visionModalOpen.value = false;
+                visionForm.reset();
+            },
+        });
+    }
+}
+
+function deleteVisionItem(): void {
+    if (!editingVisionItem.value) {
+        return;
+    }
+
+    router.delete(destroyVisionBoardItem(editingVisionItem.value.id).url, {
+        preserveScroll: true,
+        onSuccess: () => {
+            visionModalOpen.value = false;
+        },
+    });
 }
 </script>
 
@@ -360,6 +441,133 @@ function formatTime12h(time: string): string {
 
             </div>
         </div>
+
+        <!-- Vision board -->
+        <div
+            class="mt-5 rounded-[22px] p-6"
+            style="background: var(--hab-card-bg); border: 1px solid var(--hab-card-border); box-shadow: 0 8px 24px -20px var(--hab-card-shadow)"
+        >
+            <div class="mb-4 flex items-center justify-between">
+                <h2 class="font-['Bricolage_Grotesque'] text-[18px] font-bold" style="color: var(--hab-ink)">
+                    Vision board
+                </h2>
+            </div>
+
+            <div class="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
+                <div
+                    v-for="item in visionBoardItems"
+                    :key="item.id"
+                    class="group relative aspect-square overflow-hidden rounded-[14px]"
+                >
+                    <img :src="item.imageUrl" :alt="item.caption" class="h-full w-full object-cover" />
+                    <div
+                        class="pointer-events-none absolute inset-x-0 bottom-0 h-1/2"
+                        style="background: linear-gradient(transparent, rgba(0,0,0,.7))"
+                    ></div>
+                    <span class="absolute inset-x-2 bottom-2 truncate text-[12px] font-medium text-white">
+                        {{ item.caption }}
+                    </span>
+                    <button
+                        type="button"
+                        class="absolute right-2 top-2 flex h-7 w-7 items-center justify-center rounded-full opacity-0 transition-opacity group-hover:opacity-100"
+                        style="background: rgba(0,0,0,.55)"
+                        @click="openEditVisionItem(item)"
+                    >
+                        <span class="material-symbols-rounded text-white" style="font-size: 15px">edit</span>
+                    </button>
+                </div>
+
+                <button
+                    v-for="n in emptyVisionSlots"
+                    :key="'empty-' + n"
+                    type="button"
+                    class="flex aspect-square items-center justify-center rounded-[14px] border-2 border-dashed transition-colors hover:opacity-80"
+                    style="border-color: var(--hab-hairline)"
+                    @click="openAddVisionItem"
+                >
+                    <span class="material-symbols-rounded" style="font-size: 26px; color: var(--hab-faint)">add</span>
+                </button>
+            </div>
+        </div>
+
+        <!-- Vision board modal -->
+        <Dialog v-model:open="visionModalOpen">
+            <DialogContent style="max-width: 400px">
+                <DialogHeader>
+                    <DialogTitle style="font-family: 'Bricolage Grotesque'; font-size: 18px; font-weight: 700">
+                        {{ editingVisionItem ? 'Edit vision board item' : 'Add to vision board' }}
+                    </DialogTitle>
+                </DialogHeader>
+
+                <div class="flex flex-col gap-4 pt-2">
+                    <div>
+                        <label class="mb-1.5 block text-[13px] font-medium" style="color: var(--hab-ink)">Image</label>
+                        <div
+                            v-if="visionImagePreview"
+                            class="mb-2 flex aspect-video w-full items-center justify-center overflow-hidden rounded-[12px]"
+                            style="background: var(--hab-progress-track)"
+                        >
+                            <img :src="visionImagePreview" alt="Preview" class="h-full w-full object-cover" />
+                        </div>
+                        <input
+                            type="file"
+                            accept="image/jpeg,image/png,image/webp"
+                            class="text-[13px]"
+                            @change="onVisionImageChange"
+                        />
+                        <p v-if="visionForm.errors.image" class="mt-1 text-[12px]" style="color: #c0512c">
+                            {{ visionForm.errors.image }}
+                        </p>
+                    </div>
+
+                    <div>
+                        <label class="mb-1.5 block text-[13px] font-medium" style="color: var(--hab-ink)">Caption</label>
+                        <input
+                            v-model="visionForm.caption"
+                            type="text"
+                            maxlength="80"
+                            placeholder="e.g. Japan trip 2027"
+                            class="w-full rounded-[10px] border px-3 py-2 text-[14px]"
+                            style="border-color: var(--hab-card-border); background: var(--hab-card-bg); color: var(--hab-ink)"
+                        />
+                        <p v-if="visionForm.errors.caption" class="mt-1 text-[12px]" style="color: #c0512c">
+                            {{ visionForm.errors.caption }}
+                        </p>
+                    </div>
+
+                    <div class="flex items-center justify-between pt-2">
+                        <button
+                            v-if="editingVisionItem"
+                            type="button"
+                            class="text-[13px] font-medium"
+                            style="color: #c0512c"
+                            @click="deleteVisionItem"
+                        >
+                            Delete
+                        </button>
+                        <div class="ml-auto flex gap-2">
+                            <button
+                                type="button"
+                                class="rounded-full px-4 py-2 text-[13px] font-medium"
+                                style="background: var(--hab-chip-fill); color: var(--hab-muted)"
+                                @click="visionModalOpen = false"
+                            >
+                                Cancel
+                            </button>
+                            <button
+                                type="button"
+                                class="rounded-full px-4 py-2 text-[13px] font-semibold text-white"
+                                style="background: var(--hab-accent)"
+                                :disabled="visionForm.processing"
+                                @click="submitVisionForm"
+                            >
+                                Save
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </DialogContent>
+        </Dialog>
     </div>
 </template>
 
