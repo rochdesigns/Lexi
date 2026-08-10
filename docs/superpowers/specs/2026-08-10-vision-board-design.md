@@ -33,19 +33,23 @@ No relation to `Goal` — separate concern, separate table/model.
 group, following the pattern of `GoalController`/`BudgetCategoryController`):
 
 - `store(Request $request)`
+  - Rejects with `back()->withErrors(['image' => ...])` if the user already
+    has 6 `vision_board_items` (matches `DebtController`'s business-rule
+    error convention, checked before validation)
   - Validates: `image` (`image`, max 5MB, mimes: jpg,jpeg,png,webp, required),
     `caption` (`required|string|max:80`)
-  - Rejects (422) if the user already has 6 `vision_board_items`
   - Stores the file on the `public` disk under `vision-board/{user_id}/`
   - Creates the row at `position = current max + 1`
 - `update(Request $request, VisionBoardItem $visionBoardItem)`
-  - Authorizes the item belongs to the current user (404 otherwise)
-  - Validates: `caption` (`sometimes|required|string|max:80`), `image`
-    (`sometimes|image|max:5120|mimes:jpg,jpeg,png,webp`)
+  - Authorizes the item belongs to the current user via
+    `abort_if($item->user_id !== $request->user()->id, 403)` (matches
+    `GoalController`'s pattern — 403, not 404)
+  - Validates: `caption` (`required|string|max:80`), `image`
+    (`nullable|image|max:5120|mimes:jpg,jpeg,png,webp`)
   - If a new image is provided, deletes the old file from disk after the
     new one is stored
 - `destroy(VisionBoardItem $visionBoardItem)`
-  - Authorizes ownership (404 otherwise)
+  - Authorizes ownership the same way (403, not 404)
   - Deletes the file from disk, then the row
 
 Routes (in `routes/web.php`, inside the existing authenticated group):
