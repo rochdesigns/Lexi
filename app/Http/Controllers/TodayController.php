@@ -8,8 +8,10 @@ use App\Models\HabitLog;
 use App\Models\HealthMetric;
 use App\Models\Task;
 use App\Models\TaskSection;
+use App\Models\VisionBoardItem;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\Storage;
 use Inertia\Inertia;
 use Inertia\Response;
 
@@ -98,6 +100,15 @@ class TodayController extends Controller
             ->whereIn('name', ['Steps', 'Sleep'])
             ->get(['name', 'value', 'sub', 'pct', 'color', 'icon']);
 
+        $visionBoardItems = VisionBoardItem::where('user_id', $user->id)
+            ->orderBy('position')
+            ->get()
+            ->map(fn (VisionBoardItem $item): array => [
+                'id' => $item->id,
+                'imageUrl' => Storage::disk('public')->url($item->image_path),
+                'caption' => $item->caption,
+            ]);
+
         $firstName = explode(' ', $user->name)[0];
 
         return Inertia::render('Today', [
@@ -111,6 +122,7 @@ class TodayController extends Controller
             'moneySummary' => $moneySummary,
             'habits' => $habits,
             'healthMetrics' => $healthMetrics,
+            'visionBoardItems' => $visionBoardItems,
         ]);
     }
 }
