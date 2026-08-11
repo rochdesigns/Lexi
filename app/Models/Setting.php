@@ -27,6 +27,8 @@ class Setting extends Model
     protected $casts = [
         'budget_cycle_days' => 'integer',
         'budget_cycle_anchor' => 'date',
+        'cycle_type' => 'string',
+        'monthly_start_day' => 'integer',
         'fi_number' => 'decimal:2',
         'fi_expected_return_rate' => 'decimal:2',
         'emergency_fund_target_months' => 'integer',
