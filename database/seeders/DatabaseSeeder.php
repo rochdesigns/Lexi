@@ -9,12 +9,12 @@ use App\Models\Debt;
 use App\Models\DebtBalanceSnapshot;
 use App\Models\DebtPayment;
 use App\Models\Event;
-use App\Models\Goal;
 use App\Models\Habit;
 use App\Models\HabitLog;
 use App\Models\HealthMetric;
 use App\Models\HealthWeek;
 use App\Models\Setting;
+use App\Models\SinkingFund;
 use App\Models\Task;
 use App\Models\TaskSection;
 use App\Models\Transaction;
@@ -192,15 +192,15 @@ class DatabaseSeeder extends Seeder
             'position' => $index,
         ]));
 
-        Goal::create([
+        SinkingFund::create([
             'user_id' => $user->id, 'name' => 'Japan trip', 'icon' => 'flight', 'color' => '#d98a2b', 'bg' => '#f8ecd6',
             'saved' => 45000.00, 'target' => 150000.00, 'per_month' => 10000.00,
-            'by_date' => $today->copy()->addMonths(5)->toDateString(), 'position' => 0,
+            'due_date' => $today->copy()->addMonths(5)->toDateString(), 'position' => 0,
         ]);
 
-        Goal::create([
+        SinkingFund::create([
             'user_id' => $user->id, 'name' => 'New laptop', 'icon' => 'laptop_mac', 'color' => '#2f7d5b', 'bg' => '#dcf0e6',
-            'saved' => 30000.00, 'target' => 90000.00, 'per_month' => 5000.00, 'by_date' => null, 'position' => 1,
+            'saved' => 30000.00, 'target' => 90000.00, 'per_month' => 5000.00, 'due_date' => null, 'position' => 1,
         ]);
 
         $accountBalances = [

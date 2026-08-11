@@ -7,10 +7,10 @@ use App\Models\Debt;
 use App\Models\DebtBalanceSnapshot;
 use App\Models\DebtPayment;
 use App\Models\Event;
-use App\Models\Goal;
 use App\Models\Habit;
 use App\Models\HabitLog;
 use App\Models\Setting;
+use App\Models\SinkingFund;
 use App\Models\Task;
 use App\Models\User;
 use App\Services\TrajectoryReportService;
@@ -37,13 +37,19 @@ it('seeds trajectory demo data with history for every report section', function 
     $user = User::where('email', 'elle@example.com')->firstOrFail();
     $setting = Setting::where('user_id', $user->id)->firstOrFail();
 
+    $japanTrip = SinkingFund::where('user_id', $user->id)->where('name', 'Japan trip')->first();
+    $newLaptop = SinkingFund::where('user_id', $user->id)->where('name', 'New laptop')->first();
+
     expect((float) $setting->fi_number)->toBeGreaterThan(0.0)
         ->and($setting->emergency_fund_target_months)->toBe(6)
         ->and(Account::where('user_id', $user->id)->where('is_emergency_fund', true)->count())->toBe(1)
         ->and(Account::where('user_id', $user->id)->where('type', 'investment')->whereNotNull('cost_basis')->count())->toBe(2)
         ->and(Debt::where('user_id', $user->id)->count())->toBe(3)
         ->and(Debt::where('user_id', $user->id)->whereNotNull('interest_rate')->count())->toBe(3)
-        ->and(Goal::where('user_id', $user->id)->whereNotNull('by_date')->count())->toBe(1)
+        ->and($japanTrip)->not->toBeNull()
+        ->and($japanTrip->due_date)->not->toBeNull()
+        ->and($newLaptop)->not->toBeNull()
+        ->and($newLaptop->due_date)->toBeNull()
         ->and(DebtPayment::where('user_id', $user->id)->count())->toBe(36)
         ->and(AccountBalanceSnapshot::where('user_id', $user->id)->count())->toBe(72)
         ->and(DebtBalanceSnapshot::where('user_id', $user->id)->count())->toBe(36);
