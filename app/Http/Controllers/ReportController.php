@@ -6,6 +6,7 @@ use App\Models\Debt;
 use App\Models\User;
 use App\Services\BudgetCycle;
 use App\Services\TrajectoryReportService;
+use App\Support\CyclePeriod;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
@@ -272,6 +273,7 @@ class ReportController extends Controller
             $extensionEnd = match ($periodType) {
                 'quarter' => $end->copy()->addQuarterNoOverflow()->endOfQuarter(),
                 'year' => $end->copy()->addYear()->endOfYear(),
+                'cycle' => (new BudgetCycle($user->setting))->next(new CyclePeriod($start, $end))->end,
                 default => $end->copy()->addMonthNoOverflow()->endOfMonth(),
             };
 

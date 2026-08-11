@@ -448,3 +448,31 @@ test('the cycle period option scopes reports to the configured budget cycle, not
             ->where('period.label', 'Jul 25 – Aug 24, 2026')
         );
 });
+
+test('reports cash flow extends a fixed-days cycle forward to the next cycle boundary, not a calendar month', function () {
+    // A 31-day fixed cycle anchored on the 24th puts "now" (Aug 15) inside the
+    // Jul 25 - Aug 24 cycle. The next cycle is Aug 25 - Sep 24, so the chart's
+    // forward extension must stop at Sep 24, not overshoot to Sep 30 the way
+    // naive addMonthNoOverflow()->endOfMonth() month-math would.
+    Carbon::setTestNow(Carbon::parse('2026-08-15'));
+    $user = User::factory()->create();
+    $user->setting()->create([
+        'theme' => 'ocean',
+        'budget_cycle_days' => 31,
+        'budget_cycle_anchor' => '2026-06-24',
+    ]);
+
+    $this->actingAs($user)
+        ->get('/reports?period=cycle')
+        ->assertOk()
+        ->assertInertia(fn ($page) => $page
+            ->where('period.label', 'Jul 25 – Aug 24, 2026')
+            ->has('cashFlow.series', 10)
+            ->where('cashFlow.series.0.label', 'Jul 25')
+            ->where('cashFlow.series.4.label', 'Aug 22')
+            ->where('cashFlow.series.5.label', 'Aug 25')
+            ->where('cashFlow.series.9.label', 'Sep 22')
+        );
+
+    Carbon::setTestNow();
+});
