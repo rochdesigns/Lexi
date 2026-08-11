@@ -8,7 +8,6 @@ use App\Http\Controllers\EventController;
 use App\Http\Controllers\FinanceTrajectoryController;
 use App\Http\Controllers\MoneyController;
 use App\Http\Controllers\RecurringBillController;
-use App\Http\Controllers\ReportController;
 use App\Http\Controllers\SinkingFundController;
 use App\Http\Controllers\TaskController;
 use App\Http\Controllers\TaskSectionController;
@@ -72,7 +71,6 @@ Route::middleware(['auth', 'verified'])->group(function (): void {
     Route::patch('/debts/{debt}', [DebtController::class, 'update'])->name('debts.update');
     Route::delete('/debts/{debt}', [DebtController::class, 'destroy'])->name('debts.destroy');
     Route::post('/debts/{debt}/payment', [DebtController::class, 'makePayment'])->name('debts.payment');
-    Route::get('/reports', [ReportController::class, 'index'])->name('reports');
     Route::get('/trajectory', [FinanceTrajectoryController::class, 'index'])->name('trajectory');
     Route::inertia('/photos', 'Stub')->name('photos');
 
