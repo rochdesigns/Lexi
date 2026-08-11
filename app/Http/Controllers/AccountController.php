@@ -3,7 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\Account;
-use Carbon\Carbon;
+use App\Services\BudgetCycle;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -47,21 +47,10 @@ class AccountController extends Controller
             ->sortBy(fn ($g) => $typeOrder[$g['type']] ?? 99)
             ->values();
 
-        $setting = $user->setting;
-
-        if ($setting) {
-            $cycle = $setting->cycleForDate(Carbon::now());
-            $cycleStart = $cycle['start'];
-            $cycleEnd = $cycle['end'];
-            $isCalendarMonth = $cycleStart->day === 1 && $cycleEnd->isSameDay($cycleStart->copy()->endOfMonth());
-            $cycleLabel = $isCalendarMonth
-                ? $cycleStart->format('F Y')
-                : $cycleStart->format('M j').' – '.$cycleEnd->format('M j');
-        } else {
-            $cycleStart = Carbon::now()->startOfMonth();
-            $cycleEnd = Carbon::now()->endOfMonth();
-            $cycleLabel = Carbon::now()->format('F Y');
-        }
+        $period = (new BudgetCycle($user->setting))->current();
+        $cycleStart = $period->start;
+        $cycleEnd = $period->end;
+        $cycleLabel = $period->label();
 
         $cycleTransactions = $user->transactions()
             ->whereBetween('transacted_at', [$cycleStart->toDateString(), $cycleEnd->toDateString()])

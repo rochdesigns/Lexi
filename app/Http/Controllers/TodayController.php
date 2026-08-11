@@ -9,6 +9,7 @@ use App\Models\HealthMetric;
 use App\Models\Task;
 use App\Models\TaskSection;
 use App\Models\VisionBoardItem;
+use App\Services\BudgetCycle;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Storage;
@@ -39,14 +40,9 @@ class TodayController extends Controller
                 ->get(['id', 'label', 'section_id', 'done'])
             : collect();
 
-        $setting = $user->setting;
-        $cycle = $setting?->cycleForDate($today) ?? [
-            'start' => $today->copy()->startOfMonth(),
-            'end' => $today->copy()->endOfMonth(),
-        ];
-
-        $cycleStart = $cycle['start'];
-        $cycleEnd = $cycle['end'];
+        $period = (new BudgetCycle($user->setting))->containing($today);
+        $cycleStart = $period->start;
+        $cycleEnd = $period->end;
 
         $cycleBudget = (float) $user->budgetCategories()->sum('limit_amount');
         $saPerMonth = (float) $user->sinkingFunds()->sum('per_month');

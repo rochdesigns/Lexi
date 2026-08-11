@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Services\BudgetCycle;
 use Carbon\Carbon;
 use Carbon\CarbonInterface;
 use Illuminate\Http\Request;
@@ -14,21 +15,14 @@ class BudgetController extends Controller
     {
         $user = $request->user();
         $setting = $user->setting;
+        $budgetCycle = new BudgetCycle($setting);
 
-        $cycleDate = $request->query('cycle_start')
-            ? Carbon::parse($request->query('cycle_start'))
-            : Carbon::now();
+        $currentPeriod = $request->query('cycle_start')
+            ? $budgetCycle->containing(Carbon::parse($request->query('cycle_start')))
+            : $budgetCycle->current();
 
-        $cycle = $setting?->cycleForDate($cycleDate) ?? [
-            'start' => Carbon::now()->startOfMonth(),
-            'end' => Carbon::now()->endOfMonth(),
-            'index' => 0,
-        ];
-
-        $cycleStart = $cycle['start'];
-        $cycleEnd = $cycle['end'];
-
-        $cycleDays = $setting?->budget_cycle_days ?? 30;
+        $cycleStart = $currentPeriod->start;
+        $cycleEnd = $currentPeriod->end;
 
         $cycleBudget = (float) $user->budgetCategories()->sum('limit_amount');
         $saPerMonth = (float) $user->sinkingFunds()->sum('per_month');
@@ -36,7 +30,10 @@ class BudgetController extends Controller
         $totalAccountBalance = (float) $user->accounts()->sum('balance');
         $totalSaSaved = (float) $user->sinkingFunds()->sum('saved');
 
-        $prevCycleStartDate = $cycleStart->copy()->subDays($cycleDays);
+        $previousPeriod = $budgetCycle->previous($currentPeriod);
+        $nextPeriod = $budgetCycle->next($currentPeriod);
+
+        $prevCycleStartDate = $previousPeriod->start;
         $prevCycleSpent = (float) $user->transactions()
             ->where('transacted_at', '>=', $prevCycleStartDate->toDateString())
             ->where('transacted_at', '<', $cycleStart->toDateString())
@@ -219,18 +216,10 @@ class BudgetController extends Controller
                 ] : null,
             ]);
 
-        $prevCycleStart = $cycleStart->copy()->subDays($cycleDays)->toDateString();
-        $nextCycleStart = $cycleStart->copy()->addDays($cycleDays)->toDateString();
-        $isCurrentCycle = $today->between($cycleStart, $cycleEnd);
-
-        $isCalendarMonth = $cycleStart->day === 1 && $cycleEnd->isSameDay($cycleStart->copy()->endOfMonth());
-        if ($isCalendarMonth) {
-            $cycleLabel = $cycleStart->format('F Y');
-        } elseif ($cycleStart->year === $cycleEnd->year) {
-            $cycleLabel = $cycleStart->format('M j').' – '.$cycleEnd->format('M j, Y');
-        } else {
-            $cycleLabel = $cycleStart->format('M j, Y').' – '.$cycleEnd->format('M j, Y');
-        }
+        $prevCycleStart = $previousPeriod->start->toDateString();
+        $nextCycleStart = $nextPeriod->start->toDateString();
+        $isCurrentCycle = $currentPeriod->containsToday();
+        $cycleLabel = $currentPeriod->label();
 
         $mapTransaction = fn ($t) => [
             'id' => $t->id,
