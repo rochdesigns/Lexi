@@ -158,6 +158,41 @@ test('net worth omits a month where only some of the users debts were snapshotte
     Carbon::setTestNow();
 });
 
+test('net worth reports a null changePct when the earliest trend month nets to exactly zero', function () {
+    Carbon::setTestNow(Carbon::parse('2026-08-05'));
+
+    $user = User::factory()->create();
+    $account = Account::factory()->for($user)->create(['balance' => 10000, 'type' => 'cash']);
+    $debt = Debt::factory()->for($user)->create(['balance' => 4000]);
+
+    // June's account and debt balances match exactly (5000 - 5000 = 0), so the
+    // earliest trend entry nets to 0.0 and would divide by zero if not guarded.
+    foreach ([['2026-06-30', 5000], ['2026-08-05', 10000]] as [$date, $balance]) {
+        AccountBalanceSnapshot::create([
+            'user_id' => $user->id, 'account_id' => $account->id,
+            'balance' => $balance, 'snapshot_date' => $date,
+        ]);
+    }
+
+    foreach ([['2026-06-30', 5000], ['2026-08-05', 4000]] as [$date, $balance]) {
+        DebtBalanceSnapshot::create([
+            'user_id' => $user->id, 'debt_id' => $debt->id,
+            'balance' => $balance, 'snapshot_date' => $date,
+        ]);
+    }
+
+    $result = app(TrajectoryReportService::class)->netWorth($user);
+
+    expect($result['available'])->toBeTrue()
+        ->and($result['trend'])->toHaveCount(2)
+        ->and($result['trend'][0])->toBe(['month' => '2026-06', 'label' => 'Jun 2026', 'value' => 0.0])
+        ->and($result['trend'][1]['value'])->toBe(6000.0)
+        ->and($result['changeAmount'])->toBe(6000.0)
+        ->and($result['changePct'])->toBeNull();
+
+    Carbon::setTestNow();
+});
+
 test('net worth omits a month where only some of the users accounts were snapshotted', function () {
     Carbon::setTestNow(Carbon::parse('2026-08-05'));
 
