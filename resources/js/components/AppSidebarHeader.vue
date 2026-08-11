@@ -32,7 +32,7 @@ const sections: Section[] = [
     {
         icon: 'account_balance_wallet',
         label: 'Money',
-        paths: ['/goals', '/accounts', '/budgets', '/set-asides', '/debt', '/photos'],
+        paths: ['/accounts', '/budgets', '/set-asides', '/debt', '/photos'],
     },
 ];
 
@@ -47,7 +47,6 @@ const pageLabels: Record<string, string> = {
     '/meals': 'Meals',
     '/groceries': 'Groceries',
     '/pets': 'Pets',
-    '/goals': 'Goals',
     '/accounts': 'Accounts',
     '/budgets': 'Budgets',
     '/set-asides': 'Set-asides',
