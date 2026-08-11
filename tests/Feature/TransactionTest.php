@@ -1,8 +1,11 @@
 <?php
 
 use App\Models\Account;
+use App\Models\BudgetCategory;
 use App\Models\Debt;
 use App\Models\DebtPayment;
+use App\Models\Goal;
+use App\Models\Transaction;
 use App\Models\User;
 use Carbon\Carbon;
 
@@ -58,4 +61,45 @@ test('deleting a payment on a credit-linked debt restores the credit account bal
 
     expect((float) $card->fresh()->balance)->toBe(20000.0)
         ->and((float) $debt->fresh()->balance)->toBe(20000.0);
+});
+
+test('deleting a transaction with a legacy goal_id does not touch the goal saved amount', function (): void {
+    $user = User::factory()->create();
+    $account = Account::factory()->for($user)->create(['balance' => 100000, 'type' => 'cash']);
+    $goal = Goal::factory()->for($user)->create(['saved' => 2500]);
+    $transaction = Transaction::factory()->for($user)->for($account)->create([
+        'type' => 'expense',
+        'amount' => 100,
+        'goal_id' => $goal->id,
+    ]);
+
+    $this->actingAs($user)->delete("/transactions/{$transaction->id}")->assertRedirect();
+
+    expect((float) $goal->fresh()->saved)->toBe(2500.0)
+        ->and(Transaction::find($transaction->id))->toBeNull();
+});
+
+test('updating a transaction with a legacy goal_id, without resending goal_id, does not touch the goal saved amount', function (): void {
+    $user = User::factory()->create();
+    $account = Account::factory()->for($user)->create(['balance' => 100000, 'type' => 'cash']);
+    $category = BudgetCategory::factory()->for($user)->create();
+    $goal = Goal::factory()->for($user)->create(['saved' => 2500]);
+    $transaction = Transaction::factory()->for($user)->for($account)->create([
+        'type' => 'expense',
+        'amount' => 100,
+        'goal_id' => $goal->id,
+    ]);
+
+    $this->actingAs($user)->patch("/transactions/{$transaction->id}", [
+        'type' => 'expense',
+        'amount' => 150,
+        'budget_category_id' => $category->id,
+        'sinking_fund_id' => null,
+        'merchant' => 'Updated Merchant',
+        'account_id' => $account->id,
+        'transacted_at' => '2026-08-01',
+    ])->assertRedirect();
+
+    expect((float) $goal->fresh()->saved)->toBe(2500.0)
+        ->and((float) $transaction->fresh()->amount)->toBe(150.0);
 });

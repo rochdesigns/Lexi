@@ -28,11 +28,6 @@ class TransactionController extends Controller
             $transaction->sinkingFund?->increment('saved', $transaction->amount);
         }
 
-        // Reverse the goal top-up when its transaction is deleted
-        if ($transaction->type === 'expense' && $transaction->goal_id) {
-            $transaction->goal?->decrement('saved', $transaction->amount);
-        }
-
         // Reverse the debt side of a debt payment. The DebtPayment row is removed by the
         // transaction_id foreign key's cascade, so read it before deleting the transaction.
         if ($transaction->debt_id) {
@@ -62,16 +57,14 @@ class TransactionController extends Controller
 
         $type = $request->input('type', 'expense');
         $hasSinkingFund = ! empty($request->input('sinking_fund_id'));
-        $hasGoal = ! empty($request->input('goal_id'));
 
         $validated = $request->validate([
             'type' => ['required', 'in:expense,income,transfer'],
             'amount' => ['required', 'numeric', 'min:0.01'],
-            'budget_category_id' => $type === 'expense' && ! $hasSinkingFund && ! $hasGoal
+            'budget_category_id' => $type === 'expense' && ! $hasSinkingFund
                 ? ['required', 'integer', 'exists:budget_categories,id']
                 : ['nullable', 'integer', 'exists:budget_categories,id'],
             'sinking_fund_id' => ['nullable', 'integer', 'exists:sinking_funds,id'],
-            'goal_id' => ['nullable', 'integer', 'exists:goals,id'],
             'merchant' => ['nullable', 'string', 'max:100'],
             'account_id' => ['required', 'integer', 'exists:accounts,id'],
             'to_account_id' => $type === 'transfer'
@@ -89,11 +82,6 @@ class TransactionController extends Controller
         // Reverse old sinking fund effect
         if ($transaction->type === 'expense' && $transaction->sinking_fund_id) {
             $transaction->sinkingFund?->increment('saved', $transaction->amount);
-        }
-
-        // Reverse old goal top-up effect
-        if ($transaction->type === 'expense' && $transaction->goal_id) {
-            $transaction->goal?->decrement('saved', $transaction->amount);
         }
 
         $transaction->update($validated);
@@ -115,12 +103,6 @@ class TransactionController extends Controller
             $fund->decrement('saved', $validated['amount']);
         }
 
-        // Apply new goal top-up effect
-        if ($validated['type'] === 'expense' && ! empty($validated['goal_id'])) {
-            $goal = $user->goals()->findOrFail($validated['goal_id']);
-            $goal->increment('saved', $validated['amount']);
-        }
-
         return back();
     }
 
@@ -128,16 +110,14 @@ class TransactionController extends Controller
     {
         $type = $request->input('type', 'expense');
         $hasSinkingFund = ! empty($request->input('sinking_fund_id'));
-        $hasGoal = ! empty($request->input('goal_id'));
 
         $validated = $request->validate([
             'type' => ['required', 'in:expense,income,transfer'],
             'amount' => ['required', 'numeric', 'min:0.01'],
-            'budget_category_id' => $type === 'expense' && ! $hasSinkingFund && ! $hasGoal
+            'budget_category_id' => $type === 'expense' && ! $hasSinkingFund
                 ? ['required', 'integer', 'exists:budget_categories,id']
                 : ['nullable', 'integer', 'exists:budget_categories,id'],
             'sinking_fund_id' => ['nullable', 'integer', 'exists:sinking_funds,id'],
-            'goal_id' => ['nullable', 'integer', 'exists:goals,id'],
             'merchant' => ['nullable', 'string', 'max:100'],
             'account_id' => ['required', 'integer', 'exists:accounts,id'],
             'to_account_id' => $type === 'transfer'
