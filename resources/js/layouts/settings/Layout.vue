@@ -6,6 +6,7 @@ import { Separator } from '@/components/ui/separator';
 import { useCurrentUrl } from '@/composables/useCurrentUrl';
 import { toUrl } from '@/lib/utils';
 import { edit as editAppearance } from '@/routes/appearance';
+import { edit as editBills } from '@/routes/bills';
 import { edit as editBudgetCycle } from '@/routes/budget-cycle';
 import { edit as editCategories } from '@/routes/categories';
 import { edit as editProfile } from '@/routes/profile';
@@ -32,6 +33,10 @@ const sidebarNavItems: NavItem[] = [
     {
         title: 'Categories',
         href: editCategories(),
+    },
+    {
+        title: 'Bills',
+        href: editBills(),
     },
 ];
 

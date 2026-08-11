@@ -7,9 +7,36 @@ use App\Models\RecurringBill;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
+use Inertia\Inertia;
+use Inertia\Response;
 
 class RecurringBillController extends Controller
 {
+    public function index(Request $request): Response
+    {
+        $bills = $request->user()->recurringBills()
+            ->with('budgetCategory')
+            ->orderBy('day_of_month')
+            ->get()
+            ->map(fn ($bill) => [
+                'id' => $bill->id,
+                'name' => $bill->name,
+                'icon' => $bill->icon,
+                'color' => $bill->color,
+                'bg' => $bill->bg,
+                'amount' => (float) $bill->amount,
+                'day_of_month' => $bill->day_of_month,
+                'budget_category_id' => $bill->budget_category_id,
+                'category' => $bill->budgetCategory ? [
+                    'id' => $bill->budgetCategory->id,
+                    'name' => $bill->budgetCategory->name,
+                    'color' => $bill->budgetCategory->color,
+                ] : null,
+            ]);
+
+        return Inertia::render('settings/Bills', ['bills' => $bills]);
+    }
+
     public function store(Request $request): RedirectResponse
     {
         $validated = $request->validate($this->rules());
