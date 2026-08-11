@@ -6,9 +6,9 @@ use App\Models\BudgetCategory;
 use App\Models\Debt;
 use App\Models\DebtBalanceSnapshot;
 use App\Models\DebtPayment;
-use App\Models\Goal;
 use App\Models\RecurringBill;
 use App\Models\Setting;
+use App\Models\SinkingFund;
 use App\Models\Transaction;
 use App\Models\User;
 use App\Services\TrajectoryReportService;
@@ -636,14 +636,14 @@ test('savings summary computes the monthly contribution each dated goal requires
 
     $user = User::factory()->create();
 
-    Goal::factory()->for($user)->create([
+    SinkingFund::factory()->for($user)->create([
         'name' => 'Japan trip', 'target' => 100000, 'saved' => 25000,
-        'per_month' => 10000, 'by_date' => '2026-12-31',
+        'per_month' => 10000, 'due_date' => '2026-12-31',
     ]);
-    Goal::factory()->for($user)->create([
-        'name' => 'Someday', 'target' => 50000, 'saved' => 1000, 'per_month' => 2000, 'by_date' => null,
+    SinkingFund::factory()->for($user)->create([
+        'name' => 'Someday', 'target' => 50000, 'saved' => 1000, 'per_month' => 2000, 'due_date' => null,
     ]);
-    Goal::factory()->for($user)->create(['name' => 'Done', 'target' => 1000, 'saved' => 1000, 'per_month' => 0]);
+    SinkingFund::factory()->for($user)->create(['name' => 'Done', 'target' => 1000, 'saved' => 1000, 'per_month' => 0]);
 
     $goals = app(TrajectoryReportService::class)->savingsSummary($user)['goals'];
 
@@ -1187,7 +1187,7 @@ test('trajectory page exposes every field the savings and investment sections re
 
     Account::factory()->emergencyFund()->for($user)->create(['balance' => 90000]);
     Account::factory()->investment()->for($user)->create(['name' => 'Index Fund', 'balance' => 300000, 'cost_basis' => 250000]);
-    Goal::factory()->for($user)->create(['name' => 'Japan trip', 'target' => 100000, 'saved' => 25000, 'per_month' => 10000, 'by_date' => '2026-12-31']);
+    SinkingFund::factory()->for($user)->create(['name' => 'Japan trip', 'target' => 100000, 'saved' => 25000, 'per_month' => 10000, 'due_date' => '2026-12-31']);
 
     $this->actingAs($user)
         ->get(route('trajectory'))

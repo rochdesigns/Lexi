@@ -8,7 +8,7 @@ use App\Models\BudgetCategory;
 use App\Models\Debt;
 use App\Models\DebtBalanceSnapshot;
 use App\Models\DebtPayment;
-use App\Models\Goal;
+use App\Models\SinkingFund;
 use App\Models\User;
 use Carbon\Carbon;
 use Illuminate\Support\Collection;
@@ -729,36 +729,36 @@ class TrajectoryReportService
     {
         $today = Carbon::now()->startOfDay();
 
-        return $user->goals()
+        return $user->sinkingFunds()
             ->whereColumn('saved', '<', 'target')
             ->orderBy('position')
             ->get()
-            ->map(function (Goal $goal) use ($today) {
-                $remaining = round((float) $goal->target - (float) $goal->saved, 2);
-                $perMonth = round((float) $goal->per_month, 2);
+            ->map(function (SinkingFund $fund) use ($today) {
+                $remaining = round((float) $fund->target - (float) $fund->saved, 2);
+                $perMonth = round((float) $fund->per_month, 2);
 
                 $monthsRemaining = null;
                 $requiredMonthly = null;
 
-                if ($goal->by_date !== null) {
-                    $days = max(0.0, (float) $today->diffInDays(Carbon::parse($goal->by_date)->startOfDay(), false));
+                if ($fund->due_date !== null) {
+                    $days = max(0.0, (float) $today->diffInDays(Carbon::parse($fund->due_date)->startOfDay(), false));
                     $monthsRemaining = max(1, (int) ceil($days / 30.4375));
                     $requiredMonthly = round($remaining / $monthsRemaining, 2);
                 }
 
                 return [
-                    'id' => $goal->id,
-                    'name' => $goal->name,
-                    'icon' => $goal->icon,
-                    'color' => $goal->color,
-                    'bg' => $goal->bg,
-                    'saved' => round((float) $goal->saved, 2),
-                    'target' => round((float) $goal->target, 2),
-                    'progressPct' => (float) $goal->target > 0
-                        ? round((float) $goal->saved / (float) $goal->target * 100, 1)
+                    'id' => $fund->id,
+                    'name' => $fund->name,
+                    'icon' => $fund->icon,
+                    'color' => $fund->color,
+                    'bg' => $fund->bg,
+                    'saved' => round((float) $fund->saved, 2),
+                    'target' => round((float) $fund->target, 2),
+                    'progressPct' => (float) $fund->target > 0
+                        ? round((float) $fund->saved / (float) $fund->target * 100, 1)
                         : 0.0,
                     'perMonth' => $perMonth,
-                    'byDate' => $goal->by_date?->toDateString(),
+                    'byDate' => $fund->due_date?->toDateString(),
                     'monthsRemaining' => $monthsRemaining,
                     'requiredMonthly' => $requiredMonthly,
                     'onTrack' => $requiredMonthly !== null ? $perMonth >= $requiredMonthly : null,
