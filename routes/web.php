@@ -7,6 +7,7 @@ use App\Http\Controllers\CalendarController;
 use App\Http\Controllers\DebtController;
 use App\Http\Controllers\EventController;
 use App\Http\Controllers\FinanceTrajectoryController;
+use App\Http\Controllers\MoneyController;
 use App\Http\Controllers\RecurringBillController;
 use App\Http\Controllers\ReportController;
 use App\Http\Controllers\SinkingFundController;
@@ -52,6 +53,7 @@ Route::middleware(['auth', 'verified'])->group(function (): void {
     Route::delete('/accounts/{account}', [AccountController::class, 'destroy'])->name('accounts.destroy');
     Route::get('/accounts/{account}/transactions', [AccountController::class, 'transactions'])->name('accounts.transactions');
     Route::get('/budgets', [BudgetController::class, 'index'])->name('budgets');
+    Route::get('/money', [MoneyController::class, 'index'])->name('money');
     Route::post('/transactions', [TransactionController::class, 'store'])->name('transactions.store');
     Route::patch('/transactions/{transaction}', [TransactionController::class, 'update'])->name('transactions.update');
     Route::delete('/transactions/{transaction}', [TransactionController::class, 'destroy'])->name('transactions.destroy');
