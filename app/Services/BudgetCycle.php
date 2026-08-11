@@ -5,7 +5,6 @@ namespace App\Services;
 use App\Models\Setting;
 use App\Support\CyclePeriod;
 use Carbon\Carbon;
-use Carbon\CarbonImmutable;
 
 final class BudgetCycle
 {
@@ -16,7 +15,7 @@ final class BudgetCycle
         return $this->containing(Carbon::now());
     }
 
-    public function containing(Carbon|CarbonImmutable $date): CyclePeriod
+    public function containing(Carbon $date): CyclePeriod
     {
         if ($this->setting === null) {
             return $this->calendarMonthContaining($date);
@@ -38,9 +37,11 @@ final class BudgetCycle
         return $this->containing($period->start->copy()->subDay());
     }
 
-    private function fixedDaysContaining(Carbon|CarbonImmutable $date): CyclePeriod
+    private function fixedDaysContaining(Carbon $date): CyclePeriod
     {
-        $anchor = ($this->setting->budget_cycle_anchor ?? Carbon::parse($this->setting->created_at))->copy()->startOfDay();
+        // Normalize to Carbon in case the cast returned CarbonImmutable
+        $anchorValue = $this->setting->budget_cycle_anchor ?? $this->setting->created_at;
+        $anchor = Carbon::instance($anchorValue)->copy()->startOfDay();
         $target = $date->copy()->startOfDay();
         $days = $this->setting->budget_cycle_days;
 
@@ -61,7 +62,7 @@ final class BudgetCycle
      * rolling forward from a previous cycle's start, so a short-month clamp (e.g. Feb 28
      * for a day-31 anchor) never permanently drags later months down with it.
      */
-    private function monthlyContaining(Carbon|CarbonImmutable $date): CyclePeriod
+    private function monthlyContaining(Carbon $date): CyclePeriod
     {
         $startDay = $this->setting->monthly_start_day ?? 1;
         $date = $date->copy()->startOfDay();
@@ -106,7 +107,7 @@ final class BudgetCycle
         return [$year, $month];
     }
 
-    private function calendarMonthContaining(Carbon|CarbonImmutable $date): CyclePeriod
+    private function calendarMonthContaining(Carbon $date): CyclePeriod
     {
         return new CyclePeriod($date->copy()->startOfMonth(), $date->copy()->endOfMonth());
     }
