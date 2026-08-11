@@ -1,5 +1,6 @@
 <?php
 
+use App\Models\Debt;
 use App\Services\TrajectoryReportService;
 
 test('simulatePayoff clears a single debt in the expected number of months', function () {
@@ -44,7 +45,7 @@ test('simulatePayoff directs extraMonthly at the highest-rate active debt (avala
 
 test('payoffInputs maps a debt collection into the balance/perMonth/monthlyRate shape simulatePayoff expects', function () {
     $service = new TrajectoryReportService;
-    $debt = \App\Models\Debt::factory()->make([
+    $debt = Debt::factory()->make([
         'balance' => 5000, 'per_month' => 250, 'interest_rate' => 12, 'interest_rate_period' => 'annual',
     ]);
 
