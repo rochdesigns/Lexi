@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import { Head, Link, router, usePage } from '@inertiajs/vue3';
-import { computed, reactive, ref } from 'vue';
+import { Head, Link, useForm, usePage } from '@inertiajs/vue3';
+import { computed, ref } from 'vue';
 import { pay as payRecurringBill } from '@/actions/App/Http/Controllers/RecurringBillController';
 
 type Cycle = { start: string; end: string; label: string };
@@ -15,6 +15,8 @@ type UpcomingBill = {
     dueLabel: string;
     daysUntil: number;
     type: 'set_aside' | 'recurring';
+    budget_category_id?: number | null;
+    category?: { id: number; name: string; color: string } | null;
 };
 
 type CategoryOverBudget = {
@@ -56,7 +58,13 @@ function formatMoney(n: number): string {
 // ── Mark paid (inline, recurring bills only) ────────────────────────────────
 
 const payingBillId = ref<number | null>(null);
-const payForm = reactive({ account_id: 0, transacted_at: '' });
+const payForm = useForm({
+    amount: 0,
+    merchant: '',
+    account_id: 0,
+    budget_category_id: null as number | null,
+    transacted_at: '',
+});
 
 function today(): string {
     return new Date().toISOString().slice(0, 10);
@@ -64,30 +72,26 @@ function today(): string {
 
 function openPayRow(bill: UpcomingBill): void {
     payingBillId.value = Number(bill.id.replace('rb-', ''));
+    payForm.clearErrors();
+    payForm.amount = bill.amount;
+    payForm.merchant = bill.name;
     payForm.account_id = spendingAccounts.value[0]?.id ?? 0;
+    payForm.budget_category_id = bill.budget_category_id ?? null;
     payForm.transacted_at = today();
 }
 
 function cancelPayRow(): void {
     payingBillId.value = null;
+    payForm.clearErrors();
 }
 
 function submitPayRow(bill: UpcomingBill): void {
-    router.post(
-        payRecurringBill(Number(bill.id.replace('rb-', ''))).url,
-        {
-            amount: bill.amount,
-            merchant: bill.name,
-            account_id: payForm.account_id,
-            transacted_at: payForm.transacted_at,
+    payForm.post(payRecurringBill(Number(bill.id.replace('rb-', ''))).url, {
+        preserveScroll: true,
+        onSuccess: () => {
+            payingBillId.value = null;
         },
-        {
-            preserveScroll: true,
-            onSuccess: () => {
-                payingBillId.value = null;
-            },
-        },
-    );
+    });
 }
 </script>
 
@@ -219,8 +223,9 @@ function submitPayRow(bill: UpcomingBill): void {
                             />
                             <button
                                 type="button"
-                                class="rounded-full px-3 py-1.5 text-[12px] font-semibold text-white"
+                                class="rounded-full px-3 py-1.5 text-[12px] font-semibold text-white disabled:opacity-50"
                                 style="background: var(--hab-accent)"
+                                :disabled="payForm.processing"
                                 @click="submitPayRow(bill)"
                             >
                                 Confirm
@@ -229,10 +234,20 @@ function submitPayRow(bill: UpcomingBill): void {
                                 type="button"
                                 class="rounded-full px-3 py-1.5 text-[12px] font-medium"
                                 style="color: var(--hab-muted)"
+                                :disabled="payForm.processing"
                                 @click="cancelPayRow"
                             >
                                 Cancel
                             </button>
+                            <div v-if="payForm.errors.account_id" class="w-full text-[12px]" style="color: #c0512c">
+                                {{ payForm.errors.account_id }}
+                            </div>
+                            <div v-if="payForm.errors.amount" class="w-full text-[12px]" style="color: #c0512c">
+                                {{ payForm.errors.amount }}
+                            </div>
+                            <div v-if="payForm.errors.transacted_at" class="w-full text-[12px]" style="color: #c0512c">
+                                {{ payForm.errors.transacted_at }}
+                            </div>
                         </div>
                     </div>
                 </div>

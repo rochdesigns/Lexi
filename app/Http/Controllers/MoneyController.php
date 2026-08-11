@@ -115,6 +115,12 @@ class MoneyController extends Controller
                     'id' => 'rb-'.$bill->id, 'name' => $bill->name, 'icon' => $bill->icon,
                     'color' => $bill->color, 'bg' => $bill->bg, 'amount' => (float) $bill->amount,
                     'dueLabel' => $due['label'], 'daysUntil' => $due['daysUntil'], 'type' => 'recurring',
+                    'budget_category_id' => $bill->budget_category_id,
+                    'category' => $bill->budgetCategory ? [
+                        'id' => $bill->budgetCategory->id,
+                        'name' => $bill->budgetCategory->name,
+                        'color' => $bill->budgetCategory->color,
+                    ] : null,
                 ];
             })
             ->filter()
@@ -126,21 +132,24 @@ class MoneyController extends Controller
 
     private function categoriesOverBudget($user, CarbonInterface $cycleStart, CarbonInterface $cycleEnd)
     {
+        $spentByCategory = $user->transactions()
+            ->whereDate('transacted_at', '>=', $cycleStart)
+            ->whereDate('transacted_at', '<=', $cycleEnd)
+            ->where('type', 'expense')
+            ->whereNotNull('budget_category_id')
+            ->selectRaw('budget_category_id, SUM(amount) as spent')
+            ->groupBy('budget_category_id')
+            ->pluck('spent', 'budget_category_id');
+
         return $user->budgetCategories()
+            ->where('limit_amount', '>', 0)
             ->orderBy('name')
             ->get()
-            ->map(function ($cat) use ($cycleStart, $cycleEnd) {
-                $spent = (float) $cat->transactions()
-                    ->whereDate('transacted_at', '>=', $cycleStart)
-                    ->whereDate('transacted_at', '<=', $cycleEnd)
-                    ->where('type', 'expense')
-                    ->sum('amount');
-
-                return [
-                    'id' => $cat->id, 'name' => $cat->name, 'icon' => $cat->icon, 'color' => $cat->color,
-                    'limit_amount' => (float) $cat->limit_amount, 'spent' => $spent,
-                ];
-            })
+            ->map(fn ($cat) => [
+                'id' => $cat->id, 'name' => $cat->name, 'icon' => $cat->icon, 'color' => $cat->color,
+                'limit_amount' => (float) $cat->limit_amount,
+                'spent' => (float) ($spentByCategory[$cat->id] ?? 0),
+            ])
             ->filter(fn ($cat) => $cat['spent'] > $cat['limit_amount'])
             ->values();
     }

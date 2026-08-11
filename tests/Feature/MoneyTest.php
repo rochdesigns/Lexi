@@ -73,6 +73,22 @@ test('bills due within 7 days appear, further-out bills do not', function () {
     expect(collect($bills)->firstWhere('name', 'Due later'))->toBeNull();
 });
 
+test('upcoming recurring bills carry their budget_category_id so marking paid categorizes the expense', function () {
+    $user = User::factory()->create();
+    Setting::factory()->create(['user_id' => $user->id]);
+    $category = BudgetCategory::factory()->for($user)->create();
+
+    RecurringBill::factory()->for($user)->create([
+        'name' => 'Due soon', 'day_of_month' => Carbon::now()->addDays(3)->day, 'budget_category_id' => $category->id,
+    ]);
+
+    $response = $this->actingAs($user)->get('/money')->assertOk();
+    $bill = collect($response->viewData('page')['props']['upcomingBills'])->firstWhere('name', 'Due soon');
+
+    expect($bill['budget_category_id'])->toBe($category->id);
+    expect($bill['category']['id'])->toBe($category->id);
+});
+
 test('only categories that are actually over their limit are returned', function () {
     $user = User::factory()->create();
     Setting::factory()->create(['user_id' => $user->id, 'budget_cycle_days' => 30, 'budget_cycle_anchor' => Carbon::now()->startOfMonth()->toDateString()]);
@@ -90,6 +106,24 @@ test('only categories that are actually over their limit are returned', function
 
     expect($categories)->toContain('Over');
     expect($categories)->not->toContain('Under');
+});
+
+test('categories with no limit set (limit_amount = 0) are never flagged as over budget', function () {
+    $user = User::factory()->create();
+    Setting::factory()->create(['user_id' => $user->id, 'budget_cycle_days' => 30, 'budget_cycle_anchor' => Carbon::now()->startOfMonth()->toDateString()]);
+    $account = Account::factory()->create(['user_id' => $user->id]);
+    $today = Carbon::now()->startOfMonth()->addDay()->toDateString();
+
+    // Never given a budget — spending anything against it trivially satisfies spent > 0,
+    // but it shouldn't clutter a list that means "overspending against what you planned."
+    $unbudgeted = BudgetCategory::factory()->for($user)->create(['name' => 'Unbudgeted', 'limit_amount' => 0]);
+
+    Transaction::factory()->create(['user_id' => $user->id, 'account_id' => $account->id, 'budget_category_id' => $unbudgeted->id, 'type' => 'expense', 'amount' => 250, 'transacted_at' => $today]);
+
+    $response = $this->actingAs($user)->get('/money')->assertOk();
+    $categories = collect($response->viewData('page')['props']['categoriesOverBudget'])->pluck('name');
+
+    expect($categories)->not->toContain('Unbudgeted');
 });
 
 test('debt payoff projection is present when there is outstanding debt', function () {
