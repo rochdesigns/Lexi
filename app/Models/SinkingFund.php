@@ -13,7 +13,7 @@ class SinkingFund extends Model
     /** @use HasFactory<SinkingFundFactory> */
     use HasFactory;
 
-    protected $fillable = ['user_id', 'name', 'icon', 'color', 'bg', 'saved', 'target', 'per_month', 'due_date', 'position'];
+    protected $fillable = ['user_id', 'name', 'icon', 'color', 'bg', 'saved', 'target', 'per_month', 'due_date', 'position', 'migrated_goal_id'];
 
     protected $casts = [
         'saved' => 'decimal:2',
