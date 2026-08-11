@@ -12,9 +12,10 @@ use Illuminate\Support\Collection;
 /**
  * Net worth trend and debt payoff simulation, used by MoneyController.
  *
- * Each public method takes the user explicitly — the service holds no per-user state.
- * When the underlying data is missing a method returns ['available' => false, 'reason' => '…']
- * rather than zeros that would read as a real (and alarming) result.
+ * Each public method takes its inputs explicitly — the service holds no per-user state.
+ * `netWorth()` returns ['available' => false, 'reason' => '…'] rather than zeros that would
+ * read as a real (and alarming) result when the underlying snapshot data is missing.
+ * `simulatePayoff()` and `payoffInputs()` have no such data-availability gate.
  */
 class TrajectoryReportService
 {
