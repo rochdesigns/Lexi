@@ -5,7 +5,7 @@ import { index } from '@/actions/App/Http/Controllers/ReportController';
 import ReportBarChart from '@/components/reports/ReportBarChart.vue';
 import ReportLineChart from '@/components/reports/ReportLineChart.vue';
 
-type PeriodType = 'month' | 'quarter' | 'year';
+type PeriodType = 'cycle' | 'quarter' | 'year';
 
 type Period = {
     type: PeriodType;
@@ -54,7 +54,7 @@ const props = defineProps<{
 }>();
 
 const periodOptions: { value: PeriodType; label: string }[] = [
-    { value: 'month', label: 'Month' },
+    { value: 'cycle', label: 'Cycle' },
     { value: 'quarter', label: 'Quarter' },
     { value: 'year', label: 'Year' },
 ];

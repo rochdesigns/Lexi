@@ -12,7 +12,7 @@ test('guest is redirected from reports page', function () {
     $this->get(route('reports'))->assertRedirect(route('login'));
 });
 
-test('reports page renders with Inertia component and month period by default', function () {
+test('reports page renders with Inertia component and cycle period by default', function () {
     Carbon::setTestNow(Carbon::parse('2026-08-15'));
     $user = User::factory()->create();
     $user->markEmailAsVerified();
@@ -21,9 +21,9 @@ test('reports page renders with Inertia component and month period by default', 
         ->get(route('reports'))
         ->assertInertia(fn ($page) => $page
             ->component('Reports')
-            ->where('period.type', 'month')
+            ->where('period.type', 'cycle')
             ->where('period.label', 'August 2026')
-            ->where('period.prevDate', '2026-07-15')
+            ->where('period.prevDate', '2026-07-01')
             ->where('period.isCurrent', true)
             ->where('period.nextDate', null)
         );
@@ -422,4 +422,29 @@ test('reports payoff excludes paid-off debts and completed goals', function () {
         );
 
     Carbon::setTestNow();
+});
+
+test('the cycle period option scopes reports to the configured budget cycle, not the calendar month', function () {
+    $user = User::factory()->create();
+    $user->setting()->create([
+        'theme' => 'ocean',
+        'budget_cycle_days' => 31,
+        'budget_cycle_anchor' => '2026-06-24',
+    ]);
+
+    $user->transactions()->create([
+        'account_id' => $user->accounts()->create(['name' => 'Cash', 'type' => 'cash', 'balance' => 0])->id,
+        'type' => 'expense',
+        'amount' => 500,
+        'transacted_at' => '2026-07-25', // inside the Jul 25 – Aug 24 cycle, but not the calendar month of Aug 1
+    ]);
+
+    $this->actingAs($user)
+        ->get('/reports?period=cycle')
+        ->assertOk()
+        ->assertInertia(fn ($page) => $page
+            ->component('Reports')
+            ->where('period.type', 'cycle')
+            ->where('period.label', 'Jul 25 – Aug 24, 2026')
+        );
 });

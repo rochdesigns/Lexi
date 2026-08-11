@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\Debt;
 use App\Models\User;
+use App\Services\BudgetCycle;
 use App\Services\TrajectoryReportService;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
@@ -18,9 +19,9 @@ class ReportController extends Controller
     {
         $user = $request->user();
 
-        $periodType = in_array($request->query('period'), ['month', 'quarter', 'year'], true)
+        $periodType = in_array($request->query('period'), ['cycle', 'quarter', 'year'], true)
             ? $request->query('period')
-            : 'month';
+            : 'cycle';
 
         $anchor = Carbon::now();
         if ($request->query('date')) {
@@ -61,6 +62,26 @@ class ReportController extends Controller
      */
     private function resolvePeriod(string $type, Carbon $anchor): array
     {
+        if ($type === 'cycle') {
+            $budgetCycle = new BudgetCycle(request()->user()->setting);
+            $period = $budgetCycle->containing($anchor);
+            $previous = $budgetCycle->previous($period);
+            $next = $budgetCycle->next($period);
+
+            $now = Carbon::now();
+            $isCurrent = $now->between($period->start, $period->end);
+
+            return [
+                'start' => $period->start,
+                'end' => $period->end,
+                'label' => $period->label(),
+                'prevDate' => $previous->start->toDateString(),
+                'nextDate' => $isCurrent ? null : $next->start->toDateString(),
+                'isCurrent' => $isCurrent,
+                'monthsInPeriod' => 1,
+            ];
+        }
+
         [$start, $end, $label, $prevAnchor, $nextAnchor, $monthsInPeriod] = match ($type) {
             'quarter' => [
                 $anchor->copy()->startOfQuarter(),
@@ -212,7 +233,7 @@ class ReportController extends Controller
     {
         $buckets = [];
 
-        if ($periodType === 'month') {
+        if (! in_array($periodType, ['quarter', 'year'], true)) {
             $cursor = $rangeStart->copy();
             while ($cursor->lte($rangeEnd)) {
                 $bucketEnd = $cursor->copy()->addDays(6);
