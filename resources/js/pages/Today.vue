@@ -376,7 +376,7 @@ watch(visionModalOpen, (open) => {
 
                 <!-- Money snapshot -->
                 <Link
-                    href="/budgets"
+                    href="/money"
                     class="block rounded-[22px] p-5 transition-opacity hover:opacity-90"
                     style="background: var(--hab-card-bg); border: 1px solid var(--hab-card-border); box-shadow: 0 8px 24px -20px var(--hab-card-shadow)"
                 >

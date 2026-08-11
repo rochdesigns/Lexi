@@ -138,21 +138,3 @@ test('can delete a recurring bill', function () {
 
     expect(RecurringBill::find($bill->id))->toBeNull();
 });
-
-test('recurring bills appear in budget page upcoming bills', function () {
-    RecurringBill::factory()->create([
-        'user_id' => $this->user->id,
-        'name' => 'Netflix',
-        'day_of_month' => 15,
-        'amount' => 15.49,
-    ]);
-
-    $this->get('/budgets')
-        ->assertOk()
-        ->assertInertia(fn ($page) => $page
-            ->component('Budgets')
-            ->has('upcomingBills', 1)
-            ->where('upcomingBills.0.name', 'Netflix')
-            ->where('upcomingBills.0.type', 'recurring')
-        );
-});

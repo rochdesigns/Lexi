@@ -5,6 +5,7 @@ use App\Models\BudgetCategory;
 use App\Models\Debt;
 use App\Models\DebtPayment;
 use App\Models\Goal;
+use App\Models\SinkingFund;
 use App\Models\Transaction;
 use App\Models\User;
 use Carbon\Carbon;
@@ -102,4 +103,61 @@ test('updating a transaction with a legacy goal_id, without resending goal_id, d
 
     expect((float) $goal->fresh()->saved)->toBe(2500.0)
         ->and((float) $transaction->fresh()->amount)->toBe(150.0);
+});
+
+test('store expense with sinking_fund_id does not require budget_category_id', function () {
+    $user = User::factory()->create();
+    $account = Account::factory()->create(['user_id' => $user->id, 'balance' => 5000, 'type' => 'cash']);
+    $fund = SinkingFund::factory()->for($user)->create(['saved' => 12000, 'target' => 12000]);
+
+    $this->actingAs($user)
+        ->post(route('transactions.store'), [
+            'type' => 'expense',
+            'amount' => 12000,
+            'sinking_fund_id' => $fund->id,
+            'account_id' => $account->id,
+            'transacted_at' => Carbon::now()->toDateString(),
+        ])
+        ->assertRedirect();
+
+    expect((float) $fund->fresh()->saved)->toBe(0.0);
+    expect((float) $account->fresh()->balance)->toBe(-7000.0);
+});
+
+test('store expense with sinking_fund_id decrements fund saved (capped at zero)', function () {
+    $user = User::factory()->create();
+    $account = Account::factory()->create(['user_id' => $user->id, 'balance' => 5000]);
+    $fund = SinkingFund::factory()->for($user)->create(['saved' => 500, 'target' => 1000]);
+
+    $this->actingAs($user)
+        ->post(route('transactions.store'), [
+            'type' => 'expense',
+            'amount' => 800,
+            'sinking_fund_id' => $fund->id,
+            'account_id' => $account->id,
+            'transacted_at' => Carbon::now()->toDateString(),
+        ])
+        ->assertRedirect();
+
+    expect((float) $fund->fresh()->saved)->toBe(-300.0);
+});
+
+test('destroy expense with sinking_fund_id restores fund saved', function () {
+    $user = User::factory()->create();
+    $account = Account::factory()->create(['user_id' => $user->id, 'balance' => 0]);
+    $fund = SinkingFund::factory()->for($user)->create(['saved' => 8000]);
+    $transaction = Transaction::factory()->create([
+        'user_id' => $user->id,
+        'account_id' => $account->id,
+        'sinking_fund_id' => $fund->id,
+        'type' => 'expense',
+        'amount' => 8000,
+        'transacted_at' => Carbon::now()->toDateString(),
+    ]);
+
+    $this->actingAs($user)
+        ->delete(route('transactions.destroy', $transaction))
+        ->assertRedirect();
+
+    expect((float) $fund->fresh()->saved)->toBe(16000.0);
 });

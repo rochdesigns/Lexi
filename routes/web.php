@@ -2,7 +2,6 @@
 
 use App\Http\Controllers\AccountController;
 use App\Http\Controllers\BudgetCategoryController;
-use App\Http\Controllers\BudgetController;
 use App\Http\Controllers\CalendarController;
 use App\Http\Controllers\DebtController;
 use App\Http\Controllers\EventController;
@@ -52,7 +51,6 @@ Route::middleware(['auth', 'verified'])->group(function (): void {
     Route::patch('/accounts/{account}', [AccountController::class, 'update'])->name('accounts.update');
     Route::delete('/accounts/{account}', [AccountController::class, 'destroy'])->name('accounts.destroy');
     Route::get('/accounts/{account}/transactions', [AccountController::class, 'transactions'])->name('accounts.transactions');
-    Route::get('/budgets', [BudgetController::class, 'index'])->name('budgets');
     Route::get('/money', [MoneyController::class, 'index'])->name('money');
     Route::post('/transactions', [TransactionController::class, 'store'])->name('transactions.store');
     Route::patch('/transactions/{transaction}', [TransactionController::class, 'update'])->name('transactions.update');

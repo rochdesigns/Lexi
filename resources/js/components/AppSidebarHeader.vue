@@ -307,7 +307,7 @@ function submitSpending() {
                         Category{{ form.type === 'expense' ? ' *' : '' }}
                     </label>
                     <div v-if="!budgetCategories.length" style="font-size: 13px; color: #8a8172; padding: 10px 0">
-                        No categories yet — add some on the <a href="/budgets" style="color: var(--hab-accent)">Budgets page</a>
+                        No categories yet — add some on the <a href="/settings/categories" style="color: var(--hab-accent)">Categories page</a>
                     </div>
                     <div v-else ref="categoryContainerRef" style="position: relative">
                         <!-- Trigger input -->

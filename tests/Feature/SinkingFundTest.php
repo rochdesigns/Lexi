@@ -1,7 +1,6 @@
 <?php
 
 use App\Models\Account;
-use App\Models\BudgetCategory;
 use App\Models\SinkingFund;
 use App\Models\Transaction;
 use App\Models\User;
@@ -194,28 +193,5 @@ test('set-asides page includes fund payments', function (): void {
     $this->get('/set-asides')
         ->assertInertia(fn ($page) => $page
             ->has('funds.0.payments', 1, fn ($p) => $p->where('amount', 4000)->etc())
-        );
-});
-
-test('budgets page includes set-asides stats', function (): void {
-    SinkingFund::factory()->for($this->user)->create(['per_month' => 80, 'due_date' => null]);
-    SinkingFund::factory()->for($this->user)->create(['per_month' => 24, 'due_date' => null]);
-
-    $this->get('/budgets')
-        ->assertInertia(fn ($page) => $page
-            ->where('saPerMonth', 104)
-            ->where('saCount', 2)
-        );
-});
-
-test('safeToSpend subtracts set-aside per_month contributions', function (): void {
-    $account = Account::factory()->for($this->user)->create();
-    BudgetCategory::factory()->for($this->user)->create(['limit_amount' => 5000]);
-    SinkingFund::factory()->for($this->user)->create(['per_month' => 500]);
-    SinkingFund::factory()->for($this->user)->create(['per_month' => 300]);
-
-    $this->get('/budgets')
-        ->assertInertia(fn ($page) => $page
-            ->where('safeToSpend', 4200)
         );
 });
