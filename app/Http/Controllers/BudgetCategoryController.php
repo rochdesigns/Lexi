@@ -5,9 +5,26 @@ namespace App\Http\Controllers;
 use App\Models\BudgetCategory;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Inertia\Inertia;
+use Inertia\Response;
 
 class BudgetCategoryController extends Controller
 {
+    public function index(Request $request): Response
+    {
+        $user = $request->user();
+
+        $categories = $user->budgetCategories()->orderBy('group')->orderBy('name')->get();
+
+        $editId = $request->query('edit');
+        $editCategoryId = $editId && $categories->contains('id', (int) $editId) ? (int) $editId : null;
+
+        return Inertia::render('settings/Categories', [
+            'categories' => $categories,
+            'editCategoryId' => $editCategoryId,
+        ]);
+    }
+
     public function store(Request $request): RedirectResponse
     {
         $validated = $request->validate($this->rules());

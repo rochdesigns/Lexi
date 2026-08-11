@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\BudgetCategoryController;
 use App\Http\Controllers\Settings\BudgetCycleController;
 use App\Http\Controllers\Settings\ProfileController;
 use App\Http\Controllers\Settings\SecurityController;
@@ -28,6 +29,8 @@ Route::middleware(['auth', 'verified'])->group(function () {
 
     Route::get('settings/budget-cycle', [BudgetCycleController::class, 'edit'])->name('budget-cycle.edit');
     Route::patch('settings/budget-cycle', [BudgetCycleController::class, 'update'])->name('budget-cycle.update');
+
+    Route::get('settings/categories', [BudgetCategoryController::class, 'index'])->name('categories.edit');
 });
 
 Route::get('.well-known/passkey-endpoints', function () {

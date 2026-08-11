@@ -7,6 +7,7 @@ import { useCurrentUrl } from '@/composables/useCurrentUrl';
 import { toUrl } from '@/lib/utils';
 import { edit as editAppearance } from '@/routes/appearance';
 import { edit as editBudgetCycle } from '@/routes/budget-cycle';
+import { edit as editCategories } from '@/routes/categories';
 import { edit as editProfile } from '@/routes/profile';
 import { edit as editSecurity } from '@/routes/security';
 import type { NavItem } from '@/types';
@@ -27,6 +28,10 @@ const sidebarNavItems: NavItem[] = [
     {
         title: 'Budget cycle',
         href: editBudgetCycle(),
+    },
+    {
+        title: 'Categories',
+        href: editCategories(),
     },
 ];
 
