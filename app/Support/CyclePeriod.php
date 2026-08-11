@@ -3,12 +3,13 @@
 namespace App\Support;
 
 use Carbon\Carbon;
+use Carbon\CarbonImmutable;
 
 final class CyclePeriod
 {
     public function __construct(
-        public readonly Carbon $start,
-        public readonly Carbon $end,
+        public readonly Carbon|CarbonImmutable $start,
+        public readonly Carbon|CarbonImmutable $end,
     ) {}
 
     public function isCalendarMonth(): bool

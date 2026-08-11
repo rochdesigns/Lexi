@@ -16,6 +16,8 @@ class Setting extends Model
         'theme',
         'budget_cycle_days',
         'budget_cycle_anchor',
+        'cycle_type',
+        'monthly_start_day',
         'fi_number',
         'fi_expected_return_rate',
         'emergency_fund_target_months',
