@@ -34,7 +34,7 @@ class ReportController extends Controller
             }
         }
 
-        $period = $this->resolvePeriod($periodType, $anchor);
+        $period = $this->resolvePeriod($periodType, $anchor, $user);
 
         $overview = $this->computeOverview($user, $period['start'], $period['end'], $period['monthsInPeriod'], $period['isCurrent']);
         $spending = $this->computeSpending($user, $period['start'], $period['end']);
@@ -61,16 +61,15 @@ class ReportController extends Controller
     /**
      * @return array{start: Carbon, end: Carbon, label: string, prevDate: string, nextDate: ?string, isCurrent: bool, monthsInPeriod: int}
      */
-    private function resolvePeriod(string $type, Carbon $anchor): array
+    private function resolvePeriod(string $type, Carbon $anchor, User $user): array
     {
         if ($type === 'cycle') {
-            $budgetCycle = new BudgetCycle(request()->user()->setting);
+            $budgetCycle = new BudgetCycle($user->setting);
             $period = $budgetCycle->containing($anchor);
             $previous = $budgetCycle->previous($period);
             $next = $budgetCycle->next($period);
 
-            $now = Carbon::now();
-            $isCurrent = $now->between($period->start, $period->end);
+            $isCurrent = $period->containsToday();
 
             return [
                 'start' => $period->start,

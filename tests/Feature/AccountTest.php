@@ -5,6 +5,7 @@ use App\Models\Debt;
 use App\Models\Setting;
 use App\Models\Transaction;
 use App\Models\User;
+use Carbon\Carbon;
 
 test('guest is redirected from accounts index', function () {
     $this->get(route('accounts.index'))->assertRedirect(route('login'));
@@ -202,6 +203,22 @@ test('accountTotal includes unlinked credit accounts (backward compat)', functio
         ->assertInertia(fn ($page) => $page
             ->where('accountTotal', 10500) // unlinked credit still included
         );
+});
+
+test('accounts index includes a cycle label with year for a non-calendar-month cycle', function () {
+    Carbon::setTestNow(Carbon::parse('2026-08-15'));
+    $user = User::factory()->create();
+    Setting::factory()->create([
+        'user_id' => $user->id,
+        'budget_cycle_days' => 31,
+        'budget_cycle_anchor' => '2026-06-24',
+    ]);
+
+    $this->actingAs($user)
+        ->get(route('accounts.index'))
+        ->assertInertia(fn ($page) => $page->where('cycleLabel', 'Jul 25 – Aug 24, 2026'));
+
+    Carbon::setTestNow();
 });
 
 test('updating credit account balance syncs linked debt', function () {

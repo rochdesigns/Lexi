@@ -6,10 +6,22 @@ use Carbon\Carbon;
 
 final class CyclePeriod
 {
-    public function __construct(
-        public readonly Carbon $start,
-        public readonly Carbon $end,
-    ) {}
+    public readonly Carbon $start;
+
+    public readonly Carbon $end;
+
+    /**
+     * Normalizes both boundaries to start-of-day so every producer (fixed-days,
+     * monthly, and calendar-month cycles) is consistent — some producers hand in
+     * an end-of-day Carbon (e.g. endOfMonth() at 23:59:59), which would otherwise
+     * make containsToday()/isCurrent checks wrongly return false for any time
+     * after midnight on the period's last day.
+     */
+    public function __construct(Carbon $start, Carbon $end)
+    {
+        $this->start = $start->copy()->startOfDay();
+        $this->end = $end->copy()->startOfDay();
+    }
 
     public function isCalendarMonth(): bool
     {

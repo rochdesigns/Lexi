@@ -199,7 +199,7 @@ class TrajectoryReportService
     /**
      * Income, spending and budget pressure for the CURRENT CALENDAR MONTH.
      *
-     * Deliberately not the Reports period navigator and not Setting::cycleForDate(): the
+     * Deliberately not the Reports period navigator and not App\Services\BudgetCycle: the
      * trajectory report is a long-horizon view, and a stable calendar month keeps every
      * month-over-month series on this page directly comparable.
      *

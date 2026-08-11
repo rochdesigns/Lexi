@@ -425,6 +425,7 @@ test('reports payoff excludes paid-off debts and completed goals', function () {
 });
 
 test('the cycle period option scopes reports to the configured budget cycle, not the calendar month', function () {
+    Carbon::setTestNow(Carbon::parse('2026-08-01'));
     $user = User::factory()->create();
     $user->setting()->create([
         'theme' => 'ocean',
@@ -447,6 +448,31 @@ test('the cycle period option scopes reports to the configured budget cycle, not
             ->where('period.type', 'cycle')
             ->where('period.label', 'Jul 25 – Aug 24, 2026')
         );
+
+    Carbon::setTestNow();
+});
+
+test('the cycle period is still current at any time on its last day, not just before midnight', function () {
+    // Regression test: CyclePeriod::$end for fixed-days cycles is midnight on the
+    // last day, so a naive now()->between($start, $end) check would wrongly flip
+    // isCurrent to false any time after 00:00:00 on that final day.
+    Carbon::setTestNow(Carbon::parse('2026-08-24 10:00:00'));
+    $user = User::factory()->create();
+    $user->setting()->create([
+        'theme' => 'ocean',
+        'budget_cycle_days' => 31,
+        'budget_cycle_anchor' => '2026-06-24',
+    ]);
+
+    $this->actingAs($user)
+        ->get('/reports?period=cycle')
+        ->assertOk()
+        ->assertInertia(fn ($page) => $page
+            ->where('period.label', 'Jul 25 – Aug 24, 2026')
+            ->where('period.isCurrent', true)
+        );
+
+    Carbon::setTestNow();
 });
 
 test('reports cash flow extends a fixed-days cycle forward to the next cycle boundary, not a calendar month', function () {
