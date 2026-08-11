@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\Debt;
+use App\Models\SinkingFund;
 use App\Models\User;
 use App\Services\BudgetCycle;
 use App\Services\TrajectoryReportService;
@@ -400,21 +401,21 @@ class ReportController extends Controller
             ];
         })->all();
 
-        $goals = $user->goals()
+        $goals = $user->sinkingFunds()
             ->whereColumn('saved', '<', 'target')
             ->orderBy('position')
             ->get()
-            ->map(function ($goal) use ($today) {
-                $perMonth = (float) $goal->per_month;
+            ->map(function (SinkingFund $fund) use ($today) {
+                $perMonth = (float) $fund->per_month;
                 $months = $perMonth > 0
-                    ? (int) ceil(((float) $goal->target - (float) $goal->saved) / $perMonth)
+                    ? (int) ceil(((float) $fund->target - (float) $fund->saved) / $perMonth)
                     : null;
 
                 return [
-                    'id' => $goal->id,
-                    'name' => $goal->name,
-                    'icon' => $goal->icon,
-                    'color' => $goal->color,
+                    'id' => $fund->id,
+                    'name' => $fund->name,
+                    'icon' => $fund->icon,
+                    'color' => $fund->color,
                     'months' => $months,
                     'targetDate' => $months !== null ? $today->copy()->addMonthsNoOverflow($months)->format('M Y') : null,
                 ];

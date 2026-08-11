@@ -3,7 +3,7 @@
 use App\Models\Account;
 use App\Models\BudgetCategory;
 use App\Models\Debt;
-use App\Models\Goal;
+use App\Models\SinkingFund;
 use App\Models\Transaction;
 use App\Models\User;
 use Carbon\Carbon;
@@ -384,7 +384,7 @@ test('reports payoff flags a debt as not on track when payment does not cover in
 test('reports payoff computes months and date for a goal', function () {
     Carbon::setTestNow(Carbon::parse('2026-08-15'));
     $user = User::factory()->create();
-    Goal::factory()->create(['user_id' => $user->id, 'saved' => 2000, 'target' => 5000, 'per_month' => 1000]);
+    SinkingFund::factory()->create(['user_id' => $user->id, 'saved' => 2000, 'target' => 5000, 'per_month' => 1000]);
 
     $this->actingAs($user)
         ->get(route('reports'))
@@ -399,7 +399,7 @@ test('reports payoff computes months and date for a goal', function () {
 test('reports payoff shows null months for a goal with no monthly amount', function () {
     Carbon::setTestNow(Carbon::parse('2026-08-15'));
     $user = User::factory()->create();
-    Goal::factory()->create(['user_id' => $user->id, 'saved' => 1000, 'target' => 5000, 'per_month' => 0]);
+    SinkingFund::factory()->create(['user_id' => $user->id, 'saved' => 1000, 'target' => 5000, 'per_month' => 0]);
 
     $this->actingAs($user)
         ->get(route('reports'))
@@ -412,7 +412,7 @@ test('reports payoff excludes paid-off debts and completed goals', function () {
     Carbon::setTestNow(Carbon::parse('2026-08-15'));
     $user = User::factory()->create();
     Debt::factory()->create(['user_id' => $user->id, 'balance' => 0]);
-    Goal::factory()->create(['user_id' => $user->id, 'saved' => 5000, 'target' => 5000]);
+    SinkingFund::factory()->create(['user_id' => $user->id, 'saved' => 5000, 'target' => 5000]);
 
     $this->actingAs($user)
         ->get(route('reports'))
