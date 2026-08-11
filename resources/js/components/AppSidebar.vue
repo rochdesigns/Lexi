@@ -47,11 +47,9 @@ const navSections: HabitatNavSection[] = [
         label: 'Money',
         items: [
             { title: 'Accounts', href: '/accounts', icon: 'account_balance' },
-            { title: 'Budgets', href: '/budgets', icon: 'account_balance_wallet' },
+            { title: 'Money', href: '/money', icon: 'account_balance_wallet' },
             { title: 'Set-asides', href: '/set-asides', icon: 'savings' },
             { title: 'Debt', href: '/debt', icon: 'credit_card' },
-            { title: 'Reports', href: '/reports', icon: 'bar_chart' },
-            { title: 'Trajectory', href: '/trajectory', icon: 'trending_up' },
         ],
     },
 ];
