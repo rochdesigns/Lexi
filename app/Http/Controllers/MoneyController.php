@@ -46,6 +46,8 @@ class MoneyController extends Controller
 
         $leftForDailyExpenses = $incomeReceived - $everydayExpenses - $setAsidesHeld - $debtPaid;
 
+        $totalBillsPerCycle = (float) $user->recurringBills()->sum('amount');
+
         return Inertia::render('Money', [
             'cycle' => $period->toArray(),
             'incomeReceived' => $incomeReceived,
@@ -53,6 +55,7 @@ class MoneyController extends Controller
             'setAsidesHeld' => $setAsidesHeld,
             'debtPaid' => $debtPaid,
             'leftForDailyExpenses' => $leftForDailyExpenses,
+            'totalBillsPerCycle' => $totalBillsPerCycle,
             'upcomingBills' => (new UpcomingBills)->within($user, $period),
             'categoriesOverBudget' => $this->categoriesOverBudget($user, $cycleStart, $cycleEnd),
             ...$this->debtPayoff($user, $today),

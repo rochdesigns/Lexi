@@ -51,6 +51,24 @@ test('the five headline numbers reconcile: income minus everyday expenses minus 
         );
 });
 
+test('totalBillsPerCycle sums every recurring bill, not just the ones due soon', function () {
+    $user = User::factory()->create();
+    Setting::factory()->create(['user_id' => $user->id]);
+    $category = BudgetCategory::factory()->for($user)->create();
+
+    RecurringBill::factory()->for($user)->create([
+        'name' => 'Due soon', 'amount' => 1500, 'day_of_month' => Carbon::now()->addDays(3)->day, 'budget_category_id' => $category->id,
+    ]);
+    RecurringBill::factory()->for($user)->create([
+        'name' => 'Due later', 'amount' => 2500, 'day_of_month' => Carbon::now()->addDays(20)->day, 'budget_category_id' => $category->id,
+    ]);
+
+    $this->actingAs($user)
+        ->get('/money')
+        ->assertOk()
+        ->assertInertia(fn ($page) => $page->where('totalBillsPerCycle', 4000));
+});
+
 test('bills due within 7 days appear, further-out bills do not', function () {
     $user = User::factory()->create();
     Setting::factory()->create(['user_id' => $user->id]);

@@ -43,6 +43,7 @@ const props = defineProps<{
     debtFreeDate: string | null;
     debtOnTrack: boolean;
     totalDebtRemaining: number;
+    totalBillsPerCycle: number;
 }>();
 
 const page = usePage<{ spendingAccounts: SpendingAccount[] }>();
@@ -171,9 +172,14 @@ function submitPayRow(bill: UpcomingBill): void {
                     class="rounded-[22px] p-6"
                     style="background: var(--hab-card-bg); border: 1px solid var(--hab-card-border); box-shadow: 0 8px 24px -20px var(--hab-card-shadow)"
                 >
-                    <h2 class="mb-4 font-['Bricolage_Grotesque'] text-[18px] font-bold" style="color: var(--hab-ink)">
-                        Bills due soon
-                    </h2>
+                    <div class="mb-4 flex items-center justify-between">
+                        <h2 class="font-['Bricolage_Grotesque'] text-[18px] font-bold" style="color: var(--hab-ink)">
+                            Bills due soon
+                        </h2>
+                        <span class="text-[13px] font-semibold" style="color: var(--hab-muted)">
+                            {{ formatMoney(totalBillsPerCycle) }} <span class="font-normal">/ cycle</span>
+                        </span>
+                    </div>
 
                     <div v-if="upcomingBills.length === 0" class="py-4 text-center text-[13px]" style="color: var(--hab-muted)">
                         Nothing due in the next 7 days
