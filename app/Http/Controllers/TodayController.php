@@ -10,6 +10,7 @@ use App\Models\Task;
 use App\Models\TaskSection;
 use App\Models\VisionBoardItem;
 use App\Services\BudgetCycle;
+use App\Services\UpcomingBills;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Storage;
@@ -56,6 +57,8 @@ class TodayController extends Controller
             'budget' => $cycleBudget,
             'spent' => $totalSpent,
         ];
+
+        $upcomingBills = (new UpcomingBills)->within($user, $period);
 
         $habits = Habit::where('user_id', $user->id)->get();
 
@@ -116,6 +119,7 @@ class TodayController extends Controller
             'todayEvents' => $todayEvents,
             'todayTasks' => $todayTasks,
             'moneySummary' => $moneySummary,
+            'upcomingBills' => $upcomingBills,
             'habits' => $habits,
             'healthMetrics' => $healthMetrics,
             'visionBoardItems' => $visionBoardItems,

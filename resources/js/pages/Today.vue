@@ -12,6 +12,7 @@ import type { HabitatTheme } from '@/types';
 type TodayEvent = { id: number; title: string; time: string; end_time: string | null; tag: string; color: string };
 type TodayTask = { id: number; label: string; section_id: number; done: boolean };
 type MoneySummary = { safeToSpend: number; budget: number; spent: number };
+type UpcomingBill = { id: string; name: string; icon: string; color: string; bg: string; amount: number; dueLabel: string; daysUntil: number; type: string };
 type Habit = { id: number; name: string; icon: string; color: string; pct: number; streak: number };
 type HealthMetric = { name: string; value: string; sub: string; pct: number; color: string; icon: string };
 type VisionBoardItem = { id: number; imageUrl: string; caption: string };
@@ -21,6 +22,7 @@ const props = defineProps<{
     todayEvents: TodayEvent[];
     todayTasks: TodayTask[];
     moneySummary: MoneySummary;
+    upcomingBills: UpcomingBill[];
     habits: Habit[];
     healthMetrics: HealthMetric[];
     visionBoardItems: VisionBoardItem[];
@@ -90,13 +92,6 @@ const heroSubtitle = computed(() => {
     const day = new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' });
     return `${day} — ${eventsText}, ${tasksText}, and ${budgetMood}.`;
 });
-
-// Money
-const spentPct = computed(() =>
-    props.moneySummary.budget > 0
-        ? Math.min(100, (props.moneySummary.spent / props.moneySummary.budget) * 100)
-        : 0,
-);
 
 function formatPeso(amount: number): string {
     return '₱' + amount.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -384,16 +379,25 @@ watch(visionModalOpen, (open) => {
                         <h2 class="font-['Bricolage_Grotesque'] text-[16px] font-bold" style="color: var(--hab-ink)">Money</h2>
                         <span class="material-symbols-rounded" style="font-size: 18px; color: var(--hab-faint)">chevron_right</span>
                     </div>
-                    <p class="mb-1 text-[12px]" style="color: var(--hab-muted)">Safe to spend this month</p>
-                    <p class="mb-3 font-['Bricolage_Grotesque'] text-[28px] font-extrabold" style="color: var(--hab-ink)">
-                        {{ formatPeso(moneySummary.safeToSpend) }}
-                    </p>
-                    <!-- Progress bar -->
-                    <div class="h-[9px] w-full rounded-full" style="background: var(--hab-progress-track)">
-                        <div
-                            class="hab-progress-fill h-full rounded-full"
-                            :style="{ width: spentPct + '%', background: 'var(--hab-spend-fill)' }"
-                        ></div>
+
+                    <div v-if="upcomingBills.length === 0" class="mb-3 text-[13px]" style="color: var(--hab-muted)">
+                        No bills due this week
+                    </div>
+                    <div v-else class="mb-3">
+                        <p class="mb-1 text-[12px]" style="color: var(--hab-muted)">
+                            {{ upcomingBills.length }} {{ upcomingBills.length === 1 ? 'bill' : 'bills' }} due this week
+                        </p>
+                        <div v-for="bill in upcomingBills.slice(0, 3)" :key="bill.id" class="flex items-center justify-between py-1">
+                            <span class="text-[13px] font-medium" style="color: var(--hab-ink)">{{ bill.name }}</span>
+                            <span class="text-[12px]" style="color: var(--hab-muted)">{{ bill.dueLabel }}</span>
+                        </div>
+                    </div>
+
+                    <div class="flex items-center justify-between border-t pt-3" style="border-color: var(--hab-hairline)">
+                        <span class="text-[12px]" style="color: var(--hab-muted)">Safe to spend</span>
+                        <span class="font-['Bricolage_Grotesque'] text-[16px] font-bold" style="color: var(--hab-ink)">
+                            {{ formatPeso(moneySummary.safeToSpend) }}
+                        </span>
                     </div>
                 </Link>
 

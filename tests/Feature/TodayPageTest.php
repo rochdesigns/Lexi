@@ -1,9 +1,13 @@
 <?php
 
+use App\Models\BudgetCategory;
+use App\Models\RecurringBill;
+use App\Models\Setting;
 use App\Models\User;
 use App\Models\VisionBoardItem;
 use Database\Seeders\DatabaseSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Carbon;
 
 uses(RefreshDatabase::class);
 
@@ -44,5 +48,22 @@ test('today page includes vision board items ordered by position', function (): 
             ->component('Today')
             ->where('visionBoardItems.0.caption', 'First')
             ->where('visionBoardItems.1.caption', 'Second')
+        );
+});
+
+test('the money card includes bills due within the next 7 days', function () {
+    $user = User::factory()->create();
+    Setting::factory()->create(['user_id' => $user->id]);
+    $category = BudgetCategory::factory()->for($user)->create();
+
+    RecurringBill::factory()->for($user)->create([
+        'name' => 'Internet', 'day_of_month' => Carbon::now()->addDays(2)->day, 'budget_category_id' => $category->id,
+    ]);
+
+    $this->actingAs($user)
+        ->get('/today')
+        ->assertInertia(fn ($page) => $page
+            ->has('upcomingBills', 1)
+            ->where('upcomingBills.0.name', 'Internet')
         );
 });
