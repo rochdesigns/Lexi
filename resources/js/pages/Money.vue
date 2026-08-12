@@ -30,7 +30,7 @@ type CategoryOverBudget = {
 
 type SpendingAccount = { id: number; name: string; type: string };
 
-defineProps<{
+const props = defineProps<{
     cycle: Cycle;
     incomeReceived: number;
     everydayExpenses: number;
@@ -47,6 +47,15 @@ defineProps<{
 
 const page = usePage<{ spendingAccounts: SpendingAccount[] }>();
 const spendingAccounts = computed(() => page.props.spendingAccounts ?? []);
+
+// ── Headline status ──────────────────────────────────────────────────────
+// Single source of truth so the status badge and the headline figure's own
+// color can never disagree: both derive from this one boolean, never from
+// an independent ratio (spent/budget, category count, etc.).
+const isOverForCycle = computed(() => props.leftForDailyExpenses < 0);
+const remainderStatus = computed(() =>
+    isOverForCycle.value ? { label: 'Over for this cycle', color: '#c0512c' } : { label: 'On track', color: '#2f7d5b' },
+);
 
 function formatMoney(n: number): string {
     const abs = Math.abs(n);
@@ -113,8 +122,19 @@ function submitPayRow(bill: UpcomingBill): void {
             class="mb-5 rounded-[22px] px-6 py-7 sm:px-8"
             style="background: radial-gradient(120% 140% at 100% 0%, var(--hab-grad-a) 0%, var(--hab-grad-b) 55%, var(--hab-grad-c) 100%); box-shadow: 0 24px 40px -26px rgba(20,20,20,.7)"
         >
-            <p class="text-[13.5px] font-medium text-white/72">Left for daily expenses</p>
-            <p class="mt-2 font-['Bricolage_Grotesque'] text-[48px] font-extrabold leading-none text-white">
+            <div class="flex items-center justify-between gap-3">
+                <p class="text-[13.5px] font-medium text-white/72">Left for daily expenses</p>
+                <span
+                    class="inline-flex shrink-0 items-center rounded-full px-3 py-1 text-[12.5px] font-semibold text-white"
+                    :style="{ background: remainderStatus.color }"
+                >
+                    {{ remainderStatus.label }}
+                </span>
+            </div>
+            <p
+                class="mt-2 font-['Bricolage_Grotesque'] text-[48px] font-extrabold leading-none"
+                :style="{ color: isOverForCycle ? '#ffd27a' : '#fff' }"
+            >
                 {{ formatMoney(leftForDailyExpenses) }}
             </p>
         </div>
