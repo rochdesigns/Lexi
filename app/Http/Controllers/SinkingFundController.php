@@ -102,19 +102,6 @@ class SinkingFundController extends Controller
         return back();
     }
 
-    public function topUp(Request $request, SinkingFund $sinkingFund): RedirectResponse
-    {
-        abort_if($sinkingFund->user_id !== $request->user()->id, 403);
-
-        $validated = $request->validate([
-            'amount' => ['required', 'numeric', 'min:0.01'],
-        ]);
-
-        $sinkingFund->increment('saved', $validated['amount']);
-
-        return back();
-    }
-
     public function destroy(Request $request, SinkingFund $sinkingFund): RedirectResponse
     {
         abort_if($sinkingFund->user_id !== $request->user()->id, 403);

@@ -64,7 +64,6 @@ Route::middleware(['auth', 'verified'])->group(function (): void {
     Route::post('/sinking-funds', [SinkingFundController::class, 'store'])->name('sinking-funds.store');
     Route::patch('/sinking-funds/{sinkingFund}', [SinkingFundController::class, 'update'])->name('sinking-funds.update');
     Route::delete('/sinking-funds/{sinkingFund}', [SinkingFundController::class, 'destroy'])->name('sinking-funds.destroy');
-    Route::post('/sinking-funds/{sinkingFund}/top-up', [SinkingFundController::class, 'topUp'])->name('sinking-funds.top-up');
     Route::get('/debt', [DebtController::class, 'index'])->name('debt');
     Route::post('/debts', [DebtController::class, 'store'])->name('debts.store');
     Route::patch('/debts/{debt}', [DebtController::class, 'update'])->name('debts.update');

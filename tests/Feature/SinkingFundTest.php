@@ -109,32 +109,6 @@ test('update returns 403 for another user\'s fund', function (): void {
     ])->assertForbidden();
 });
 
-test('top-up increments fund saved amount', function (): void {
-    $fund = SinkingFund::factory()->for($this->user)->create(['saved' => 500]);
-
-    $this->post("/sinking-funds/{$fund->id}/top-up", ['amount' => 250])
-        ->assertRedirect();
-
-    expect((float) $fund->fresh()->saved)->toBe(750.0);
-});
-
-test('top-up validates amount is positive', function (): void {
-    $fund = SinkingFund::factory()->for($this->user)->create();
-
-    $this->post("/sinking-funds/{$fund->id}/top-up", ['amount' => -10])
-        ->assertSessionHasErrors('amount');
-});
-
-test('top-up returns 403 for another user\'s fund', function (): void {
-    $other = User::factory()->create();
-    $fund = SinkingFund::factory()->for($other)->create(['saved' => 0]);
-
-    $this->post("/sinking-funds/{$fund->id}/top-up", ['amount' => 100])
-        ->assertForbidden();
-
-    expect((float) $fund->fresh()->saved)->toBe(0.0);
-});
-
 test('destroy deletes a fund', function (): void {
     $fund = SinkingFund::factory()->for($this->user)->create();
 
