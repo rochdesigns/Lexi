@@ -3,7 +3,7 @@ import { Head, router, useForm } from '@inertiajs/vue3';
 import { ref, computed, watch } from 'vue';
 import { evaluateArithmetic, hasArithmetic } from '@/utils/arithmetic';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import { store, update, destroy, topUp as topUpAction } from '@/actions/App/Http/Controllers/SinkingFundController';
+import { store, update, destroy } from '@/actions/App/Http/Controllers/SinkingFundController';
 import { store as storeTransaction } from '@/actions/App/Http/Controllers/TransactionController';
 
 type Payment = {
@@ -182,11 +182,22 @@ function dueSoonWarning(fund: Fund): boolean {
 
 const topUpModalOpen = ref(false);
 const toppingUpFund = ref<Fund | null>(null);
-const topUpForm = useForm({ amount: '' as string });
+const topUpForm = useForm({
+    type: 'transfer' as const,
+    sinking_fund_id: 0 as number,
+    amount: '' as string,
+    account_id: 0 as number,
+    to_account_id: 0 as number,
+    transacted_at: '',
+});
 
 function openTopUp(fund: Fund) {
     toppingUpFund.value = fund;
+    topUpForm.sinking_fund_id = fund.id;
     topUpForm.amount = String(fund.per_month || '');
+    topUpForm.account_id = props.accounts[0]?.id ?? 0;
+    topUpForm.to_account_id = props.accounts[1]?.id ?? props.accounts[0]?.id ?? 0;
+    topUpForm.transacted_at = new Date().toISOString().split('T')[0];
     topUpForm.clearErrors();
     topUpModalOpen.value = true;
 }
@@ -197,7 +208,7 @@ function submitTopUp() {
         ...data,
         amount: evaluateArithmetic(data.amount) ?? parseFloat(data.amount),
     }));
-    topUpForm.post(topUpAction(toppingUpFund.value.id).url, {
+    topUpForm.post(storeTransaction().url, {
         onSuccess: () => { topUpModalOpen.value = false; },
     });
 }
@@ -513,7 +524,7 @@ function formatDate(iso: string) {
 
         <!-- Top-up modal -->
         <Dialog v-model:open="topUpModalOpen">
-            <DialogContent style="max-width: 360px">
+            <DialogContent style="max-width: 380px">
                 <DialogHeader>
                     <DialogTitle style="font-family: 'Bricolage Grotesque'; font-size: 18px; font-weight: 700">
                         Top up
@@ -538,6 +549,32 @@ function formatDate(iso: string) {
                             style="height: 40px; border: 1px solid #e0dacd; border-radius: 10px; padding: 0 12px; font-family: 'Instrument Sans'; font-size: 14px; background: #fffdf8; width: 100%; box-sizing: border-box; outline: none" />
                         <div v-if="topUpHasExpr" style="font-size: 12px; color: #8a8172">= ₱{{ topUpEvaluated?.toLocaleString('en-PH', { minimumFractionDigits: 2 }) }}</div>
                         <div v-if="topUpForm.errors.amount" style="font-size: 12px; color: #c0512c">{{ topUpForm.errors.amount }}</div>
+                    </div>
+
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px">
+                        <div style="display: flex; flex-direction: column; gap: 6px">
+                            <label style="font-size: 13px; font-weight: 600; color: #4a4436">From</label>
+                            <select v-model.number="topUpForm.account_id" required
+                                style="height: 40px; border: 1px solid #e0dacd; border-radius: 10px; padding: 0 12px; font-family: 'Instrument Sans'; font-size: 14px; background: #fffdf8; width: 100%; box-sizing: border-box; outline: none; appearance: none">
+                                <option v-for="a in accounts" :key="a.id" :value="a.id">{{ a.name }}</option>
+                            </select>
+                            <div v-if="topUpForm.errors.account_id" style="font-size: 12px; color: #c0512c">{{ topUpForm.errors.account_id }}</div>
+                        </div>
+                        <div style="display: flex; flex-direction: column; gap: 6px">
+                            <label style="font-size: 13px; font-weight: 600; color: #4a4436">To</label>
+                            <select v-model.number="topUpForm.to_account_id" required
+                                style="height: 40px; border: 1px solid #e0dacd; border-radius: 10px; padding: 0 12px; font-family: 'Instrument Sans'; font-size: 14px; background: #fffdf8; width: 100%; box-sizing: border-box; outline: none; appearance: none">
+                                <option v-for="a in accounts" :key="a.id" :value="a.id">{{ a.name }}</option>
+                            </select>
+                            <div v-if="topUpForm.errors.to_account_id" style="font-size: 12px; color: #c0512c">{{ topUpForm.errors.to_account_id }}</div>
+                        </div>
+                    </div>
+
+                    <div style="display: flex; flex-direction: column; gap: 6px">
+                        <label style="font-size: 13px; font-weight: 600; color: #4a4436">Date</label>
+                        <input v-model="topUpForm.transacted_at" type="date" required
+                            style="height: 40px; border: 1px solid #e0dacd; border-radius: 10px; padding: 0 12px; font-family: 'Instrument Sans'; font-size: 14px; background: #fffdf8; width: 100%; box-sizing: border-box; outline: none" />
+                        <div v-if="topUpForm.errors.transacted_at" style="font-size: 12px; color: #c0512c">{{ topUpForm.errors.transacted_at }}</div>
                     </div>
 
                     <div style="display: flex; justify-content: flex-end; gap: 10px; padding-top: 4px">
