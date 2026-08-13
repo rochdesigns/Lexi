@@ -19,6 +19,7 @@ const page = usePage();
 
 const budgetCategories = computed(() => (page.props.budgetCategories as any[]) ?? []);
 const spendingAccounts = computed(() => (page.props.spendingAccounts as any[]) ?? []);
+const sinkingFunds = computed(() => (page.props.sinkingFunds as any[]) ?? []);
 
 type Section = { icon: string; label: string; paths: string[] };
 
@@ -84,6 +85,7 @@ const form = reactive({
     merchant: '',
     account_id: '' as string | number,
     to_account_id: '' as string | number,
+    sinking_fund_id: '' as string | number,
     transacted_at: today,
 });
 
@@ -94,6 +96,7 @@ function openModal() {
     form.merchant = '';
     form.account_id = spendingAccounts.value[0]?.id ?? '';
     form.to_account_id = '';
+    form.sinking_fund_id = '';
     form.transacted_at = today;
     Object.keys(errors).forEach((k) => delete errors[k]);
     categorySearch.value = '';
@@ -104,6 +107,7 @@ function openModal() {
 function setType(t: TransactionType) {
     form.type = t;
     form.budget_category_id = '';
+    form.sinking_fund_id = '';
     categorySearch.value = '';
     categoryDropdownOpen.value = false;
     Object.keys(errors).forEach((k) => delete errors[k]);
@@ -175,6 +179,10 @@ function submitSpending() {
 
     if (form.type === 'transfer') {
         payload.to_account_id = form.to_account_id;
+    }
+
+    if (form.type === 'transfer' && form.sinking_fund_id) {
+        payload.sinking_fund_id = form.sinking_fund_id;
     }
 
     submitting.value = true;
@@ -412,6 +420,16 @@ function submitSpending() {
                             </select>
                             <div v-if="errors.to_account_id" style="font-size: 12px; color: #c0512c; margin-top: 4px">{{ errors.to_account_id }}</div>
                         </div>
+                    </div>
+                    <div v-if="sinkingFunds.length">
+                        <label style="font-size: 13px; font-weight: 600; color: #4a4436; display: block; margin-bottom: 6px">For set-aside (optional)</label>
+                        <select
+                            v-model="form.sinking_fund_id"
+                            style="width: 100%; height: 40px; border: 1px solid #e0dacd; border-radius: 10px; padding: 0 12px; font-family: 'Instrument Sans'; font-size: 14px; background: #fffdf8; outline: none; color: #211d17; appearance: none"
+                        >
+                            <option value="">None</option>
+                            <option v-for="fund in sinkingFunds" :key="fund.id" :value="fund.id">{{ fund.name }}</option>
+                        </select>
                     </div>
                 </template>
 
