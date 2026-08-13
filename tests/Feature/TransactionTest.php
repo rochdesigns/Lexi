@@ -162,6 +162,81 @@ test('destroy expense with sinking_fund_id restores fund saved', function () {
     expect((float) $fund->fresh()->saved)->toBe(16000.0);
 });
 
+test('store transfer with sinking_fund_id increments fund saved', function () {
+    $user = User::factory()->create();
+    $from = Account::factory()->create(['user_id' => $user->id, 'balance' => 3000]);
+    $to = Account::factory()->create(['user_id' => $user->id, 'balance' => 500]);
+    $fund = SinkingFund::factory()->for($user)->create(['saved' => 200]);
+
+    $this->actingAs($user)
+        ->post(route('transactions.store'), [
+            'type' => 'transfer',
+            'amount' => 300,
+            'sinking_fund_id' => $fund->id,
+            'account_id' => $from->id,
+            'to_account_id' => $to->id,
+            'transacted_at' => Carbon::now()->toDateString(),
+        ])
+        ->assertRedirect();
+
+    expect((float) $fund->fresh()->saved)->toBe(500.0);
+    $this->assertDatabaseHas('accounts', ['id' => $from->id, 'balance' => 2700]);
+    $this->assertDatabaseHas('accounts', ['id' => $to->id, 'balance' => 800]);
+});
+
+test('destroy transfer with sinking_fund_id decrements fund saved', function () {
+    $user = User::factory()->create();
+    $from = Account::factory()->create(['user_id' => $user->id, 'balance' => 3000]);
+    $to = Account::factory()->create(['user_id' => $user->id, 'balance' => 500]);
+    $fund = SinkingFund::factory()->for($user)->create(['saved' => 500]);
+    $transaction = Transaction::factory()->create([
+        'user_id' => $user->id,
+        'account_id' => $from->id,
+        'to_account_id' => $to->id,
+        'sinking_fund_id' => $fund->id,
+        'type' => 'transfer',
+        'amount' => 300,
+        'transacted_at' => Carbon::now()->toDateString(),
+    ]);
+
+    $this->actingAs($user)
+        ->delete(route('transactions.destroy', $transaction))
+        ->assertRedirect();
+
+    expect((float) $fund->fresh()->saved)->toBe(200.0);
+});
+
+test('update transfer reassigns which fund is topped up', function () {
+    $user = User::factory()->create();
+    $from = Account::factory()->create(['user_id' => $user->id, 'balance' => 3000]);
+    $to = Account::factory()->create(['user_id' => $user->id, 'balance' => 500]);
+    $oldFund = SinkingFund::factory()->for($user)->create(['saved' => 500]);
+    $newFund = SinkingFund::factory()->for($user)->create(['saved' => 100]);
+    $transaction = Transaction::factory()->create([
+        'user_id' => $user->id,
+        'account_id' => $from->id,
+        'to_account_id' => $to->id,
+        'sinking_fund_id' => $oldFund->id,
+        'type' => 'transfer',
+        'amount' => 300,
+        'transacted_at' => Carbon::now()->toDateString(),
+    ]);
+
+    $this->actingAs($user)
+        ->patch(route('transactions.update', $transaction), [
+            'type' => 'transfer',
+            'amount' => 300,
+            'sinking_fund_id' => $newFund->id,
+            'account_id' => $from->id,
+            'to_account_id' => $to->id,
+            'transacted_at' => Carbon::now()->toDateString(),
+        ])
+        ->assertRedirect();
+
+    expect((float) $oldFund->fresh()->saved)->toBe(200.0)
+        ->and((float) $newFund->fresh()->saved)->toBe(400.0);
+});
+
 test('store transaction requires amount, category, account, and date', function () {
     $user = User::factory()->create();
 

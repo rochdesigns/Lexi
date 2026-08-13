@@ -28,6 +28,11 @@ class TransactionController extends Controller
             $transaction->sinkingFund?->increment('saved', $transaction->amount);
         }
 
+        // Reverse a top-up transfer's effect on the fund when it's deleted
+        if ($transaction->type === 'transfer' && $transaction->sinking_fund_id) {
+            $transaction->sinkingFund?->decrement('saved', $transaction->amount);
+        }
+
         // Reverse the debt side of a debt payment. The DebtPayment row is removed by the
         // transaction_id foreign key's cascade, so read it before deleting the transaction.
         if ($transaction->debt_id) {
@@ -84,6 +89,10 @@ class TransactionController extends Controller
             $transaction->sinkingFund?->increment('saved', $transaction->amount);
         }
 
+        if ($transaction->type === 'transfer' && $transaction->sinking_fund_id) {
+            $transaction->sinkingFund?->decrement('saved', $transaction->amount);
+        }
+
         $transaction->update($validated);
 
         // Apply new balance effect
@@ -101,6 +110,11 @@ class TransactionController extends Controller
         if ($validated['type'] === 'expense' && ! empty($validated['sinking_fund_id'])) {
             $fund = $user->sinkingFunds()->findOrFail($validated['sinking_fund_id']);
             $fund->decrement('saved', $validated['amount']);
+        }
+
+        if ($validated['type'] === 'transfer' && ! empty($validated['sinking_fund_id'])) {
+            $fund = $user->sinkingFunds()->findOrFail($validated['sinking_fund_id']);
+            $fund->increment('saved', $validated['amount']);
         }
 
         return back();
@@ -152,6 +166,12 @@ class TransactionController extends Controller
         if ($type === 'expense' && ! empty($validated['sinking_fund_id'])) {
             $fund = $user->sinkingFunds()->findOrFail($validated['sinking_fund_id']);
             $fund->decrement('saved', $validated['amount']);
+        }
+
+        // Increment the set-aside's saved amount when topping it up via a transfer
+        if ($type === 'transfer' && ! empty($validated['sinking_fund_id'])) {
+            $fund = $user->sinkingFunds()->findOrFail($validated['sinking_fund_id']);
+            $fund->increment('saved', $validated['amount']);
         }
 
         return back();
