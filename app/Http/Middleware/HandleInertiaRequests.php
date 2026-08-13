@@ -58,6 +58,9 @@ class HandleInertiaRequests extends Middleware
             'spendingAccounts' => $request->user()
                 ? $request->user()->accounts()->orderBy('name')->get(['id', 'name', 'type'])->toArray()
                 : [],
+            'sinkingFunds' => $request->user()
+                ? $request->user()->sinkingFunds()->orderBy('name')->get(['id', 'name'])->toArray()
+                : [],
         ];
     }
 }

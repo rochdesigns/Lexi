@@ -153,6 +153,15 @@ test('set-asides page includes accounts prop', function (): void {
         );
 });
 
+test('sinkingFunds shared prop includes the user\'s funds', function (): void {
+    $fund = SinkingFund::factory()->for($this->user)->create(['name' => 'Vacation']);
+
+    $this->get('/set-asides')
+        ->assertInertia(fn ($page) => $page
+            ->has('sinkingFunds', 1, fn ($f) => $f->where('id', $fund->id)->where('name', 'Vacation')->etc())
+        );
+});
+
 test('set-asides page includes fund payments', function (): void {
     $account = Account::factory()->for($this->user)->create();
     $fund = SinkingFund::factory()->for($this->user)->create(['saved' => 8000, 'target' => 12000]);
