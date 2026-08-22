@@ -2,7 +2,12 @@
 
 namespace App\Providers;
 
+use App\Models\BudgetCategory;
+use App\Models\Debt;
+use App\Models\RecurringBill;
+use App\Models\SinkingFund;
 use Carbon\CarbonImmutable;
+use Illuminate\Database\Eloquent\Relations\Relation;
 use Illuminate\Support\Facades\Date;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\ServiceProvider;
@@ -32,6 +37,13 @@ class AppServiceProvider extends ServiceProvider
     protected function configureDefaults(): void
     {
         Date::use(CarbonImmutable::class);
+
+        Relation::morphMap([
+            'budget_category' => BudgetCategory::class,
+            'debt' => Debt::class,
+            'recurring_bill' => RecurringBill::class,
+            'sinking_fund' => SinkingFund::class,
+        ]);
 
         DB::prohibitDestructiveCommands(
             app()->isProduction(),
