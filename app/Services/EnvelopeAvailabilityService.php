@@ -30,6 +30,11 @@ class EnvelopeAvailabilityService
     private function walk(Envelopable $envelope, BudgetCycle $budgetCycle, CyclePeriod $target): array
     {
         $cycle = $this->epoch($envelope, $budgetCycle);
+
+        if ($target->start->lessThan($cycle->start)) {
+            return ['assigned' => 0.0, 'activity' => 0.0];
+        }
+
         $assigned = 0.0;
         $activity = 0.0;
 
