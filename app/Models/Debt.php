@@ -2,13 +2,14 @@
 
 namespace App\Models;
 
+use App\Contracts\Envelopable;
 use Database\Factories\DebtFactory;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
-class Debt extends Model
+class Debt extends Model implements Envelopable
 {
     /** @use HasFactory<DebtFactory> */
     use HasFactory;
@@ -53,5 +54,25 @@ class Debt extends Model
     public function balanceSnapshots(): HasMany
     {
         return $this->hasMany(DebtBalanceSnapshot::class);
+    }
+
+    public function envelopeName(): string
+    {
+        return $this->name;
+    }
+
+    public function envelopeIcon(): string
+    {
+        return $this->icon;
+    }
+
+    public function envelopeColor(): string
+    {
+        return $this->color;
+    }
+
+    public function defaultAssignedAmount(): float
+    {
+        return (float) $this->per_month;
     }
 }

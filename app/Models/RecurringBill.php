@@ -2,12 +2,13 @@
 
 namespace App\Models;
 
+use App\Contracts\Envelopable;
 use Database\Factories\RecurringBillFactory;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
-class RecurringBill extends Model
+class RecurringBill extends Model implements Envelopable
 {
     /** @use HasFactory<RecurringBillFactory> */
     use HasFactory;
@@ -28,5 +29,25 @@ class RecurringBill extends Model
     public function budgetCategory(): BelongsTo
     {
         return $this->belongsTo(BudgetCategory::class);
+    }
+
+    public function envelopeName(): string
+    {
+        return $this->name;
+    }
+
+    public function envelopeIcon(): string
+    {
+        return $this->icon;
+    }
+
+    public function envelopeColor(): string
+    {
+        return $this->color;
+    }
+
+    public function defaultAssignedAmount(): float
+    {
+        return (float) $this->amount;
     }
 }

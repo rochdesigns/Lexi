@@ -2,13 +2,14 @@
 
 namespace App\Models;
 
+use App\Contracts\Envelopable;
 use Database\Factories\SinkingFundFactory;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
-class SinkingFund extends Model
+class SinkingFund extends Model implements Envelopable
 {
     /** @use HasFactory<SinkingFundFactory> */
     use HasFactory;
@@ -30,5 +31,25 @@ class SinkingFund extends Model
     public function transactions(): HasMany
     {
         return $this->hasMany(Transaction::class);
+    }
+
+    public function envelopeName(): string
+    {
+        return $this->name;
+    }
+
+    public function envelopeIcon(): string
+    {
+        return $this->icon;
+    }
+
+    public function envelopeColor(): string
+    {
+        return $this->color;
+    }
+
+    public function defaultAssignedAmount(): float
+    {
+        return (float) $this->per_month;
     }
 }
