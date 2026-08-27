@@ -3,13 +3,15 @@
 namespace App\Models;
 
 use App\Contracts\Envelopable;
+use App\Contracts\Forecastable;
+use App\Support\CyclePeriod;
 use Database\Factories\DebtFactory;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
-class Debt extends Model implements Envelopable
+class Debt extends Model implements Envelopable, Forecastable
 {
     /** @use HasFactory<DebtFactory> */
     use HasFactory;
@@ -73,6 +75,22 @@ class Debt extends Model implements Envelopable
 
     public function defaultAssignedAmount(): float
     {
+        return (float) $this->per_month;
+    }
+
+    /**
+     * Set by MonthlyForecastService immediately before projecting this debt's forecast
+     * row — the period index its payoff simulation says the balance reaches zero. Not a
+     * database column; null means "not yet computed" or "never pays off in the window."
+     */
+    public ?int $forecastPayoffPeriodIndex = null;
+
+    public function forecastAmount(CyclePeriod $period, int $periodIndex): float
+    {
+        if ($this->forecastPayoffPeriodIndex !== null && $periodIndex >= $this->forecastPayoffPeriodIndex) {
+            return 0.0;
+        }
+
         return (float) $this->per_month;
     }
 }

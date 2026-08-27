@@ -6,6 +6,7 @@ use App\Models\Debt;
 use App\Models\DebtPayment;
 use App\Models\Transaction;
 use App\Models\User;
+use App\Support\CyclePeriod;
 use Carbon\Carbon;
 
 beforeEach(function (): void {
@@ -620,4 +621,23 @@ test('make-payment accrues interest only since the previous payment', function (
     $latest = DebtPayment::where('debt_id', $debt->id)->orderByDesc('paid_at')->first();
 
     expect((float) $latest->interest_amount)->toBe(1019.18);
+});
+
+test('forecastAmount returns per_month until periodIndex reaches the payoff cutoff', function (): void {
+    $debt = Debt::factory()->for($this->user)->create(['per_month' => 100]);
+    $period = new CyclePeriod(Carbon::parse('2026-08-01'), Carbon::parse('2026-08-30'));
+    $debt->forecastPayoffPeriodIndex = 3;
+
+    expect($debt->forecastAmount($period, 0))->toBe(100.0);
+    expect($debt->forecastAmount($period, 2))->toBe(100.0);
+    expect($debt->forecastAmount($period, 3))->toBe(0.0);
+    expect($debt->forecastAmount($period, 5))->toBe(0.0);
+});
+
+test('forecastAmount returns per_month indefinitely when there is no payoff cutoff', function (): void {
+    $debt = Debt::factory()->for($this->user)->create(['per_month' => 250]);
+    $period = new CyclePeriod(Carbon::parse('2026-08-01'), Carbon::parse('2026-08-30'));
+
+    expect($debt->forecastAmount($period, 0))->toBe(250.0);
+    expect($debt->forecastAmount($period, 11))->toBe(250.0);
 });
