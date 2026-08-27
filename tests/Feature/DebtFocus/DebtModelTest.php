@@ -1,0 +1,33 @@
+<?php
+
+use App\Models\DebtFocus\Debt;
+use App\Models\User;
+
+test('a debt focus debt persists with the expected fields and casts', function () {
+    $user = User::factory()->create();
+
+    $debt = Debt::factory()->for($user)->create([
+        'name' => 'Visa',
+        'balance' => 1500.50,
+        'apr' => 19.99,
+        'minimum_payment' => 45,
+        'debt_type' => 'revolving',
+    ]);
+
+    $fresh = $debt->fresh();
+
+    expect($fresh->name)->toBe('Visa');
+    expect((float) $fresh->balance)->toBe(1500.50);
+    expect((float) $fresh->apr)->toBe(19.99);
+    expect((float) $fresh->minimum_payment)->toBe(45.0);
+    expect($fresh->debt_type)->toBe('revolving');
+    expect($fresh->user_id)->toBe($user->id);
+});
+
+test('apr is nullable', function () {
+    $user = User::factory()->create();
+
+    $debt = Debt::factory()->for($user)->create(['apr' => null]);
+
+    expect($debt->fresh()->apr)->toBeNull();
+});
