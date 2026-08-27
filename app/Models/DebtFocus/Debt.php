@@ -16,12 +16,12 @@ class Debt extends Model
     protected $table = 'debt_focus_debts';
 
     protected $fillable = [
-        'user_id', 'name', 'balance', 'apr', 'minimum_payment', 'debt_type',
+        'user_id', 'name', 'balance', 'monthly_rate', 'minimum_payment', 'debt_type', 'due_day',
     ];
 
     protected $casts = [
         'balance' => 'decimal:2',
-        'apr' => 'decimal:2',
+        'monthly_rate' => 'decimal:2',
         'minimum_payment' => 'decimal:2',
     ];
 

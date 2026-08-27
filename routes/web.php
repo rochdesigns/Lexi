@@ -6,6 +6,7 @@ use App\Http\Controllers\CalendarController;
 use App\Http\Controllers\DebtController;
 use App\Http\Controllers\EventController;
 use App\Http\Controllers\MoneyController;
+use App\Http\Controllers\PayoffPlanController;
 use App\Http\Controllers\RecurringBillController;
 use App\Http\Controllers\SinkingFundController;
 use App\Http\Controllers\TaskController;
@@ -69,6 +70,11 @@ Route::middleware(['auth', 'verified'])->group(function (): void {
     Route::patch('/debts/{debt}', [DebtController::class, 'update'])->name('debts.update');
     Route::delete('/debts/{debt}', [DebtController::class, 'destroy'])->name('debts.destroy');
     Route::post('/debts/{debt}/payment', [DebtController::class, 'makePayment'])->name('debts.payment');
+    Route::get('/payoff-plan', [PayoffPlanController::class, 'index'])->name('payoff-plan');
+    Route::post('/payoff-plan/debts', [PayoffPlanController::class, 'storeDebt'])->name('payoff-plan.debts.store');
+    Route::patch('/payoff-plan/debts/{debt}', [PayoffPlanController::class, 'updateDebt'])->name('payoff-plan.debts.update');
+    Route::delete('/payoff-plan/debts/{debt}', [PayoffPlanController::class, 'destroyDebt'])->name('payoff-plan.debts.destroy');
+    Route::patch('/payoff-plan/settings', [PayoffPlanController::class, 'updateSettings'])->name('payoff-plan.settings.update');
     Route::inertia('/photos', 'Stub')->name('photos');
 
     // Legacy redirect — keeps old dashboard links working

@@ -123,8 +123,8 @@ class PayoffEngine
             $work[$debt->id] = [
                 'balance' => (float) $debt->balance,
                 'minimumPayment' => (float) $debt->minimum_payment,
-                'monthlyRate' => $debt->apr !== null ? ((float) $debt->apr / 100 / 12) : 0.0,
-                'totalInterest' => $debt->apr !== null ? 0.0 : null,
+                'monthlyRate' => $debt->monthly_rate !== null ? ((float) $debt->monthly_rate / 100) : 0.0,
+                'totalInterest' => $debt->monthly_rate !== null ? 0.0 : null,
                 'payoffMonth' => null,
             ];
         }

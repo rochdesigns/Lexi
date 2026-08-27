@@ -6,7 +6,7 @@ use App\Services\DebtFocus\PayoffEngine;
 
 test('a single debt with no interest and no extra payment pays off in balance divided by minimum-payment months', function () {
     $user = User::factory()->create();
-    $debt = Debt::factory()->for($user)->create(['balance' => 1200, 'minimum_payment' => 100, 'apr' => null]);
+    $debt = Debt::factory()->for($user)->create(['balance' => 1200, 'minimum_payment' => 100, 'monthly_rate' => null]);
 
     $result = (new PayoffEngine)->simulate(collect([$debt]), 'avalanche');
 
@@ -19,7 +19,7 @@ test('a single debt with no interest and no extra payment pays off in balance di
 
 test('a debt whose minimum payment cannot cover accrued interest is marked not on track', function () {
     $user = User::factory()->create();
-    $debt = Debt::factory()->for($user)->create(['balance' => 10000, 'minimum_payment' => 5, 'apr' => 12]);
+    $debt = Debt::factory()->for($user)->create(['balance' => 10000, 'minimum_payment' => 5, 'monthly_rate' => 12]);
 
     $result = (new PayoffEngine)->simulate(collect([$debt]), 'avalanche');
 
@@ -29,10 +29,10 @@ test('a debt whose minimum payment cannot cover accrued interest is marked not o
     expect($result['perDebt'][0]['totalInterest'])->toBeNull();
 });
 
-test('avalanche directs the extra payment at the highest-apr active debt', function () {
+test('avalanche directs the extra payment at the highest-monthly-rate active debt', function () {
     $user = User::factory()->create();
-    $lowRate = Debt::factory()->for($user)->create(['balance' => 500, 'minimum_payment' => 50, 'apr' => 0]);
-    $highRate = Debt::factory()->for($user)->create(['balance' => 200, 'minimum_payment' => 20, 'apr' => 24]);
+    $lowRate = Debt::factory()->for($user)->create(['balance' => 500, 'minimum_payment' => 50, 'monthly_rate' => 0]);
+    $highRate = Debt::factory()->for($user)->create(['balance' => 200, 'minimum_payment' => 20, 'monthly_rate' => 2]);
 
     $result = (new PayoffEngine)->simulate(collect([$lowRate, $highRate]), 'avalanche', extraMonthly: 200);
 
@@ -58,8 +58,8 @@ test('an unsupported strategy throws', function () {
 
 test('snowball directs the extra payment at the lowest-starting-balance active debt regardless of rate', function () {
     $user = User::factory()->create();
-    $highBalance = Debt::factory()->for($user)->create(['balance' => 1000, 'minimum_payment' => 50, 'apr' => 24]);
-    $lowBalance = Debt::factory()->for($user)->create(['balance' => 100, 'minimum_payment' => 10, 'apr' => 0]);
+    $highBalance = Debt::factory()->for($user)->create(['balance' => 1000, 'minimum_payment' => 50, 'monthly_rate' => 24]);
+    $lowBalance = Debt::factory()->for($user)->create(['balance' => 100, 'minimum_payment' => 10, 'monthly_rate' => 0]);
 
     $result = (new PayoffEngine)->simulate(collect([$highBalance, $lowBalance]), 'snowball', extraMonthly: 200);
 
@@ -69,9 +69,9 @@ test('snowball directs the extra payment at the lowest-starting-balance active d
 
 test('snowball moves the extra payment to the next-lowest-starting-balance debt once the current target pays off', function () {
     $user = User::factory()->create();
-    $tiny = Debt::factory()->for($user)->create(['balance' => 50, 'minimum_payment' => 50, 'apr' => 0]);
-    $huge = Debt::factory()->for($user)->create(['balance' => 1000, 'minimum_payment' => 10, 'apr' => 0]);
-    $middle = Debt::factory()->for($user)->create(['balance' => 200, 'minimum_payment' => 10, 'apr' => 0]);
+    $tiny = Debt::factory()->for($user)->create(['balance' => 50, 'minimum_payment' => 50, 'monthly_rate' => 0]);
+    $huge = Debt::factory()->for($user)->create(['balance' => 1000, 'minimum_payment' => 10, 'monthly_rate' => 0]);
+    $middle = Debt::factory()->for($user)->create(['balance' => 200, 'minimum_payment' => 10, 'monthly_rate' => 0]);
 
     $result = (new PayoffEngine)->simulate(collect([$tiny, $huge, $middle]), 'snowball', extraMonthly: 300);
 
@@ -84,8 +84,8 @@ test('snowball moves the extra payment to the next-lowest-starting-balance debt 
 
 test('a freed minimum payment rolls into the extra-payment pool once its debt pays off', function () {
     $user = User::factory()->create();
-    $a = Debt::factory()->for($user)->create(['balance' => 200, 'minimum_payment' => 100, 'apr' => null]);
-    $b = Debt::factory()->for($user)->create(['balance' => 1000, 'minimum_payment' => 100, 'apr' => null]);
+    $a = Debt::factory()->for($user)->create(['balance' => 200, 'minimum_payment' => 100, 'monthly_rate' => null]);
+    $b = Debt::factory()->for($user)->create(['balance' => 1000, 'minimum_payment' => 100, 'monthly_rate' => null]);
 
     $result = (new PayoffEngine)->simulate(collect([$a, $b]), 'avalanche', extraMonthly: 0);
 
@@ -98,7 +98,7 @@ test('a freed minimum payment rolls into the extra-payment pool once its debt pa
 
 test('interest accrues and compounds to an exact, hand-computable totalInterest', function () {
     $user = User::factory()->create();
-    $debt = Debt::factory()->for($user)->create(['balance' => 1000, 'minimum_payment' => 300, 'apr' => 12]);
+    $debt = Debt::factory()->for($user)->create(['balance' => 1000, 'minimum_payment' => 300, 'monthly_rate' => 1]);
 
     $result = (new PayoffEngine)->simulate(collect([$debt]), 'avalanche');
 

@@ -3,6 +3,8 @@
 namespace App\Models;
 
 // use Illuminate\Contracts\Auth\MustVerifyEmail;
+use App\Models\DebtFocus\Debt as DebtFocusDebt;
+use App\Models\DebtFocus\Settings as DebtFocusSettings;
 use Database\Factories\UserFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Attributes\Hidden;
@@ -114,6 +116,22 @@ class User extends Authenticatable implements PasskeyUser
     public function taskSections(): HasMany
     {
         return $this->hasMany(TaskSection::class);
+    }
+
+    /**
+     * @return HasMany<DebtFocusDebt, $this>
+     */
+    public function debtFocusDebts(): HasMany
+    {
+        return $this->hasMany(DebtFocusDebt::class);
+    }
+
+    /**
+     * @return HasOne<DebtFocusSettings, $this>
+     */
+    public function debtFocusSettings(): HasOne
+    {
+        return $this->hasOne(DebtFocusSettings::class);
     }
 
     /**

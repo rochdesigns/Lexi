@@ -1,7 +1,7 @@
 # Payoff Plan — Frontend Design
 
 **Date:** 2026-08-27
-**Status:** Draft
+**Status:** Implemented
 **Origin:** `docs/superpowers/plans/2026-08-27-debtfocus-payoff-engine.md` (backend), `docs/superpowers/specs/2026-08-27-money-section-debt-focus-design.md` (broader vision)
 
 ## Framing
@@ -30,6 +30,8 @@ PATCH  /payoff-plan/settings           PayoffPlanController@updateSettings
 
 A new table holds the persisted strategy and extra-payment choice, kept under the same `debt_focus_` prefix as the rest of the subsystem — not a column on `users`, since this is domain data specific to the payoff plan, not an account-level preference.
 
+**Field naming note:** the `debt_focus_debts` table's rate column is `monthly_rate`, not `apr` — during implementation this was renamed from `apr` (with a matching migration) because the engine was treating it as an already-monthly rate rather than dividing an annual rate by 12. Every `apr` reference below should be read as `monthly_rate`. A `due_day` column (nullable, 1–31) was also added to `debt_focus_debts` to record which day of the month a debt is due, surfaced in the debt list and add/edit form.
+
 ```
 debt_focus_settings
   id
@@ -50,10 +52,10 @@ One row per user. `PayoffPlanController@index` uses `firstOrCreate(['user_id' =>
 2. `firstOrCreate` their `DebtFocus\Settings` row.
 3. Run `PayoffEngine::simulate($debts, $settings->strategy, (float) $settings->extra_monthly)`.
 4. Compute a display-friendly debt-free date (`today->addMonthsNoOverflow($result['months'])->format('M Y')`) when `onTrack` is true — same helper `MoneyController` already uses for the analogous figure.
-5. Order the debts for display by payoff priority under the current strategy: for `avalanche`, highest APR first; for `snowball`, lowest starting balance first (mirrors `PayoffEngine`'s own targeting order, computed in the controller rather than duplicated in the frontend).
+5. Order the debts for display by payoff priority under the current strategy: for `avalanche`, highest monthly rate first; for `snowball`, lowest starting balance first (mirrors `PayoffEngine`'s own targeting order, computed in the controller rather than duplicated in the frontend).
 6. Render `Inertia::render('PayoffPlan', [...])`. Following this codebase's existing split (see `DebtController` vs `MoneyController`): per-debt item fields are snake_case, mirroring their DB columns plus two merged-in simulation fields — `payoff_month`, `total_interest` (renamed from the engine's `payoffMonth`/`totalInterest` when building each item array). Page-level aggregate props are camelCase, matching `MoneyController`'s `debtFreeMonths`/`debtFreeDate`/`debtOnTrack` convention: `debts` (list), `settings` (`strategy`, `extra_monthly` — settings is itself a DB-backed record, so its fields stay snake_case), `monthsRemaining`, `onTrack`, `debtFreeDate`.
 
-`storeDebt()` / `updateDebt()`: validate `name` (required, string, max 100), `balance` (required, numeric, min 0), `apr` (nullable, numeric, min 0, max 100), `minimum_payment` (required, numeric, min 0), `debt_type` (required, in `revolving,installment`). Redirect back — no separate JSON response, matching the existing Inertia form-post convention used by `DebtController`.
+`storeDebt()` / `updateDebt()`: validate `name` (required, string, max 100), `balance` (required, numeric, min 0), `monthly_rate` (nullable, numeric, min 0, max 100), `due_day` (nullable, integer, min 1, max 31), `minimum_payment` (required, numeric, min 0), `debt_type` (required, in `revolving,installment`). Redirect back — no separate JSON response, matching the existing Inertia form-post convention used by `DebtController`.
 
 `destroyDebt()`: delete, redirect back.
 
@@ -76,9 +78,9 @@ Follows the visual conventions already established in `Money.vue` (rounded `22px
 - A two-option segmented control (Avalanche / Snowball), each with a one-line explainer ("Highest interest rate first" / "Lowest balance first") beneath it.
 - A labeled currency input for extra monthly payment, debounced on blur rather than on every keystroke.
 
-**4. Debt list card** — ordered per the controller's priority sort. Each row: name, debt-type badge, balance, APR (or "—" when null), minimum payment, and on the right, payoff month/date and total interest (or "—" when APR is null, since `PayoffEngine` only tracks interest when APR is set). Clicking a row switches it into the same inline edit affordance described next; a small trailing delete icon (confirm via `window.confirm`, matching no existing pattern needing anything heavier since this is low-stakes user-owned data entry).
+**4. Debt list card** — ordered per the controller's priority sort. Each row: name, debt-type badge, balance, monthly rate (or "—" when null), minimum payment, and on the right, payoff month/date and total interest (or "—" when monthly rate is null, since `PayoffEngine` only tracks interest when monthly rate is set). Clicking a row switches it into the same inline edit affordance described next; a small trailing delete icon (confirm via `window.confirm`, matching no existing pattern needing anything heavier since this is low-stakes user-owned data entry).
 
-**5. Inline add/edit row** — at the bottom of the list, an "Add a debt" trigger row that expands into an inline form (name, balance, APR, minimum payment, debt-type select), mirroring `Money.vue`'s `openPayRow`/`cancelPayRow`/`submitPayRow` pattern: one `ref<number | null>` tracking which row (or `'new'`) is open, one `useForm()` instance, Confirm/Cancel buttons, inline field errors below the form. Editing an existing row reuses the identical form shape, pre-filled.
+**5. Inline add/edit row** — at the bottom of the list, an "Add a debt" trigger row that expands into an inline form (name, balance, monthly rate, minimum payment, debt-type select, due day), mirroring `Money.vue`'s `openPayRow`/`cancelPayRow`/`submitPayRow` pattern: one `ref<number | null>` tracking which row (or `'new'`) is open, one `useForm()` instance, Confirm/Cancel buttons, inline field errors below the form. Editing an existing row reuses the identical form shape, pre-filled.
 
 **Empty state:** zero debts shows only the headline card's empty message and the add-debt row — no list, no strategy card (nothing to project yet).
 
@@ -91,7 +93,8 @@ type PayoffDebt = {
     id: number;
     name: string;
     balance: number;
-    apr: number | null;
+    monthly_rate: number | null;
+    due_day: number | null;
     minimum_payment: number;
     debt_type: 'revolving' | 'installment';
     payoff_month: number | null;
@@ -117,7 +120,7 @@ type PayoffPlanProps = {
 - `firstOrCreate`s default settings for a first-time visitor.
 - Store/update/destroy debt: persists correctly, redirects back, rejects another user's debt with 403/404.
 - Update settings: persists strategy and extra_monthly, validation rejects an invalid strategy string.
-- Debt list ordering matches strategy (avalanche → APR desc, snowball → balance asc) for a multi-debt fixture.
+- Debt list ordering matches strategy (avalanche → monthly rate desc, snowball → balance asc) for a multi-debt fixture.
 
 No Dusk/browser test — this project's existing money pages (`Money.vue`, `Debt.vue`) have no browser-test coverage either; feature tests on the controller plus manual verification in Herd is the established bar.
 

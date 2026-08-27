@@ -17,9 +17,10 @@ class DebtFactory extends Factory
             'user_id' => User::factory(),
             'name' => fake()->words(2, true),
             'balance' => fake()->randomFloat(2, 100, 20000),
-            'apr' => fake()->randomFloat(2, 0, 30),
+            'monthly_rate' => fake()->randomFloat(2, 0, 2.5),
             'minimum_payment' => fake()->randomFloat(2, 20, 500),
             'debt_type' => fake()->randomElement(['revolving', 'installment']),
+            'due_day' => fake()->numberBetween(1, 28),
         ];
     }
 }

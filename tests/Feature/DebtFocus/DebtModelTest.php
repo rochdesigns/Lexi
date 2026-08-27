@@ -9,7 +9,7 @@ test('a debt focus debt persists with the expected fields and casts', function (
     $debt = Debt::factory()->for($user)->create([
         'name' => 'Visa',
         'balance' => 1500.50,
-        'apr' => 19.99,
+        'monthly_rate' => 1.99,
         'minimum_payment' => 45,
         'debt_type' => 'revolving',
     ]);
@@ -18,18 +18,18 @@ test('a debt focus debt persists with the expected fields and casts', function (
 
     expect($fresh->name)->toBe('Visa');
     expect((float) $fresh->balance)->toBe(1500.50);
-    expect((float) $fresh->apr)->toBe(19.99);
+    expect((float) $fresh->monthly_rate)->toBe(1.99);
     expect((float) $fresh->minimum_payment)->toBe(45.0);
     expect($fresh->debt_type)->toBe('revolving');
     expect($fresh->user_id)->toBe($user->id);
 });
 
-test('apr is nullable', function () {
+test('monthly_rate is nullable', function () {
     $user = User::factory()->create();
 
-    $debt = Debt::factory()->for($user)->create(['apr' => null]);
+    $debt = Debt::factory()->for($user)->create(['monthly_rate' => null]);
 
-    expect($debt->fresh()->apr)->toBeNull();
+    expect($debt->fresh()->monthly_rate)->toBeNull();
 });
 
 test('debt_type defaults to installment at the database level when not supplied', function () {
