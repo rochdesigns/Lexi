@@ -26,6 +26,7 @@ test('a debt whose minimum payment cannot cover accrued interest is marked not o
     expect($result['months'])->toBeNull();
     expect($result['onTrack'])->toBeFalse();
     expect($result['perDebt'][0]['payoffMonth'])->toBeNull();
+    expect($result['perDebt'][0]['totalInterest'])->toBeNull();
 });
 
 test('avalanche directs the extra payment at the highest-apr active debt', function () {
@@ -80,3 +81,34 @@ test('snowball moves the extra payment to the next-lowest-starting-balance debt 
     expect($middleResult['payoffMonth'])->toBe(1);
     expect($hugeResult['payoffMonth'])->not->toBe(1);
 });
+
+test('a freed minimum payment rolls into the extra-payment pool once its debt pays off', function () {
+    $user = User::factory()->create();
+    $a = Debt::factory()->for($user)->create(['balance' => 200, 'minimum_payment' => 100, 'apr' => null]);
+    $b = Debt::factory()->for($user)->create(['balance' => 1000, 'minimum_payment' => 100, 'apr' => null]);
+
+    $result = (new PayoffEngine)->simulate(collect([$a, $b]), 'avalanche', extraMonthly: 0);
+
+    $aResult = collect($result['perDebt'])->firstWhere('debtId', $a->id);
+    $bResult = collect($result['perDebt'])->firstWhere('debtId', $b->id);
+
+    expect($aResult['payoffMonth'])->toBe(2);
+    expect($bResult['payoffMonth'])->toBe(6);
+});
+
+test('interest accrues and compounds to an exact, hand-computable totalInterest', function () {
+    $user = User::factory()->create();
+    $debt = Debt::factory()->for($user)->create(['balance' => 1000, 'minimum_payment' => 300, 'apr' => 12]);
+
+    $result = (new PayoffEngine)->simulate(collect([$debt]), 'avalanche');
+
+    expect($result['perDebt'][0]['payoffMonth'])->toBe(4);
+    expect($result['perDebt'][0]['totalInterest'])->toBe(22.48);
+});
+
+test('a negative extra monthly payment throws', function () {
+    $user = User::factory()->create();
+    $debt = Debt::factory()->for($user)->create();
+
+    (new PayoffEngine)->simulate(collect([$debt]), 'avalanche', extraMonthly: -50);
+})->throws(InvalidArgumentException::class);

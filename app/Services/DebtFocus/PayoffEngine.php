@@ -25,30 +25,29 @@ class PayoffEngine
             throw new InvalidArgumentException("Unsupported strategy: {$strategy}");
         }
 
+        if ($extraMonthly < 0) {
+            throw new InvalidArgumentException('extraMonthly must not be negative.');
+        }
+
         $active = $debts->filter(fn (Debt $debt) => (float) $debt->balance > 0)->values();
 
         if ($active->isEmpty()) {
             return ['strategy' => $strategy, 'months' => 0, 'onTrack' => true, 'perDebt' => []];
         }
 
-        $work = $active->keyBy('id')->map(fn (Debt $debt) => [
-            'balance' => (float) $debt->balance,
-            'minimumPayment' => (float) $debt->minimum_payment,
-            'monthlyRate' => $debt->apr !== null ? ((float) $debt->apr / 100 / 12) : 0.0,
-            'totalInterest' => $debt->apr !== null ? 0.0 : null,
-            'payoffMonth' => null,
-        ])->all();
+        $work = $this->buildWorkingSet($active);
 
         $sortedByStartingBalance = $active->all();
         usort($sortedByStartingBalance, fn (Debt $a, Debt $b) => [(float) $a->balance, $a->id] <=> [(float) $b->balance, $b->id]);
         $snowballOrder = array_map(fn (Debt $debt) => $debt->id, $sortedByStartingBalance);
 
         $month = 0;
+        $rolledMinimums = 0.0;
 
         while (collect($work)->contains(fn ($d) => $d['payoffMonth'] === null) && $month < self::MAX_MONTHS) {
             $month++;
 
-            foreach ($work as &$debt) {
+            foreach ($work as $id => $debt) {
                 if ($debt['payoffMonth'] !== null) {
                     continue;
                 }
@@ -58,10 +57,11 @@ class PayoffEngine
                     $debt['totalInterest'] += $interest;
                 }
                 $debt['balance'] += $interest;
-            }
-            unset($debt);
 
-            foreach ($work as &$debt) {
+                $work[$id] = $debt;
+            }
+
+            foreach ($work as $id => $debt) {
                 if ($debt['payoffMonth'] !== null) {
                     continue;
                 }
@@ -71,19 +71,26 @@ class PayoffEngine
                 if ($debt['balance'] <= 0.0) {
                     $debt['balance'] = 0.0;
                     $debt['payoffMonth'] = $month;
+                    $rolledMinimums += $debt['minimumPayment'];
                 }
-            }
-            unset($debt);
 
-            if ($extraMonthly > 0) {
+                $work[$id] = $debt;
+            }
+
+            $extraThisMonth = $extraMonthly + $rolledMinimums;
+
+            if ($extraThisMonth > 0) {
                 $target = $this->priorityTarget($work, $strategy, $snowballOrder);
 
                 if ($target !== null) {
-                    $work[$target]['balance'] = max(0.0, $work[$target]['balance'] - $extraMonthly);
+                    $targetDebt = $work[$target];
+                    $targetDebt['balance'] = max(0.0, $targetDebt['balance'] - $extraThisMonth);
 
-                    if ($work[$target]['balance'] <= 0.0) {
-                        $work[$target]['payoffMonth'] = $month;
+                    if ($targetDebt['balance'] <= 0.0) {
+                        $targetDebt['payoffMonth'] = $month;
                     }
+
+                    $work[$target] = $targetDebt;
                 }
             }
         }
@@ -97,7 +104,7 @@ class PayoffEngine
             'perDebt' => $active->map(fn (Debt $debt) => [
                 'debtId' => $debt->id,
                 'payoffMonth' => $work[$debt->id]['payoffMonth'],
-                'totalInterest' => $work[$debt->id]['totalInterest'] !== null
+                'totalInterest' => $work[$debt->id]['payoffMonth'] !== null && $work[$debt->id]['totalInterest'] !== null
                     ? round($work[$debt->id]['totalInterest'], 2)
                     : null,
             ])->all(),
@@ -105,7 +112,28 @@ class PayoffEngine
     }
 
     /**
-     * @param  array<int, array{balance: float, monthlyRate: float, payoffMonth: int|null}>  $work
+     * @param  Collection<int, Debt>  $active
+     * @return array<int, array{balance: float, minimumPayment: float, monthlyRate: float, totalInterest: float|null, payoffMonth: int|null}>
+     */
+    private function buildWorkingSet(Collection $active): array
+    {
+        $work = [];
+
+        foreach ($active as $debt) {
+            $work[$debt->id] = [
+                'balance' => (float) $debt->balance,
+                'minimumPayment' => (float) $debt->minimum_payment,
+                'monthlyRate' => $debt->apr !== null ? ((float) $debt->apr / 100 / 12) : 0.0,
+                'totalInterest' => $debt->apr !== null ? 0.0 : null,
+                'payoffMonth' => null,
+            ];
+        }
+
+        return $work;
+    }
+
+    /**
+     * @param  array<int, array{balance: float, minimumPayment: float, monthlyRate: float, totalInterest: float|null, payoffMonth: int|null}>  $work
      * @param  array<int, int>  $snowballOrder
      */
     private function priorityTarget(array $work, string $strategy, array $snowballOrder): ?int

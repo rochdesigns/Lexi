@@ -31,3 +31,16 @@ test('apr is nullable', function () {
 
     expect($debt->fresh()->apr)->toBeNull();
 });
+
+test('debt_type defaults to installment at the database level when not supplied', function () {
+    $user = User::factory()->create();
+
+    $debt = Debt::create([
+        'user_id' => $user->id,
+        'name' => 'Unspecified Debt',
+        'balance' => 100,
+        'minimum_payment' => 10,
+    ]);
+
+    expect($debt->fresh()->debt_type)->toBe('installment');
+});

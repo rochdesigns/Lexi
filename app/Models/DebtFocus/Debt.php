@@ -25,6 +25,9 @@ class Debt extends Model
         'minimum_payment' => 'decimal:2',
     ];
 
+    /**
+     * @return BelongsTo<User, $this>
+     */
     public function user(): BelongsTo
     {
         return $this->belongsTo(User::class);
