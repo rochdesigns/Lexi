@@ -4,6 +4,8 @@ use App\Models\Account;
 use App\Models\SinkingFund;
 use App\Models\Transaction;
 use App\Models\User;
+use App\Support\CyclePeriod;
+use Carbon\Carbon;
 
 beforeEach(function (): void {
     $this->user = User::factory()->create();
@@ -177,4 +179,21 @@ test('set-asides page includes fund payments', function (): void {
         ->assertInertia(fn ($page) => $page
             ->has('funds.0.payments', 1, fn ($p) => $p->where('amount', 4000)->etc())
         );
+});
+
+test('forecastAmount keeps the pre-due rate before the due date and switches to the amortized rate once the due date falls within a period', function (): void {
+    $fund = SinkingFund::factory()->for($this->user)->create(['per_month' => 1000, 'target' => 6000, 'due_date' => '2026-09-15']);
+
+    $before = new CyclePeriod(Carbon::parse('2026-08-01'), Carbon::parse('2026-08-30'));
+    $renewed = new CyclePeriod(Carbon::parse('2026-09-01'), Carbon::parse('2026-09-30'));
+
+    expect($fund->forecastAmount($before, 0))->toBe(1000.0);
+    expect($fund->forecastAmount($renewed, 1))->toBe(500.0);
+});
+
+test('forecastAmount keeps the flat per_month indefinitely when there is no due date', function (): void {
+    $fund = SinkingFund::factory()->for($this->user)->create(['per_month' => 300, 'due_date' => null]);
+    $period = new CyclePeriod(Carbon::parse('2026-08-01'), Carbon::parse('2026-08-30'));
+
+    expect($fund->forecastAmount($period, 0))->toBe(300.0);
 });

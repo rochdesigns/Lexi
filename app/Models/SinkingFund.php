@@ -3,13 +3,15 @@
 namespace App\Models;
 
 use App\Contracts\Envelopable;
+use App\Contracts\Forecastable;
+use App\Support\CyclePeriod;
 use Database\Factories\SinkingFundFactory;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
-class SinkingFund extends Model implements Envelopable
+class SinkingFund extends Model implements Envelopable, Forecastable
 {
     /** @use HasFactory<SinkingFundFactory> */
     use HasFactory;
@@ -51,5 +53,16 @@ class SinkingFund extends Model implements Envelopable
     public function defaultAssignedAmount(): float
     {
         return (float) $this->per_month;
+    }
+
+    public function forecastAmount(CyclePeriod $period, int $periodIndex): float
+    {
+        $preDueAmount = (float) $this->per_month;
+
+        if ($this->due_date === null) {
+            return $preDueAmount;
+        }
+
+        return $period->end->gte($this->due_date) ? round((float) $this->target / 12, 2) : $preDueAmount;
     }
 }
