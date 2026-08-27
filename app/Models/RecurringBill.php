@@ -3,12 +3,14 @@
 namespace App\Models;
 
 use App\Contracts\Envelopable;
+use App\Contracts\Forecastable;
+use App\Support\CyclePeriod;
 use Database\Factories\RecurringBillFactory;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
-class RecurringBill extends Model implements Envelopable
+class RecurringBill extends Model implements Envelopable, Forecastable
 {
     /** @use HasFactory<RecurringBillFactory> */
     use HasFactory;
@@ -47,6 +49,11 @@ class RecurringBill extends Model implements Envelopable
     }
 
     public function defaultAssignedAmount(): float
+    {
+        return (float) $this->amount;
+    }
+
+    public function forecastAmount(CyclePeriod $period, int $periodIndex): float
     {
         return (float) $this->amount;
     }

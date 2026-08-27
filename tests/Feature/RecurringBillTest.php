@@ -3,6 +3,8 @@
 use App\Models\BudgetCategory;
 use App\Models\RecurringBill;
 use App\Models\User;
+use App\Support\CyclePeriod;
+use Carbon\Carbon;
 
 beforeEach(function () {
     $this->user = User::factory()->create();
@@ -137,4 +139,12 @@ test('can delete a recurring bill', function () {
     $this->delete("/recurring-bills/{$bill->id}")->assertRedirect();
 
     expect(RecurringBill::find($bill->id))->toBeNull();
+});
+
+test('forecastAmount returns the flat amount regardless of period', function () {
+    $bill = RecurringBill::factory()->create(['user_id' => $this->user->id, 'amount' => 15.49]);
+    $period = new CyclePeriod(Carbon::parse('2026-08-01'), Carbon::parse('2026-08-30'));
+
+    expect($bill->forecastAmount($period, 0))->toBe(15.49);
+    expect($bill->forecastAmount($period, 11))->toBe(15.49);
 });
