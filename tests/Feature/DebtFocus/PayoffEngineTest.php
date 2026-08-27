@@ -54,3 +54,29 @@ test('an unsupported strategy throws', function () {
 
     (new PayoffEngine)->simulate(collect([$debt]), 'lowest-hanging-fruit');
 })->throws(InvalidArgumentException::class);
+
+test('snowball directs the extra payment at the lowest-starting-balance active debt regardless of rate', function () {
+    $user = User::factory()->create();
+    $highBalance = Debt::factory()->for($user)->create(['balance' => 1000, 'minimum_payment' => 50, 'apr' => 24]);
+    $lowBalance = Debt::factory()->for($user)->create(['balance' => 100, 'minimum_payment' => 10, 'apr' => 0]);
+
+    $result = (new PayoffEngine)->simulate(collect([$highBalance, $lowBalance]), 'snowball', extraMonthly: 200);
+
+    $lowBalanceResult = collect($result['perDebt'])->firstWhere('debtId', $lowBalance->id);
+    expect($lowBalanceResult['payoffMonth'])->toBe(1);
+});
+
+test('snowball moves the extra payment to the next-lowest-starting-balance debt once the current target pays off', function () {
+    $user = User::factory()->create();
+    $tiny = Debt::factory()->for($user)->create(['balance' => 50, 'minimum_payment' => 50, 'apr' => 0]);
+    $huge = Debt::factory()->for($user)->create(['balance' => 1000, 'minimum_payment' => 10, 'apr' => 0]);
+    $middle = Debt::factory()->for($user)->create(['balance' => 200, 'minimum_payment' => 10, 'apr' => 0]);
+
+    $result = (new PayoffEngine)->simulate(collect([$tiny, $huge, $middle]), 'snowball', extraMonthly: 300);
+
+    $middleResult = collect($result['perDebt'])->firstWhere('debtId', $middle->id);
+    $hugeResult = collect($result['perDebt'])->firstWhere('debtId', $huge->id);
+
+    expect($middleResult['payoffMonth'])->toBe(1);
+    expect($hugeResult['payoffMonth'])->not->toBe(1);
+});
