@@ -41,6 +41,24 @@ class LedgerService
         });
     }
 
+    public function recordTransfer(Account $from, Account $to, float $amount, ?string $description = null, ?CarbonInterface $occurredAt = null): Transaction
+    {
+        return DB::transaction(function () use ($from, $to, $amount, $description, $occurredAt) {
+            $this->applyEffect($from, $amount, positive: false);
+            $this->applyEffect($to, $amount, positive: true);
+
+            return Transaction::create([
+                'user_id' => $from->user_id,
+                'type' => 'transfer',
+                'from_account_id' => $from->id,
+                'to_account_id' => $to->id,
+                'amount' => $amount,
+                'description' => $description,
+                'occurred_at' => $occurredAt ?? now(),
+            ]);
+        });
+    }
+
     /**
      * A "positive event" (income, or being a transfer's destination) increases an
      * asset account's balance and decreases a liability account's balance; a

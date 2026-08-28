@@ -50,3 +50,28 @@ test('recordIncome and recordExpense default occurred_at to today', function () 
 
     expect($transaction->occurred_at->toDateString())->toBe(now()->toDateString());
 });
+
+test('a transfer between two asset accounts moves the balance from one to the other', function () {
+    $checking = Account::factory()->create(['balance' => 500]);
+    $savings = Account::factory()->create(['balance' => 200]);
+
+    $transaction = (new LedgerService)->recordTransfer($checking, $savings, 100, 'Move to savings');
+
+    expect((float) $checking->fresh()->balance)->toBe(400.0);
+    expect((float) $savings->fresh()->balance)->toBe(300.0);
+    expect($transaction->type)->toBe('transfer');
+    expect($transaction->from_account_id)->toBe($checking->id);
+    expect($transaction->to_account_id)->toBe($savings->id);
+    expect($transaction->account_id)->toBeNull();
+    expect($transaction->user_id)->toBe($checking->user_id);
+});
+
+test('a transfer to a liability account pays it down, the credit-card-payment case', function () {
+    $checking = Account::factory()->create(['balance' => 500]);
+    $card = Account::factory()->liability()->create(['balance' => 300]);
+
+    (new LedgerService)->recordTransfer($checking, $card, 100, 'Card payment');
+
+    expect((float) $checking->fresh()->balance)->toBe(400.0);
+    expect((float) $card->fresh()->balance)->toBe(200.0);
+});
