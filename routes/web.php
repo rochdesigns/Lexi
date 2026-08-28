@@ -79,6 +79,8 @@ Route::middleware(['auth', 'verified'])->group(function (): void {
     Route::post('/payoff-plan/debts', [PayoffPlanController::class, 'storeDebt'])->name('payoff-plan.debts.store');
     Route::patch('/payoff-plan/debts/{debt}', [PayoffPlanController::class, 'updateDebt'])->name('payoff-plan.debts.update');
     Route::delete('/payoff-plan/debts/{debt}', [PayoffPlanController::class, 'destroyDebt'])->name('payoff-plan.debts.destroy');
+    Route::post('/payoff-plan/debts/{debt}/link', [PayoffPlanController::class, 'linkDebt'])->name('payoff-plan.debts.link');
+    Route::post('/payoff-plan/debts/{debt}/unlink', [PayoffPlanController::class, 'unlinkDebt'])->name('payoff-plan.debts.unlink');
     Route::patch('/payoff-plan/settings', [PayoffPlanController::class, 'updateSettings'])->name('payoff-plan.settings.update');
     Route::inertia('/photos', 'Stub')->name('photos');
 

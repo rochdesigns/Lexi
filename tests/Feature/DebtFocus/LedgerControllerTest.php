@@ -1,6 +1,7 @@
 <?php
 
 use App\Models\DebtFocus\Account;
+use App\Models\DebtFocus\Debt;
 use App\Models\DebtFocus\Transaction;
 use App\Models\User;
 use App\Services\DebtFocus\LedgerService;
@@ -126,4 +127,36 @@ test('cannot delete another user\'s account', function () {
     $this->actingAs($intruder)->delete("/ledger/accounts/{$account->id}")->assertForbidden();
 
     expect(Account::find($account->id))->not->toBeNull();
+});
+
+test('deleting an account also deletes any debt linked to it', function () {
+    $user = User::factory()->create();
+    $account = Account::factory()->for($user)->liability()->create();
+    $debt = Debt::factory()->for($user)->create(['linked_account_id' => $account->id]);
+
+    $this->actingAs($user)->delete("/ledger/accounts/{$account->id}")->assertRedirect();
+
+    expect(Account::find($account->id))->toBeNull();
+    expect(Debt::find($debt->id))->toBeNull();
+});
+
+test('an account with a linked debt lists its name for the delete warning', function () {
+    $user = User::factory()->create();
+    $account = Account::factory()->for($user)->liability()->create();
+    Debt::factory()->for($user)->create(['name' => 'Maya CC', 'linked_account_id' => $account->id]);
+
+    $response = $this->actingAs($user)->get('/ledger')->assertOk();
+    $props = $response->viewData('page')['props']['accounts'][0];
+
+    expect($props['linked_debt_names'])->toBe(['Maya CC']);
+});
+
+test('an account with no linked debt exposes an empty linked_debt_names list', function () {
+    $user = User::factory()->create();
+    Account::factory()->for($user)->create();
+
+    $response = $this->actingAs($user)->get('/ledger')->assertOk();
+    $props = $response->viewData('page')['props']['accounts'][0];
+
+    expect($props['linked_debt_names'])->toBe([]);
 });

@@ -3,9 +3,11 @@
 namespace App\Http\Controllers;
 
 use App\Models\DebtFocus\Account;
+use App\Models\DebtFocus\Debt;
 use App\Models\DebtFocus\Transaction;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Inertia\Inertia;
 use Inertia\Response;
 
@@ -23,6 +25,7 @@ class LedgerController extends Controller
             'is_liability' => $account->is_liability,
             'balance' => (float) $account->balance,
             'recent_transactions' => $this->recentTransactions($account),
+            'linked_debt_names' => Debt::where('linked_account_id', $account->id)->pluck('name')->all(),
         ])->values();
 
         return Inertia::render('Ledger', [
@@ -52,7 +55,10 @@ class LedgerController extends Controller
     {
         abort_if($account->user_id !== $request->user()->id, 403);
 
-        $account->delete();
+        DB::transaction(function () use ($account) {
+            Debt::where('linked_account_id', $account->id)->delete();
+            $account->delete();
+        });
 
         return back();
     }

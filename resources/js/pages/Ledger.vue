@@ -23,6 +23,7 @@ type LedgerAccount = {
     is_liability: boolean;
     balance: number;
     recent_transactions: LedgerTransaction[];
+    linked_debt_names: string[];
 };
 
 const props = defineProps<{ accounts: LedgerAccount[] }>();
@@ -105,7 +106,13 @@ function submitRow(): void {
 }
 
 function removeAccount(account: LedgerAccount): void {
-    if (!window.confirm(`Delete ${account.name}? This also removes any transfer records linking it to your other accounts.`)) {
+    let message = `Delete ${account.name}? This also removes any transfer records linking it to your other accounts.`;
+
+    if (account.linked_debt_names.length > 0) {
+        message += ` This will also permanently delete the debt "${account.linked_debt_names.join('", "')}" linked to this account.`;
+    }
+
+    if (!window.confirm(message)) {
         return;
     }
 

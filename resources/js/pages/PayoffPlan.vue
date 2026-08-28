@@ -1,9 +1,11 @@
 <script setup lang="ts">
-import { Head, router, useForm } from '@inertiajs/vue3';
+import { Head, Link, router, useForm } from '@inertiajs/vue3';
 import { ref } from 'vue';
 import {
     destroyDebt,
+    linkDebt,
     storeDebt,
+    unlinkDebt,
     updateDebt,
     updateSettings,
 } from '@/actions/App/Http/Controllers/PayoffPlanController';
@@ -18,14 +20,19 @@ type PayoffDebt = {
     minimum_payment: number;
     debt_type: DebtType;
     due_day: number | null;
+    linked_account_id: number | null;
+    linked_account_name: string | null;
     payoff_month: number | null;
     total_interest: number | null;
 };
+
+type LiabilityAccount = { id: number; name: string; balance: number };
 
 type PayoffSettings = { strategy: 'avalanche' | 'snowball'; extra_monthly: number };
 
 const props = defineProps<{
     debts: PayoffDebt[];
+    liabilityAccounts: LiabilityAccount[];
     settings: PayoffSettings;
     monthsRemaining: number | null;
     onTrack: boolean;
@@ -95,11 +102,61 @@ function openEditRow(debt: PayoffDebt): void {
     debtForm.minimum_payment = debt.minimum_payment;
     debtForm.debt_type = debt.debt_type;
     debtForm.due_day = debt.due_day;
+    linkAccountId.value = '';
+    linkChoicePending.value = null;
 }
 
 function cancelRow(): void {
     editingId.value = null;
     debtForm.clearErrors();
+    linkAccountId.value = '';
+    linkChoicePending.value = null;
+}
+
+// ── Link / unlink a debt to a Ledger account ────────────────────────────
+
+const linkAccountId = ref<number | ''>('');
+const linkChoicePending = ref<{ debtId: number; accountId: number; debtBalance: number; accountBalance: number } | null>(null);
+
+function onLinkAccountChange(debt: PayoffDebt): void {
+    if (linkAccountId.value === '') {
+        return;
+    }
+
+    const account = props.liabilityAccounts.find((a) => a.id === linkAccountId.value);
+
+    if (!account) {
+        return;
+    }
+
+    if (debt.balance !== account.balance) {
+        linkChoicePending.value = { debtId: debt.id, accountId: account.id, debtBalance: debt.balance, accountBalance: account.balance };
+
+        return;
+    }
+
+    submitLink(debt.id, account.id, 'account');
+}
+
+function submitLink(debtId: number, accountId: number, balanceChoice: 'debt' | 'account'): void {
+    router.post(
+        linkDebt(debtId).url,
+        { linked_account_id: accountId, balance_choice: balanceChoice },
+        { preserveScroll: true, onSuccess: () => (editingId.value = null) },
+    );
+}
+
+function cancelLinkChoice(): void {
+    linkChoicePending.value = null;
+    linkAccountId.value = '';
+}
+
+function unlinkDebtAccount(debt: PayoffDebt): void {
+    if (!window.confirm(`Unlink ${debt.name} from its ledger account? Its balance will stop syncing and stay editable here.`)) {
+        return;
+    }
+
+    router.post(unlinkDebt(debt.id).url, {}, { preserveScroll: true });
 }
 
 function calculateMinimumPayment(): void {
@@ -234,6 +291,7 @@ function removeDebt(debt: PayoffDebt): void {
                         </div>
                         <div class="text-[12px]" style="color: var(--hab-muted)">
                             {{ formatMoney(debt.balance) }} balance
+                            <span v-if="debt.linked_account_id !== null">(synced from {{ debt.linked_account_name }})</span>
                             <span v-if="debt.monthly_rate !== null">· {{ debt.monthly_rate }}% monthly</span>
                             · {{ formatMoney(debt.minimum_payment) }}/mo min
                             <span v-if="debt.due_day !== null">· due day {{ debt.due_day }}</span>
@@ -267,7 +325,15 @@ function removeDebt(debt: PayoffDebt): void {
                         </div>
                         <div>
                             <label class="mb-1 block text-[11px] font-medium" style="color: var(--hab-muted)">Balance</label>
-                            <input v-model.number="debtForm.balance" type="number" min="0" step="0.01" class="w-full rounded-[8px] border px-2 py-1.5 text-[12.5px]" style="border-color: var(--hab-card-border); background: var(--hab-card-bg); color: var(--hab-ink)" />
+                            <template v-if="debt.linked_account_id !== null">
+                                <div class="rounded-[8px] border px-2 py-1.5 text-[12.5px]" style="border-color: var(--hab-card-border); background: var(--hab-card-bg); color: var(--hab-muted)">
+                                    {{ formatMoney(debtForm.balance) }}
+                                </div>
+                                <Link href="/ledger" class="mt-1 inline-block text-[11px] font-medium underline" style="color: var(--hab-accent)">
+                                    View in Ledger →
+                                </Link>
+                            </template>
+                            <input v-else v-model.number="debtForm.balance" type="number" min="0" step="0.01" class="w-full rounded-[8px] border px-2 py-1.5 text-[12.5px]" style="border-color: var(--hab-card-border); background: var(--hab-card-bg); color: var(--hab-ink)" />
                         </div>
                         <div>
                             <div class="mb-1 flex items-center justify-between gap-2">
@@ -300,6 +366,60 @@ function removeDebt(debt: PayoffDebt): void {
                             <input v-model.number="debtForm.due_day" type="number" min="1" max="31" class="w-full rounded-[8px] border px-2 py-1.5 text-[12.5px]" style="border-color: var(--hab-card-border); background: var(--hab-card-bg); color: var(--hab-ink)" />
                         </div>
                     </div>
+
+                    <div class="mt-2">
+                        <template v-if="debt.linked_account_id === null">
+                            <label class="mb-1 block text-[11px] font-medium" style="color: var(--hab-muted)">Link to Ledger account</label>
+                            <select
+                                v-model="linkAccountId"
+                                class="w-full rounded-[8px] border px-2 py-1.5 text-[12.5px] sm:w-64"
+                                style="border-color: var(--hab-card-border); background: var(--hab-card-bg); color: var(--hab-ink)"
+                                @change="onLinkAccountChange(debt)"
+                            >
+                                <option value="">Not linked</option>
+                                <option v-for="account in liabilityAccounts" :key="account.id" :value="account.id">{{ account.name }}</option>
+                            </select>
+
+                            <div
+                                v-if="linkChoicePending && linkChoicePending.debtId === debt.id"
+                                class="mt-2 rounded-[10px] p-2.5"
+                                style="background: var(--hab-card-bg); border: 1px solid var(--hab-card-border)"
+                            >
+                                <p class="text-[12px]" style="color: var(--hab-ink)">Which balance is correct?</p>
+                                <div class="mt-1.5 flex flex-wrap gap-2">
+                                    <button
+                                        type="button"
+                                        class="rounded-full px-3 py-1 text-[11.5px] font-semibold"
+                                        style="background: var(--hab-chip-fill); color: var(--hab-ink)"
+                                        @click="submitLink(linkChoicePending.debtId, linkChoicePending.accountId, 'debt')"
+                                    >
+                                        Debt: {{ formatMoney(linkChoicePending.debtBalance) }}
+                                    </button>
+                                    <button
+                                        type="button"
+                                        class="rounded-full px-3 py-1 text-[11.5px] font-semibold"
+                                        style="background: var(--hab-chip-fill); color: var(--hab-ink)"
+                                        @click="submitLink(linkChoicePending.debtId, linkChoicePending.accountId, 'account')"
+                                    >
+                                        Ledger: {{ formatMoney(linkChoicePending.accountBalance) }}
+                                    </button>
+                                    <button type="button" class="text-[11.5px] font-medium" style="color: var(--hab-muted)" @click="cancelLinkChoice">
+                                        Cancel
+                                    </button>
+                                </div>
+                            </div>
+                        </template>
+                        <button
+                            v-else
+                            type="button"
+                            class="text-[11.5px] font-medium underline"
+                            style="color: var(--hab-muted)"
+                            @click="unlinkDebtAccount(debt)"
+                        >
+                            Unlink from Ledger
+                        </button>
+                    </div>
+
                     <div class="mt-2 flex items-center gap-2">
                         <button type="button" class="rounded-full px-3 py-1.5 text-[12px] font-semibold text-white disabled:opacity-50" style="background: var(--hab-accent)" :disabled="debtForm.processing" @click="submitRow">
                             Confirm

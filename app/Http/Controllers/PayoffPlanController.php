@@ -2,12 +2,14 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\DebtFocus\Account;
 use App\Models\DebtFocus\Debt;
 use App\Services\DebtFocus\PayoffEngine;
 use Carbon\Carbon;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
+use Illuminate\Validation\Rule;
 use Inertia\Inertia;
 use Inertia\Response;
 
@@ -18,7 +20,14 @@ class PayoffPlanController extends Controller
         $user = $request->user();
         $settings = $user->debtFocusSettings()->firstOrCreate([], ['strategy' => 'avalanche', 'extra_monthly' => 0]);
 
-        $debts = $user->debtFocusDebts()->get();
+        $debts = $user->debtFocusDebts()->with('linkedAccount')->get();
+
+        foreach ($debts as $debt) {
+            if ($debt->linkedAccount !== null) {
+                $debt->balance = $debt->linkedAccount->balance;
+            }
+        }
+
         $result = $engine->simulate($debts, $settings->strategy, (float) $settings->extra_monthly);
         $perDebt = collect($result['perDebt'])->keyBy('debtId');
 
@@ -32,9 +41,15 @@ class PayoffPlanController extends Controller
             'minimum_payment' => (float) $debt->minimum_payment,
             'debt_type' => $debt->debt_type,
             'due_day' => $debt->due_day,
+            'linked_account_id' => $debt->linked_account_id,
+            'linked_account_name' => $debt->linkedAccount?->name,
             'payoff_month' => $perDebt->get($debt->id)['payoffMonth'] ?? null,
             'total_interest' => $perDebt->get($debt->id)['totalInterest'] ?? null,
         ])->values();
+
+        $liabilityAccounts = $user->debtFocusAccounts()->where('is_liability', true)->orderBy('name')->get()
+            ->map(fn (Account $account) => ['id' => $account->id, 'name' => $account->name, 'balance' => (float) $account->balance])
+            ->values();
 
         $monthsRemaining = $debts->isEmpty() ? null : $result['months'];
         $debtFreeDate = $monthsRemaining !== null
@@ -43,6 +58,7 @@ class PayoffPlanController extends Controller
 
         return Inertia::render('PayoffPlan', [
             'debts' => $debtProps,
+            'liabilityAccounts' => $liabilityAccounts,
             'settings' => ['strategy' => $settings->strategy, 'extra_monthly' => (float) $settings->extra_monthly],
             'monthsRemaining' => $monthsRemaining,
             'onTrack' => $debts->isEmpty() ? true : $result['onTrack'],
@@ -73,6 +89,50 @@ class PayoffPlanController extends Controller
         abort_if($debt->user_id !== $request->user()->id, 403);
 
         $debt->delete();
+
+        return back();
+    }
+
+    public function linkDebt(Request $request, Debt $debt): RedirectResponse
+    {
+        abort_if($debt->user_id !== $request->user()->id, 403);
+
+        $validated = $request->validate([
+            'linked_account_id' => [
+                'required',
+                'integer',
+                Rule::exists('debt_focus_accounts', 'id')
+                    ->where('user_id', $request->user()->id)
+                    ->where('is_liability', true),
+            ],
+            'balance_choice' => ['required', 'string', 'in:debt,account'],
+        ]);
+
+        $account = Account::findOrFail($validated['linked_account_id']);
+
+        if ($validated['balance_choice'] === 'account') {
+            $debt->balance = $account->balance;
+        } else {
+            $account->balance = $debt->balance;
+            $account->save();
+        }
+
+        $debt->linked_account_id = $account->id;
+        $debt->save();
+
+        return back();
+    }
+
+    public function unlinkDebt(Request $request, Debt $debt): RedirectResponse
+    {
+        abort_if($debt->user_id !== $request->user()->id, 403);
+
+        if ($debt->linkedAccount !== null) {
+            $debt->balance = $debt->linkedAccount->balance;
+        }
+
+        $debt->linked_account_id = null;
+        $debt->save();
 
         return back();
     }

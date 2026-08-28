@@ -1,8 +1,10 @@
 <?php
 
+use App\Models\DebtFocus\Account;
 use App\Models\DebtFocus\Debt;
 use App\Models\DebtFocus\Settings;
 use App\Models\User;
+use App\Services\DebtFocus\LedgerService;
 
 test('guests are redirected to login', function () {
     $this->get('/payoff-plan')->assertRedirect('/login');
@@ -155,4 +157,127 @@ test('rejects an invalid strategy value', function () {
     $this->actingAs($user)->patch('/payoff-plan/settings', [
         'strategy' => 'lowest-hanging-fruit', 'extra_monthly' => 0,
     ])->assertSessionHasErrors('strategy');
+});
+
+test('links a debt to a liability account, keeping the account balance', function () {
+    $user = User::factory()->create();
+    $debt = Debt::factory()->for($user)->create(['balance' => 1000]);
+    $account = Account::factory()->for($user)->liability()->create(['balance' => 800]);
+
+    $this->actingAs($user)->post("/payoff-plan/debts/{$debt->id}/link", [
+        'linked_account_id' => $account->id,
+        'balance_choice' => 'account',
+    ])->assertRedirect();
+
+    expect($debt->fresh()->linked_account_id)->toBe($account->id);
+    expect((float) $debt->fresh()->balance)->toBe(800.0);
+    expect((float) $account->fresh()->balance)->toBe(800.0);
+});
+
+test('links a debt to a liability account, keeping the debt balance', function () {
+    $user = User::factory()->create();
+    $debt = Debt::factory()->for($user)->create(['balance' => 1000]);
+    $account = Account::factory()->for($user)->liability()->create(['balance' => 800]);
+
+    $this->actingAs($user)->post("/payoff-plan/debts/{$debt->id}/link", [
+        'linked_account_id' => $account->id,
+        'balance_choice' => 'debt',
+    ])->assertRedirect();
+
+    expect($debt->fresh()->linked_account_id)->toBe($account->id);
+    expect((float) $debt->fresh()->balance)->toBe(1000.0);
+    expect((float) $account->fresh()->balance)->toBe(1000.0);
+});
+
+test('cannot link a debt to another user\'s account', function () {
+    $owner = User::factory()->create();
+    $intruder = User::factory()->create();
+    $debt = Debt::factory()->for($intruder)->create();
+    $account = Account::factory()->for($owner)->liability()->create();
+
+    $this->actingAs($intruder)->post("/payoff-plan/debts/{$debt->id}/link", [
+        'linked_account_id' => $account->id,
+        'balance_choice' => 'account',
+    ])->assertSessionHasErrors('linked_account_id');
+
+    expect($debt->fresh()->linked_account_id)->toBeNull();
+});
+
+test('cannot link a debt to a non-liability account', function () {
+    $user = User::factory()->create();
+    $debt = Debt::factory()->for($user)->create();
+    $account = Account::factory()->for($user)->create(['is_liability' => false]);
+
+    $this->actingAs($user)->post("/payoff-plan/debts/{$debt->id}/link", [
+        'linked_account_id' => $account->id,
+        'balance_choice' => 'account',
+    ])->assertSessionHasErrors('linked_account_id');
+
+    expect($debt->fresh()->linked_account_id)->toBeNull();
+});
+
+test('cannot link another user\'s debt', function () {
+    $owner = User::factory()->create();
+    $intruder = User::factory()->create();
+    $debt = Debt::factory()->for($owner)->create();
+    $account = Account::factory()->for($intruder)->liability()->create();
+
+    $this->actingAs($intruder)->post("/payoff-plan/debts/{$debt->id}/link", [
+        'linked_account_id' => $account->id,
+        'balance_choice' => 'account',
+    ])->assertForbidden();
+});
+
+test('unlinking a debt snapshots the synced balance and clears the link', function () {
+    $user = User::factory()->create();
+    $account = Account::factory()->for($user)->liability()->create(['balance' => 800]);
+    $debt = Debt::factory()->for($user)->create(['balance' => 800, 'linked_account_id' => $account->id]);
+
+    (new LedgerService)->recordExpense($account, 50, 'Purchase');
+
+    $this->actingAs($user)->post("/payoff-plan/debts/{$debt->id}/unlink")->assertRedirect();
+
+    expect($debt->fresh()->linked_account_id)->toBeNull();
+    expect((float) $debt->fresh()->balance)->toBe(850.0);
+});
+
+test('cannot unlink another user\'s debt', function () {
+    $owner = User::factory()->create();
+    $intruder = User::factory()->create();
+    $account = Account::factory()->for($owner)->liability()->create();
+    $debt = Debt::factory()->for($owner)->create(['linked_account_id' => $account->id]);
+
+    $this->actingAs($intruder)->post("/payoff-plan/debts/{$debt->id}/unlink")->assertForbidden();
+
+    expect($debt->fresh()->linked_account_id)->toBe($account->id);
+});
+
+test('renders a linked debt\'s live balance from its ledger account, not its own column', function () {
+    $user = User::factory()->create();
+    $account = Account::factory()->for($user)->liability()->create(['balance' => 800]);
+    $debt = Debt::factory()->for($user)->create([
+        'balance' => 800, 'minimum_payment' => 100, 'monthly_rate' => null, 'debt_type' => 'revolving',
+        'linked_account_id' => $account->id,
+    ]);
+
+    (new LedgerService)->recordExpense($account, 50, 'Purchase');
+
+    $response = $this->actingAs($user)->get('/payoff-plan')->assertOk();
+    $props = $response->viewData('page')['props']['debts'];
+
+    expect((float) $props[0]['balance'])->toBe(850.0);
+    expect($props[0]['linked_account_id'])->toBe($account->id);
+    expect($props[0]['linked_account_name'])->toBe($account->name);
+});
+
+test('index exposes the user\'s liability accounts, with balance, for the debt-linking picker', function () {
+    $user = User::factory()->create();
+    Account::factory()->for($user)->liability()->create(['name' => 'Visa', 'balance' => 640]);
+    Account::factory()->for($user)->create(['name' => 'Checking', 'is_liability' => false]);
+
+    $response = $this->actingAs($user)->get('/payoff-plan')->assertOk();
+    $liabilityAccounts = $response->viewData('page')['props']['liabilityAccounts'];
+
+    expect(collect($liabilityAccounts)->pluck('name')->all())->toBe(['Visa']);
+    expect((float) $liabilityAccounts[0]['balance'])->toBe(640.0);
 });
