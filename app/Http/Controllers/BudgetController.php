@@ -147,6 +147,22 @@ class BudgetController extends Controller
         return back();
     }
 
+    public function markBillPaid(Request $request, BillPeriod $billPeriod): RedirectResponse
+    {
+        abort_if($billPeriod->bill->user_id !== $request->user()->id, 403);
+
+        $validated = $request->validate([
+            'actual_amount' => ['required', 'numeric', 'min:0.01', 'max:99999999.99'],
+        ]);
+
+        $billPeriod->update([
+            'actual_amount' => $validated['actual_amount'],
+            'paid_at' => now(),
+        ]);
+
+        return back();
+    }
+
     /**
      * @return EloquentCollection<int, Debt>
      */

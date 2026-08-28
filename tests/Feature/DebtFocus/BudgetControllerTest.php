@@ -256,3 +256,38 @@ test('cannot delete another user\'s envelope', function () {
 
     expect(Envelope::find($envelope->id))->not->toBeNull();
 });
+
+test('marks a bill period paid with the actual amount', function () {
+    $user = User::factory()->create();
+    $bill = Bill::factory()->for($user)->create();
+    $period = BillPeriod::factory()->for($bill)->create(['actual_amount' => null, 'paid_at' => null]);
+
+    $this->actingAs($user)->post("/budget/bill-periods/{$period->id}/pay", [
+        'actual_amount' => 62.5,
+    ])->assertRedirect();
+
+    $period->refresh();
+    expect((float) $period->actual_amount)->toBe(62.5);
+    expect($period->paid_at)->not->toBeNull();
+});
+
+test('marking a bill paid requires a positive actual amount', function () {
+    $user = User::factory()->create();
+    $bill = Bill::factory()->for($user)->create();
+    $period = BillPeriod::factory()->for($bill)->create();
+
+    $this->actingAs($user)->post("/budget/bill-periods/{$period->id}/pay", [
+        'actual_amount' => 0,
+    ])->assertSessionHasErrors('actual_amount');
+});
+
+test('cannot mark another user\'s bill period paid', function () {
+    $owner = User::factory()->create();
+    $intruder = User::factory()->create();
+    $bill = Bill::factory()->for($owner)->create();
+    $period = BillPeriod::factory()->for($bill)->create();
+
+    $this->actingAs($intruder)->post("/budget/bill-periods/{$period->id}/pay", [
+        'actual_amount' => 10,
+    ])->assertForbidden();
+});
