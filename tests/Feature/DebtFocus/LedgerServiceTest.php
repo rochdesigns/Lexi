@@ -1,6 +1,7 @@
 <?php
 
 use App\Models\DebtFocus\Account;
+use App\Models\User;
 use App\Services\DebtFocus\LedgerService;
 
 test('income increases an asset account balance and records the transaction', function () {
@@ -52,8 +53,9 @@ test('recordIncome and recordExpense default occurred_at to today', function () 
 });
 
 test('a transfer between two asset accounts moves the balance from one to the other', function () {
-    $checking = Account::factory()->create(['balance' => 500]);
-    $savings = Account::factory()->create(['balance' => 200]);
+    $user = User::factory()->create();
+    $checking = Account::factory()->for($user)->create(['balance' => 500]);
+    $savings = Account::factory()->for($user)->create(['balance' => 200]);
 
     $transaction = (new LedgerService)->recordTransfer($checking, $savings, 100, 'Move to savings');
 
@@ -67,11 +69,34 @@ test('a transfer between two asset accounts moves the balance from one to the ot
 });
 
 test('a transfer to a liability account pays it down, the credit-card-payment case', function () {
-    $checking = Account::factory()->create(['balance' => 500]);
-    $card = Account::factory()->liability()->create(['balance' => 300]);
+    $user = User::factory()->create();
+    $checking = Account::factory()->for($user)->create(['balance' => 500]);
+    $card = Account::factory()->for($user)->liability()->create(['balance' => 300]);
 
     (new LedgerService)->recordTransfer($checking, $card, 100, 'Card payment');
 
     expect((float) $checking->fresh()->balance)->toBe(400.0);
     expect((float) $card->fresh()->balance)->toBe(200.0);
+});
+
+test('recordTransfer throws when the two accounts belong to different users', function () {
+    $from = Account::factory()->create();
+    $to = Account::factory()->create();
+
+    expect(fn () => (new LedgerService)->recordTransfer($from, $to, 50))
+        ->toThrow(InvalidArgumentException::class);
+});
+
+test('recordTransfer does not mutate either balance when accounts belong to different users', function () {
+    $from = Account::factory()->create(['balance' => 500]);
+    $to = Account::factory()->create(['balance' => 200]);
+
+    try {
+        (new LedgerService)->recordTransfer($from, $to, 50);
+    } catch (InvalidArgumentException) {
+        // expected
+    }
+
+    expect((float) $from->fresh()->balance)->toBe(500.0);
+    expect((float) $to->fresh()->balance)->toBe(200.0);
 });

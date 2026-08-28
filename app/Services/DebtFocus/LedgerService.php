@@ -6,6 +6,7 @@ use App\Models\DebtFocus\Account;
 use App\Models\DebtFocus\Transaction;
 use Carbon\CarbonInterface;
 use Illuminate\Support\Facades\DB;
+use InvalidArgumentException;
 
 class LedgerService
 {
@@ -43,6 +44,10 @@ class LedgerService
 
     public function recordTransfer(Account $from, Account $to, float $amount, ?string $description = null, ?CarbonInterface $occurredAt = null): Transaction
     {
+        if ($from->user_id !== $to->user_id) {
+            throw new InvalidArgumentException('Cannot transfer between accounts owned by different users.');
+        }
+
         return DB::transaction(function () use ($from, $to, $amount, $description, $occurredAt) {
             $this->applyEffect($from, $amount, positive: false);
             $this->applyEffect($to, $amount, positive: true);
