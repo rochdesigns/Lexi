@@ -102,6 +102,15 @@ function cancelRow(): void {
     debtForm.clearErrors();
 }
 
+function calculateMinimumPayment(): void {
+    if (debtForm.debt_type !== 'revolving' || debtForm.monthly_rate === null) {
+        return;
+    }
+
+    const interest = debtForm.balance * (debtForm.monthly_rate / 100);
+    debtForm.minimum_payment = Math.round((interest + debtForm.balance * 0.01) * 100) / 100;
+}
+
 function submitRow(): void {
     if (editingId.value === 'new') {
         debtForm.post(storeDebt().url, { preserveScroll: true, onSuccess: () => (editingId.value = null) });
@@ -236,7 +245,7 @@ function removeDebt(debt: PayoffDebt): void {
                         </div>
                         <div v-else class="text-[13px] font-semibold" style="color: #c0512c">Not on track</div>
                         <div v-if="debt.total_interest !== null" class="text-[12px]" style="color: var(--hab-muted)">
-                            {{ formatMoney(debt.total_interest) }} interest
+                            {{ formatMoney(debt.total_interest) }} cumulative interest
                         </div>
                     </div>
                     <button
@@ -261,7 +270,18 @@ function removeDebt(debt: PayoffDebt): void {
                             <input v-model.number="debtForm.balance" type="number" min="0" step="0.01" class="w-full rounded-[8px] border px-2 py-1.5 text-[12.5px]" style="border-color: var(--hab-card-border); background: var(--hab-card-bg); color: var(--hab-ink)" />
                         </div>
                         <div>
-                            <label class="mb-1 block text-[11px] font-medium" style="color: var(--hab-muted)">Minimum payment</label>
+                            <div class="mb-1 flex items-center justify-between gap-2">
+                                <label class="block text-[11px] font-medium" style="color: var(--hab-muted)">Minimum payment</label>
+                                <button
+                                    v-if="debtForm.debt_type === 'revolving' && debtForm.monthly_rate !== null"
+                                    type="button"
+                                    class="text-[10.5px] font-semibold"
+                                    style="color: var(--hab-accent)"
+                                    @click="calculateMinimumPayment"
+                                >
+                                    Calculate
+                                </button>
+                            </div>
                             <input v-model.number="debtForm.minimum_payment" type="number" min="0" step="0.01" class="w-full rounded-[8px] border px-2 py-1.5 text-[12.5px]" style="border-color: var(--hab-card-border); background: var(--hab-card-bg); color: var(--hab-ink)" />
                         </div>
                         <div>
