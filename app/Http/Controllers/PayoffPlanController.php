@@ -195,19 +195,20 @@ class PayoffPlanController extends Controller
         }
 
         $periodStart = Carbon::now()->startOfMonth()->toDateString();
+        $periodEnd = Carbon::now()->endOfMonth()->toDateString();
 
         $spent = (float) Transaction::query()
             ->where('user_id', $debt->user_id)
             ->where('type', 'expense')
             ->where('account_id', $debt->linked_account_id)
-            ->where('occurred_at', '>=', $periodStart)
+            ->whereBetween('occurred_at', [$periodStart, $periodEnd])
             ->sum('amount');
 
         $paid = (float) Transaction::query()
             ->where('user_id', $debt->user_id)
             ->where('type', 'transfer')
             ->where('to_account_id', $debt->linked_account_id)
-            ->where('occurred_at', '>=', $periodStart)
+            ->whereBetween('occurred_at', [$periodStart, $periodEnd])
             ->sum('amount');
 
         return [

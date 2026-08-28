@@ -444,3 +444,34 @@ test('spend vs payment only counts expenses and incoming transfers on the linked
     expect($spendVsPayment['spent'])->toBe(0.0);
     expect($spendVsPayment['paid'])->toBe(0.0);
 });
+
+test('spend vs payment does not leak another user\'s transactions on an account with the same id coincidence', function () {
+    $owner = User::factory()->create();
+    $intruder = User::factory()->create();
+    $ownerCard = Account::factory()->for($owner)->liability()->create();
+    $debt = Debt::factory()->for($owner)->create(['debt_type' => 'revolving', 'linked_account_id' => $ownerCard->id]);
+    (new LedgerService)->recordExpense($ownerCard, 300, 'Owner spend', now());
+
+    $intruderCard = Account::factory()->for($intruder)->liability()->create();
+    (new LedgerService)->recordExpense($intruderCard, 999, 'Intruder spend', now());
+
+    $response = $this->actingAs($owner)->get('/payoff-plan')->assertOk();
+    $spendVsPayment = $response->viewData('page')['props']['debts'][0]['spend_vs_payment'];
+
+    expect($spendVsPayment['spent'])->toBe(300.0);
+});
+
+test('spend vs payment reflects negative net when spending outpaces payments', function () {
+    $user = User::factory()->create();
+    $card = Account::factory()->for($user)->liability()->create();
+    $checking = Account::factory()->for($user)->create(['balance' => 1000]);
+    $debt = Debt::factory()->for($user)->create(['debt_type' => 'revolving', 'linked_account_id' => $card->id]);
+    $ledger = new LedgerService;
+    $ledger->recordExpense($card, 400, 'Big purchase', now());
+    $ledger->recordTransfer($checking, $card, 100, 'Small payment', now());
+
+    $response = $this->actingAs($user)->get('/payoff-plan')->assertOk();
+    $spendVsPayment = $response->viewData('page')['props']['debts'][0]['spend_vs_payment'];
+
+    expect($spendVsPayment['net'])->toBe(-300.0);
+});

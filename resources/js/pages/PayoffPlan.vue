@@ -390,13 +390,14 @@ function removeDebt(debt: PayoffDebt): void {
                             ></div>
                         </div>
                         <div
-                            v-if="debt.debt_type === 'revolving' && debt.spend_vs_payment !== null"
+                            v-if="debt.spend_vs_payment !== null && (debt.spend_vs_payment.spent > 0 || debt.spend_vs_payment.paid > 0)"
                             class="mt-1.5 text-[11.5px]"
                             style="color: var(--hab-muted)"
                         >
-                            {{ formatMoney(debt.spend_vs_payment.paid) }} paid · {{ formatMoney(debt.spend_vs_payment.spent) }} spent this month →
+                            {{ formatMoney(debt.spend_vs_payment.paid) }} paid · {{ formatMoney(debt.spend_vs_payment.spent) }} spent
+                            {{ debt.spend_vs_payment.period_label }} →
                             <span :style="{ color: debt.spend_vs_payment.net >= 0 ? 'var(--hab-accent)' : '#c0512c' }">
-                                net {{ formatMoney(debt.spend_vs_payment.net) }}
+                                net {{ formatMoney(debt.spend_vs_payment.net) }} toward payoff
                             </span>
                         </div>
                     </button>
