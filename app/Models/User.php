@@ -4,7 +4,9 @@ namespace App\Models;
 
 // use Illuminate\Contracts\Auth\MustVerifyEmail;
 use App\Models\DebtFocus\Account as DebtFocusAccount;
+use App\Models\DebtFocus\Bill as DebtFocusBill;
 use App\Models\DebtFocus\Debt as DebtFocusDebt;
+use App\Models\DebtFocus\Envelope as DebtFocusEnvelope;
 use App\Models\DebtFocus\Settings as DebtFocusSettings;
 use Database\Factories\UserFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
@@ -141,6 +143,22 @@ class User extends Authenticatable implements PasskeyUser
     public function debtFocusAccounts(): HasMany
     {
         return $this->hasMany(DebtFocusAccount::class);
+    }
+
+    /**
+     * @return HasMany<DebtFocusBill, $this>
+     */
+    public function debtFocusBills(): HasMany
+    {
+        return $this->hasMany(DebtFocusBill::class);
+    }
+
+    /**
+     * @return HasMany<DebtFocusEnvelope, $this>
+     */
+    public function debtFocusEnvelopes(): HasMany
+    {
+        return $this->hasMany(DebtFocusEnvelope::class);
     }
 
     /**

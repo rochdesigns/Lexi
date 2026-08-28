@@ -17,7 +17,7 @@ class Transaction extends Model
     protected $table = 'debt_focus_transactions';
 
     protected $fillable = [
-        'user_id', 'type', 'account_id', 'from_account_id', 'to_account_id', 'amount', 'description', 'occurred_at',
+        'user_id', 'type', 'account_id', 'from_account_id', 'to_account_id', 'amount', 'description', 'occurred_at', 'envelope_id',
     ];
 
     protected $casts = [
@@ -55,6 +55,14 @@ class Transaction extends Model
     public function toAccount(): BelongsTo
     {
         return $this->belongsTo(Account::class, 'to_account_id');
+    }
+
+    /**
+     * @return BelongsTo<Envelope, $this>
+     */
+    public function envelope(): BelongsTo
+    {
+        return $this->belongsTo(Envelope::class);
     }
 
     /**
