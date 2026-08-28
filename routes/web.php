@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\AccountController;
 use App\Http\Controllers\BudgetCategoryController;
+use App\Http\Controllers\BudgetController;
 use App\Http\Controllers\CalendarController;
 use App\Http\Controllers\DebtController;
 use App\Http\Controllers\EventController;
@@ -83,6 +84,7 @@ Route::middleware(['auth', 'verified'])->group(function (): void {
     Route::post('/payoff-plan/debts/{debt}/link', [PayoffPlanController::class, 'linkDebt'])->name('payoff-plan.debts.link');
     Route::post('/payoff-plan/debts/{debt}/unlink', [PayoffPlanController::class, 'unlinkDebt'])->name('payoff-plan.debts.unlink');
     Route::patch('/payoff-plan/settings', [PayoffPlanController::class, 'updateSettings'])->name('payoff-plan.settings.update');
+    Route::get('/budget', [BudgetController::class, 'index'])->name('budget.index');
     Route::inertia('/photos', 'Stub')->name('photos');
 
     // Legacy redirect — keeps old dashboard links working
