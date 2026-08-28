@@ -46,7 +46,35 @@ test('a fully paid-off debt is excluded and the simulation reports already-done'
 
     $result = (new PayoffEngine)->simulate(collect([$debt]), 'avalanche');
 
-    expect($result)->toBe(['strategy' => 'avalanche', 'months' => 0, 'onTrack' => true, 'perDebt' => []]);
+    expect($result)->toBe(['strategy' => 'avalanche', 'months' => 0, 'onTrack' => true, 'perDebt' => [], 'trajectory' => null]);
+});
+
+test('withTrajectory reports the total balance across all debts at the end of each month', function () {
+    $user = User::factory()->create();
+    $debt = Debt::factory()->for($user)->create(['balance' => 300, 'minimum_payment' => 100, 'monthly_rate' => null]);
+
+    $result = (new PayoffEngine)->simulate(collect([$debt]), 'avalanche', withTrajectory: true);
+
+    expect($result['trajectory'])->toBe([300.0, 200.0, 100.0, 0.0]);
+});
+
+test('withTrajectory sums balances across multiple debts month by month', function () {
+    $user = User::factory()->create();
+    $a = Debt::factory()->for($user)->create(['balance' => 200, 'minimum_payment' => 100, 'monthly_rate' => null]);
+    $b = Debt::factory()->for($user)->create(['balance' => 100, 'minimum_payment' => 50, 'monthly_rate' => null]);
+
+    $result = (new PayoffEngine)->simulate(collect([$a, $b]), 'avalanche', withTrajectory: true);
+
+    expect($result['trajectory'])->toBe([300.0, 150.0, 0.0]);
+});
+
+test('without withTrajectory the trajectory key is null', function () {
+    $user = User::factory()->create();
+    $debt = Debt::factory()->for($user)->create(['balance' => 300, 'minimum_payment' => 100, 'monthly_rate' => null]);
+
+    $result = (new PayoffEngine)->simulate(collect([$debt]), 'avalanche');
+
+    expect($result['trajectory'])->toBeNull();
 });
 
 test('an unsupported strategy throws', function () {

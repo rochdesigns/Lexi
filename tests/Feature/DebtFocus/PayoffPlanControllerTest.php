@@ -20,6 +20,8 @@ test('renders empty state props for a user with no debts', function () {
     expect($props['monthsRemaining'])->toBeNull();
     expect($props['onTrack'])->toBeTrue();
     expect($props['debtFreeDate'])->toBeNull();
+    expect($props['progress'])->toBeNull();
+    expect($props['pace'])->toBeNull();
 });
 
 test('creates default settings for a first-time visitor', function () {
@@ -268,6 +270,98 @@ test('renders a linked debt\'s live balance from its ledger account, not its own
     expect((float) $props[0]['balance'])->toBe(850.0);
     expect($props[0]['linked_account_id'])->toBe($account->id);
     expect($props[0]['linked_account_name'])->toBe($account->name);
+});
+
+test('a newly created debt starts with starting_balance equal to its balance and zero percent paid', function () {
+    $user = User::factory()->create();
+    $debt = Debt::factory()->for($user)->create(['balance' => 1000]);
+
+    $response = $this->actingAs($user)->get('/payoff-plan')->assertOk();
+    $props = $response->viewData('page')['props']['debts'][0];
+
+    expect((float) $debt->fresh()->starting_balance)->toBe(1000.0);
+    expect($props['starting_balance'])->toBe(1000.0);
+    expect($props['percent_paid'])->toBe(0.0);
+});
+
+test('editing a debt\'s balance does not reset its starting_balance or its percent_paid progress', function () {
+    $user = User::factory()->create();
+    $debt = Debt::factory()->for($user)->create(['name' => 'Visa', 'balance' => 1000]);
+
+    $this->actingAs($user)->patch("/payoff-plan/debts/{$debt->id}", [
+        'name' => 'Visa', 'balance' => 750, 'minimum_payment' => 20, 'debt_type' => 'installment',
+    ])->assertRedirect();
+
+    $response = $this->actingAs($user)->get('/payoff-plan')->assertOk();
+    $props = $response->viewData('page')['props']['debts'][0];
+
+    expect($props['starting_balance'])->toBe(1000.0);
+    expect($props['percent_paid'])->toBe(0.25);
+});
+
+test('exposes overall progress totals, percent paid, and reached milestones', function () {
+    $user = User::factory()->create();
+    $debt = Debt::factory()->for($user)->create(['balance' => 1000]);
+    $debt->update(['balance' => 750]);
+
+    $response = $this->actingAs($user)->get('/payoff-plan')->assertOk();
+    $progress = $response->viewData('page')['props']['progress'];
+
+    expect($progress['totalStartingBalance'])->toBe(1000.0);
+    expect($progress['totalBalance'])->toBe(750.0);
+    expect($progress['totalPaidOff'])->toBe(250.0);
+    expect($progress['percentPaid'])->toBe(0.25);
+    expect($progress['milestonesReached'])->toBe([25]);
+});
+
+test('counts debts that have reached a zero balance for the paid-off milestone', function () {
+    $user = User::factory()->create();
+    $paidOff = Debt::factory()->for($user)->create(['balance' => 500]);
+    $paidOff->update(['balance' => 0]);
+    Debt::factory()->for($user)->create(['balance' => 300]);
+
+    $response = $this->actingAs($user)->get('/payoff-plan')->assertOk();
+    $progress = $response->viewData('page')['props']['progress'];
+
+    expect($progress['paidOffCount'])->toBe(1);
+    expect($progress['totalDebtsCount'])->toBe(2);
+});
+
+test('pace is null when the plan started less than a month ago', function () {
+    $user = User::factory()->create();
+    Debt::factory()->for($user)->create(['balance' => 1000]);
+
+    $response = $this->actingAs($user)->get('/payoff-plan')->assertOk();
+
+    expect($response->viewData('page')['props']['pace'])->toBeNull();
+});
+
+test('pace reports being ahead of the plan when the actual balance is lower than projected', function () {
+    $user = User::factory()->create();
+    $debt = Debt::factory()->for($user)->create(['balance' => 1200, 'minimum_payment' => 100, 'monthly_rate' => null]);
+    Debt::where('id', $debt->id)->update(['created_at' => now()->subMonths(3)]);
+    $debt->update(['balance' => 850]);
+
+    $response = $this->actingAs($user)->get('/payoff-plan')->assertOk();
+    $pace = $response->viewData('page')['props']['pace'];
+
+    expect($pace['elapsedMonths'])->toBe(3);
+    expect($pace['status'])->toBe('ahead');
+    expect($pace['deltaAmount'])->toBe(50.0);
+});
+
+test('pace reports being behind the plan when the actual balance is higher than projected', function () {
+    $user = User::factory()->create();
+    $debt = Debt::factory()->for($user)->create(['balance' => 1200, 'minimum_payment' => 100, 'monthly_rate' => null]);
+    Debt::where('id', $debt->id)->update(['created_at' => now()->subMonths(3)]);
+    $debt->update(['balance' => 950]);
+
+    $response = $this->actingAs($user)->get('/payoff-plan')->assertOk();
+    $pace = $response->viewData('page')['props']['pace'];
+
+    expect($pace['elapsedMonths'])->toBe(3);
+    expect($pace['status'])->toBe('behind');
+    expect($pace['deltaAmount'])->toBe(50.0);
 });
 
 test('index exposes the user\'s liability accounts, with balance, for the debt-linking picker', function () {

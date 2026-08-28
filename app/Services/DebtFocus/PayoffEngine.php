@@ -16,10 +16,11 @@ class PayoffEngine
      *     strategy: string,
      *     months: int|null,
      *     onTrack: bool,
-     *     perDebt: array<int, array{debtId: int, payoffMonth: int|null, totalInterest: float|null}>
+     *     perDebt: array<int, array{debtId: int, payoffMonth: int|null, totalInterest: float|null}>,
+     *     trajectory: array<int, float>|null
      * }
      */
-    public function simulate(Collection $debts, string $strategy, float $extraMonthly = 0.0): array
+    public function simulate(Collection $debts, string $strategy, float $extraMonthly = 0.0, bool $withTrajectory = false): array
     {
         if (! in_array($strategy, ['avalanche', 'snowball'], true)) {
             throw new InvalidArgumentException("Unsupported strategy: {$strategy}");
@@ -32,7 +33,13 @@ class PayoffEngine
         $active = $debts->filter(fn (Debt $debt) => (float) $debt->balance > 0)->values();
 
         if ($active->isEmpty()) {
-            return ['strategy' => $strategy, 'months' => 0, 'onTrack' => true, 'perDebt' => []];
+            return [
+                'strategy' => $strategy,
+                'months' => 0,
+                'onTrack' => true,
+                'perDebt' => [],
+                'trajectory' => $withTrajectory ? [0.0] : null,
+            ];
         }
 
         $work = $this->buildWorkingSet($active);
@@ -43,6 +50,7 @@ class PayoffEngine
 
         $month = 0;
         $rolledMinimums = 0.0;
+        $trajectory = $withTrajectory ? [array_sum(array_column($work, 'balance'))] : [];
 
         while (collect($work)->contains(fn ($d) => $d['payoffMonth'] === null) && $month < self::MAX_MONTHS) {
             $month++;
@@ -93,6 +101,10 @@ class PayoffEngine
                     $work[$target] = $targetDebt;
                 }
             }
+
+            if ($withTrajectory) {
+                $trajectory[] = array_sum(array_column($work, 'balance'));
+            }
         }
 
         $allPaidOff = collect($work)->every(fn ($d) => $d['payoffMonth'] !== null);
@@ -101,6 +113,7 @@ class PayoffEngine
             'strategy' => $strategy,
             'months' => $allPaidOff ? $month : null,
             'onTrack' => $allPaidOff,
+            'trajectory' => $withTrajectory ? $trajectory : null,
             'perDebt' => $active->map(fn (Debt $debt) => [
                 'debtId' => $debt->id,
                 'payoffMonth' => $work[$debt->id]['payoffMonth'],

@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { Head, Link, router, useForm } from '@inertiajs/vue3';
-import { ref } from 'vue';
+import { computed, ref } from 'vue';
 import {
     destroyDebt,
     linkDebt,
@@ -16,6 +16,8 @@ type PayoffDebt = {
     id: number;
     name: string;
     balance: number;
+    starting_balance: number;
+    percent_paid: number;
     monthly_rate: number | null;
     minimum_payment: number;
     debt_type: DebtType;
@@ -30,6 +32,22 @@ type LiabilityAccount = { id: number; name: string; balance: number };
 
 type PayoffSettings = { strategy: 'avalanche' | 'snowball'; extra_monthly: number };
 
+type PayoffProgress = {
+    totalStartingBalance: number;
+    totalBalance: number;
+    totalPaidOff: number;
+    percentPaid: number;
+    paidOffCount: number;
+    totalDebtsCount: number;
+    milestonesReached: number[];
+};
+
+type PayoffPace = {
+    elapsedMonths: number;
+    status: 'ahead' | 'behind' | 'on_pace';
+    deltaAmount: number;
+};
+
 const props = defineProps<{
     debts: PayoffDebt[];
     liabilityAccounts: LiabilityAccount[];
@@ -37,7 +55,26 @@ const props = defineProps<{
     monthsRemaining: number | null;
     onTrack: boolean;
     debtFreeDate: string | null;
+    progress: PayoffProgress | null;
+    pace: PayoffPace | null;
 }>();
+
+const MILESTONE_LABELS: Record<number, string> = { 25: '25%', 50: 'Halfway', 75: '75%', 100: 'Debt-free' };
+const ALL_MILESTONES = [25, 50, 75, 100];
+
+const paceCopy = computed(() => {
+    if (!props.pace) {
+        return null;
+    }
+
+    if (props.pace.status === 'on_pace') {
+        return "You're right on pace with your plan.";
+    }
+
+    const amount = formatMoney(props.pace.deltaAmount);
+
+    return props.pace.status === 'ahead' ? `You're ${amount} ahead of your plan.` : `You're ${amount} behind your plan.`;
+});
 
 function formatMoney(n: number): string {
     const abs = Math.abs(n);
@@ -218,6 +255,48 @@ function removeDebt(debt: PayoffDebt): void {
                     Not on track — current payments don't cover accruing interest.
                 </p>
             </template>
+
+            <template v-if="progress">
+                <div class="mt-5">
+                    <div class="flex items-baseline justify-between">
+                        <p class="text-[13px] font-medium text-white/72">
+                            {{ formatMoney(progress.totalPaidOff) }} paid off of {{ formatMoney(progress.totalStartingBalance) }}
+                        </p>
+                        <p class="text-[13px] font-semibold text-white">{{ Math.round(progress.percentPaid * 100) }}%</p>
+                    </div>
+                    <div class="mt-2 h-2 overflow-hidden rounded-full bg-white/20">
+                        <div
+                            class="h-full rounded-full bg-white transition-[width]"
+                            :style="{ width: `${Math.round(progress.percentPaid * 100)}%` }"
+                        ></div>
+                    </div>
+                </div>
+                <p v-if="paceCopy" class="mt-3 text-[12.5px] text-white/72">{{ paceCopy }}</p>
+            </template>
+        </div>
+
+        <!-- Milestones -->
+        <div v-if="progress" class="mb-5">
+            <p class="mb-2 text-[13px] font-medium" style="color: var(--hab-muted)">Milestones</p>
+            <div class="flex flex-wrap items-center gap-2">
+                <span
+                    v-if="progress.paidOffCount > 0"
+                    class="rounded-full px-3 py-1 text-[12px] font-semibold"
+                    style="background: var(--hab-brand); color: var(--hab-brand-ink)"
+                >
+                    {{ progress.paidOffCount }} of {{ progress.totalDebtsCount }} debts paid off
+                </span>
+                <span
+                    v-for="milestone in ALL_MILESTONES"
+                    :key="milestone"
+                    class="rounded-full px-3 py-1 text-[12px] font-semibold"
+                    :style="progress.milestonesReached.includes(milestone)
+                        ? { background: 'var(--hab-brand)', color: 'var(--hab-brand-ink)' }
+                        : { background: 'var(--hab-chip-fill)', color: 'var(--hab-faint)' }"
+                >
+                    {{ MILESTONE_LABELS[milestone] }}
+                </span>
+            </div>
         </div>
 
         <!-- Strategy & extra payment -->
@@ -295,6 +374,12 @@ function removeDebt(debt: PayoffDebt): void {
                             <span v-if="debt.monthly_rate !== null">· {{ debt.monthly_rate }}% monthly</span>
                             · {{ formatMoney(debt.minimum_payment) }}/mo min
                             <span v-if="debt.due_day !== null">· due day {{ debt.due_day }}</span>
+                        </div>
+                        <div class="mt-1.5 h-1.5 max-w-[220px] overflow-hidden rounded-full" style="background: var(--hab-chip-fill)">
+                            <div
+                                class="h-full rounded-full"
+                                :style="{ background: 'var(--hab-accent)', width: `${Math.round(debt.percent_paid * 100)}%` }"
+                            ></div>
                         </div>
                     </button>
                     <div class="shrink-0 text-right">
