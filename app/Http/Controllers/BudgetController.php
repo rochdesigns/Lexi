@@ -169,6 +169,7 @@ class BudgetController extends Controller
     public function confirmSweep(Request $request, EnvelopePeriod $envelopePeriod, BudgetService $budget, PayoffEngine $engine, LedgerService $ledger): RedirectResponse
     {
         abort_if($envelopePeriod->envelope->user_id !== $request->user()->id, 403);
+        abort_if($envelopePeriod->sweep_accepted !== null, 422, 'This sweep has already been answered.');
 
         $user = $request->user();
         $validated = $request->validate([
@@ -215,6 +216,15 @@ class BudgetController extends Controller
         $priorityDebt = $this->resolvePriorityLinkedDebt($debts, $settings->strategy, $engine);
 
         abort_if($priorityDebt === null, 422, 'No linked debt available for the extra payment.');
+
+        $alreadySent = Transaction::query()
+            ->where('type', 'transfer')
+            ->where('to_account_id', $priorityDebt->linked_account_id)
+            ->where('description', 'Extra payment from leftover budget')
+            ->whereBetween('occurred_at', $budget->periodBounds((int) $validated['year'], (int) $validated['month']))
+            ->exists();
+
+        abort_if($alreadySent, 422, 'An extra payment has already been sent this period.');
 
         $period = $budget->periodFor($user, (int) $validated['year'], (int) $validated['month']);
         $minimumsTotal = (float) $debts->sum(fn (Debt $debt) => (float) $debt->minimum_payment);
