@@ -26,7 +26,9 @@ type LedgerAccount = {
     linked_debt_names: string[];
 };
 
-const props = defineProps<{ accounts: LedgerAccount[] }>();
+type LedgerEnvelope = { id: number; name: string };
+
+const props = defineProps<{ accounts: LedgerAccount[]; envelopes: LedgerEnvelope[] }>();
 
 function formatMoney(n: number): string {
     const abs = Math.abs(n);
@@ -115,6 +117,7 @@ const transactionForm = useForm({
     account_id: null as number | null,
     from_account_id: null as number | null,
     to_account_id: null as number | null,
+    envelope_id: null as number | null,
     amount: 0,
     description: null as string | null,
     occurred_at: new Date().toLocaleDateString('en-CA'),
@@ -128,6 +131,7 @@ function openTransactionForm(): void {
     transactionForm.account_id = props.accounts[0]?.id ?? null;
     transactionForm.from_account_id = props.accounts[0]?.id ?? null;
     transactionForm.to_account_id = props.accounts[1]?.id ?? null;
+    transactionForm.envelope_id = null;
     transactionForm.amount = 0;
     transactionForm.description = null;
     transactionForm.occurred_at = new Date().toLocaleDateString('en-CA');
@@ -136,12 +140,17 @@ function openTransactionForm(): void {
 function onTransactionTypeChange(): void {
     if (transactionForm.type === 'transfer') {
         transactionForm.account_id = null;
+        transactionForm.envelope_id = null;
         transactionForm.from_account_id ??= props.accounts[0]?.id ?? null;
         transactionForm.to_account_id ??= props.accounts[1]?.id ?? null;
     } else {
         transactionForm.account_id ??= props.accounts[0]?.id ?? null;
         transactionForm.from_account_id = null;
         transactionForm.to_account_id = null;
+
+        if (transactionForm.type !== 'expense') {
+            transactionForm.envelope_id = null;
+        }
     }
 }
 
@@ -227,6 +236,14 @@ function removeAccount(account: LedgerAccount): void {
                         </select>
                     </div>
 
+                    <div v-if="transactionForm.type === 'expense'">
+                        <label class="mb-1 block text-[11px] font-medium" style="color: var(--hab-muted)">Envelope (optional)</label>
+                        <select v-model.number="transactionForm.envelope_id" class="w-full rounded-[8px] border px-2 py-1.5 text-[12.5px]" style="border-color: var(--hab-card-border); background: var(--hab-card-bg); color: var(--hab-ink)">
+                            <option :value="null">None</option>
+                            <option v-for="envelope in props.envelopes" :key="envelope.id" :value="envelope.id">{{ envelope.name }}</option>
+                        </select>
+                    </div>
+
                     <template v-else>
                         <div>
                             <label class="mb-1 block text-[11px] font-medium" style="color: var(--hab-muted)">From</label>
@@ -267,6 +284,7 @@ function removeAccount(account: LedgerAccount): void {
                 <div v-if="transactionForm.errors.account_id" class="mt-2 text-[12px]" style="color: #c0512c">{{ transactionForm.errors.account_id }}</div>
                 <div v-if="transactionForm.errors.from_account_id" class="mt-2 text-[12px]" style="color: #c0512c">{{ transactionForm.errors.from_account_id }}</div>
                 <div v-if="transactionForm.errors.to_account_id" class="mt-2 text-[12px]" style="color: #c0512c">{{ transactionForm.errors.to_account_id }}</div>
+                <div v-if="transactionForm.errors.envelope_id" class="mt-2 text-[12px]" style="color: #c0512c">{{ transactionForm.errors.envelope_id }}</div>
                 <div v-if="transactionForm.errors.amount" class="mt-2 text-[12px]" style="color: #c0512c">{{ transactionForm.errors.amount }}</div>
             </div>
         </div>
