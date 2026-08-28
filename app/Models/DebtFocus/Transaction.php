@@ -4,6 +4,7 @@ namespace App\Models\DebtFocus;
 
 use App\Models\User;
 use Database\Factories\DebtFocus\TransactionFactory;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -54,5 +55,18 @@ class Transaction extends Model
     public function toAccount(): BelongsTo
     {
         return $this->belongsTo(Account::class, 'to_account_id');
+    }
+
+    /**
+     * @param  Builder<Transaction>  $query
+     * @return Builder<Transaction>
+     */
+    public function scopeInvolvingAccount(Builder $query, int $accountId): Builder
+    {
+        return $query->where(function (Builder $q) use ($accountId) {
+            $q->where('account_id', $accountId)
+                ->orWhere('from_account_id', $accountId)
+                ->orWhere('to_account_id', $accountId);
+        });
     }
 }

@@ -5,6 +5,7 @@ use App\Http\Controllers\BudgetCategoryController;
 use App\Http\Controllers\CalendarController;
 use App\Http\Controllers\DebtController;
 use App\Http\Controllers\EventController;
+use App\Http\Controllers\LedgerController;
 use App\Http\Controllers\MoneyController;
 use App\Http\Controllers\PayoffPlanController;
 use App\Http\Controllers\RecurringBillController;
@@ -70,6 +71,10 @@ Route::middleware(['auth', 'verified'])->group(function (): void {
     Route::patch('/debts/{debt}', [DebtController::class, 'update'])->name('debts.update');
     Route::delete('/debts/{debt}', [DebtController::class, 'destroy'])->name('debts.destroy');
     Route::post('/debts/{debt}/payment', [DebtController::class, 'makePayment'])->name('debts.payment');
+    Route::get('/ledger', [LedgerController::class, 'index'])->name('ledger.index');
+    Route::post('/ledger/accounts', [LedgerController::class, 'storeAccount'])->name('ledger.accounts.store');
+    Route::patch('/ledger/accounts/{account}', [LedgerController::class, 'updateAccount'])->name('ledger.accounts.update');
+    Route::delete('/ledger/accounts/{account}', [LedgerController::class, 'destroyAccount'])->name('ledger.accounts.destroy');
     Route::get('/payoff-plan', [PayoffPlanController::class, 'index'])->name('payoff-plan');
     Route::post('/payoff-plan/debts', [PayoffPlanController::class, 'storeDebt'])->name('payoff-plan.debts.store');
     Route::patch('/payoff-plan/debts/{debt}', [PayoffPlanController::class, 'updateDebt'])->name('payoff-plan.debts.update');

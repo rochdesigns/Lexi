@@ -56,3 +56,19 @@ test('description is nullable', function () {
 
     expect($transaction->fresh()->description)->toBeNull();
 });
+
+test('involvingAccount scope matches a transaction on any of its three account columns', function () {
+    $user = User::factory()->create();
+    $account = Account::factory()->for($user)->create();
+    $other = Account::factory()->for($user)->create();
+
+    $asPrimary = Transaction::factory()->for($user)->create(['type' => 'expense', 'account_id' => $account->id]);
+    $asSource = Transaction::factory()->for($user)->create(['type' => 'transfer', 'account_id' => null, 'from_account_id' => $account->id, 'to_account_id' => $other->id]);
+    $asDestination = Transaction::factory()->for($user)->create(['type' => 'transfer', 'account_id' => null, 'from_account_id' => $other->id, 'to_account_id' => $account->id]);
+    $unrelated = Transaction::factory()->for($user)->create(['type' => 'expense', 'account_id' => $other->id]);
+
+    $ids = Transaction::query()->involvingAccount($account->id)->pluck('id');
+
+    expect($ids)->toContain($asPrimary->id, $asSource->id, $asDestination->id);
+    expect($ids)->not->toContain($unrelated->id);
+});
