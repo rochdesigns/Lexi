@@ -160,3 +160,21 @@ test('an account with no linked debt exposes an empty linked_debt_names list', f
 
     expect($props['linked_debt_names'])->toBe([]);
 });
+
+test('deleting one side of a transfer preserves the transaction for the surviving account', function () {
+    $user = User::factory()->create();
+    $checking = Account::factory()->for($user)->create(['name' => 'Checking']);
+    $savings = Account::factory()->for($user)->create(['name' => 'Savings']);
+    (new LedgerService)->recordTransfer($checking, $savings, 100, 'Move to savings');
+
+    $this->actingAs($user)->delete("/ledger/accounts/{$checking->id}")->assertRedirect();
+
+    $response = $this->actingAs($user)->get('/ledger')->assertOk();
+    $accounts = collect($response->viewData('page')['props']['accounts'])->keyBy('name');
+
+    expect($accounts)->toHaveKey('Savings');
+    $tx = $accounts['Savings']['recent_transactions'][0];
+    expect($tx['counterpart'])->toBe('(deleted account)');
+    expect($tx['direction'])->toBe('in');
+    expect((float) $tx['amount'])->toBe(100.0);
+});

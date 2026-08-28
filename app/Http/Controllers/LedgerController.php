@@ -86,8 +86,8 @@ class LedgerController extends Controller
 
             $counterpart = match (true) {
                 $transaction->type !== 'transfer' => null,
-                $transaction->from_account_id === $account->id => $transaction->toAccount?->name,
-                default => $transaction->fromAccount?->name,
+                $transaction->from_account_id === $account->id => $transaction->toAccount?->name ?? '(deleted account)',
+                default => $transaction->fromAccount?->name ?? '(deleted account)',
             };
 
             return [
