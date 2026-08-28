@@ -236,14 +236,6 @@ function removeAccount(account: LedgerAccount): void {
                         </select>
                     </div>
 
-                    <div v-if="transactionForm.type === 'expense'">
-                        <label class="mb-1 block text-[11px] font-medium" style="color: var(--hab-muted)">Envelope (optional)</label>
-                        <select v-model.number="transactionForm.envelope_id" class="w-full rounded-[8px] border px-2 py-1.5 text-[12.5px]" style="border-color: var(--hab-card-border); background: var(--hab-card-bg); color: var(--hab-ink)">
-                            <option :value="null">None</option>
-                            <option v-for="envelope in props.envelopes" :key="envelope.id" :value="envelope.id">{{ envelope.name }}</option>
-                        </select>
-                    </div>
-
                     <template v-else>
                         <div>
                             <label class="mb-1 block text-[11px] font-medium" style="color: var(--hab-muted)">From</label>
@@ -258,6 +250,14 @@ function removeAccount(account: LedgerAccount): void {
                             </select>
                         </div>
                     </template>
+
+                    <div v-if="transactionForm.type === 'expense'">
+                        <label class="mb-1 block text-[11px] font-medium" style="color: var(--hab-muted)">Envelope (optional)</label>
+                        <select v-model.number="transactionForm.envelope_id" class="w-full rounded-[8px] border px-2 py-1.5 text-[12.5px]" style="border-color: var(--hab-card-border); background: var(--hab-card-bg); color: var(--hab-ink)">
+                            <option :value="null">None</option>
+                            <option v-for="envelope in props.envelopes" :key="envelope.id" :value="envelope.id">{{ envelope.name }}</option>
+                        </select>
+                    </div>
 
                     <div>
                         <label class="mb-1 block text-[11px] font-medium" style="color: var(--hab-muted)">Amount</label>
