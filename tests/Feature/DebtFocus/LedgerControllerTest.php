@@ -98,6 +98,17 @@ test('updates an owned account', function () {
     expect($account->fresh()->name)->toBe('New name');
 });
 
+test('an account with a negative balance can still be updated', function () {
+    $user = User::factory()->create();
+    $account = Account::factory()->for($user)->create(['name' => 'Old name', 'balance' => -50]);
+
+    $this->actingAs($user)->patch("/ledger/accounts/{$account->id}", [
+        'name' => 'New name', 'type' => 'checking', 'is_liability' => false, 'balance' => -50,
+    ])->assertRedirect()->assertSessionHasNoErrors();
+
+    expect($account->fresh()->name)->toBe('New name');
+});
+
 test('cannot update another user\'s account', function () {
     $owner = User::factory()->create();
     $intruder = User::factory()->create();

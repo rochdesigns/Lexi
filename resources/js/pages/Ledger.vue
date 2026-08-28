@@ -146,7 +146,7 @@ function submitTransactionForm(): void {
 }
 
 function removeAccount(account: LedgerAccount): void {
-    let message = `Delete ${account.name}? This also removes any transfer records linking it to your other accounts.`;
+    let message = `Delete ${account.name}? Transfers with your other accounts will be kept, showing this account as "(deleted account)".`;
 
     if (account.linked_debt_names.length > 0) {
         message += ` This will also permanently delete the debt "${account.linked_debt_names.join('", "')}" linked to this account.`;

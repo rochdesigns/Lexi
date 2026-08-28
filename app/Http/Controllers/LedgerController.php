@@ -143,7 +143,7 @@ class LedgerController extends Controller
             'institution' => ['nullable', 'string', 'max:100'],
             'type' => ['required', 'string', 'in:checking,savings,credit,cash,investment'],
             'is_liability' => ['required', 'boolean'],
-            'balance' => ['required', 'numeric', 'min:0'],
+            'balance' => ['required', 'numeric'],
         ];
     }
 
