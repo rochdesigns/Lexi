@@ -5,9 +5,13 @@ namespace App\Http\Controllers;
 use App\Models\DebtFocus\Account;
 use App\Models\DebtFocus\Debt;
 use App\Models\DebtFocus\Transaction;
+use App\Services\DebtFocus\LedgerService;
+use Carbon\Carbon;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Validation\Rule;
+use Illuminate\Validation\Rules\Exists;
 use Inertia\Inertia;
 use Inertia\Response;
 
@@ -63,6 +67,33 @@ class LedgerController extends Controller
         return back();
     }
 
+    public function storeTransaction(Request $request, LedgerService $ledger): RedirectResponse
+    {
+        $ownedAccount = $this->accountOwnershipRule($request->user()->id);
+
+        $validated = $request->validate([
+            'type' => ['required', 'string', 'in:income,expense,transfer'],
+            'account_id' => ['required_unless:type,transfer', 'nullable', 'integer', $ownedAccount],
+            'from_account_id' => ['required_if:type,transfer', 'nullable', 'integer', 'different:to_account_id', $ownedAccount],
+            'to_account_id' => ['required_if:type,transfer', 'nullable', 'integer', $ownedAccount],
+            'amount' => ['required', 'numeric', 'min:0.01'],
+            'description' => ['nullable', 'string', 'max:255'],
+            'occurred_at' => ['required', 'date'],
+        ]);
+
+        $amount = (float) $validated['amount'];
+        $description = $validated['description'] ?? null;
+        $occurredAt = Carbon::parse($validated['occurred_at']);
+
+        match ($validated['type']) {
+            'income' => $ledger->recordIncome(Account::findOrFail($validated['account_id']), $amount, $description, $occurredAt),
+            'expense' => $ledger->recordExpense(Account::findOrFail($validated['account_id']), $amount, $description, $occurredAt),
+            'transfer' => $ledger->recordTransfer(Account::findOrFail($validated['from_account_id']), Account::findOrFail($validated['to_account_id']), $amount, $description, $occurredAt),
+        };
+
+        return back();
+    }
+
     /**
      * @return array<int, array{id: int, type: string, amount: float, description: string|null, occurred_at: string, direction: string, counterpart: string|null}>
      */
@@ -114,5 +145,10 @@ class LedgerController extends Controller
             'is_liability' => ['required', 'boolean'],
             'balance' => ['required', 'numeric', 'min:0'],
         ];
+    }
+
+    private function accountOwnershipRule(int $userId): Exists
+    {
+        return Rule::exists('debt_focus_accounts', 'id')->where('user_id', $userId);
     }
 }

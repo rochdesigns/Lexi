@@ -75,6 +75,7 @@ Route::middleware(['auth', 'verified'])->group(function (): void {
     Route::post('/ledger/accounts', [LedgerController::class, 'storeAccount'])->name('ledger.accounts.store');
     Route::patch('/ledger/accounts/{account}', [LedgerController::class, 'updateAccount'])->name('ledger.accounts.update');
     Route::delete('/ledger/accounts/{account}', [LedgerController::class, 'destroyAccount'])->name('ledger.accounts.destroy');
+    Route::post('/ledger/transactions', [LedgerController::class, 'storeTransaction'])->name('ledger.transactions.store');
     Route::get('/payoff-plan', [PayoffPlanController::class, 'index'])->name('payoff-plan');
     Route::post('/payoff-plan/debts', [PayoffPlanController::class, 'storeDebt'])->name('payoff-plan.debts.store');
     Route::patch('/payoff-plan/debts/{debt}', [PayoffPlanController::class, 'updateDebt'])->name('payoff-plan.debts.update');

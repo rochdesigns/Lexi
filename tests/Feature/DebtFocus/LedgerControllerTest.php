@@ -178,3 +178,92 @@ test('deleting one side of a transfer preserves the transaction for the survivin
     expect($tx['direction'])->toBe('in');
     expect((float) $tx['amount'])->toBe(100.0);
 });
+
+test('logs an income transaction against an owned account', function () {
+    $user = User::factory()->create();
+    $account = Account::factory()->for($user)->create(['balance' => 100]);
+
+    $this->actingAs($user)->post('/ledger/transactions', [
+        'type' => 'income',
+        'account_id' => $account->id,
+        'amount' => 50,
+        'description' => 'Paycheck',
+        'occurred_at' => '2026-08-28',
+    ])->assertRedirect();
+
+    expect((float) $account->fresh()->balance)->toBe(150.0);
+    $transaction = Transaction::where('account_id', $account->id)->firstOrFail();
+    expect($transaction->type)->toBe('income');
+    expect($transaction->description)->toBe('Paycheck');
+});
+
+test('logs an expense transaction against an owned account', function () {
+    $user = User::factory()->create();
+    $account = Account::factory()->for($user)->create(['balance' => 100]);
+
+    $this->actingAs($user)->post('/ledger/transactions', [
+        'type' => 'expense',
+        'account_id' => $account->id,
+        'amount' => 30,
+        'occurred_at' => '2026-08-28',
+    ])->assertRedirect();
+
+    expect((float) $account->fresh()->balance)->toBe(70.0);
+});
+
+test('logs a transfer between two owned accounts', function () {
+    $user = User::factory()->create();
+    $checking = Account::factory()->for($user)->create(['balance' => 500]);
+    $savings = Account::factory()->for($user)->create(['balance' => 200]);
+
+    $this->actingAs($user)->post('/ledger/transactions', [
+        'type' => 'transfer',
+        'from_account_id' => $checking->id,
+        'to_account_id' => $savings->id,
+        'amount' => 100,
+        'occurred_at' => '2026-08-28',
+    ])->assertRedirect();
+
+    expect((float) $checking->fresh()->balance)->toBe(400.0);
+    expect((float) $savings->fresh()->balance)->toBe(300.0);
+});
+
+test('cannot log a transaction against another user\'s account', function () {
+    $owner = User::factory()->create();
+    $intruder = User::factory()->create();
+    $account = Account::factory()->for($owner)->create(['balance' => 100]);
+
+    $this->actingAs($intruder)->post('/ledger/transactions', [
+        'type' => 'expense',
+        'account_id' => $account->id,
+        'amount' => 10,
+        'occurred_at' => '2026-08-28',
+    ])->assertSessionHasErrors('account_id');
+
+    expect((float) $account->fresh()->balance)->toBe(100.0);
+});
+
+test('a transfer requires two different accounts', function () {
+    $user = User::factory()->create();
+    $account = Account::factory()->for($user)->create();
+
+    $this->actingAs($user)->post('/ledger/transactions', [
+        'type' => 'transfer',
+        'from_account_id' => $account->id,
+        'to_account_id' => $account->id,
+        'amount' => 10,
+        'occurred_at' => '2026-08-28',
+    ])->assertSessionHasErrors('from_account_id');
+});
+
+test('transaction amount must be positive', function () {
+    $user = User::factory()->create();
+    $account = Account::factory()->for($user)->create();
+
+    $this->actingAs($user)->post('/ledger/transactions', [
+        'type' => 'income',
+        'account_id' => $account->id,
+        'amount' => 0,
+        'occurred_at' => '2026-08-28',
+    ])->assertSessionHasErrors('amount');
+});
