@@ -2,6 +2,7 @@
 
 use App\Models\DebtFocus\Account;
 use App\Models\DebtFocus\Bill;
+use App\Models\DebtFocus\BillPeriod;
 use App\Models\DebtFocus\Debt;
 use App\Models\DebtFocus\Envelope;
 use App\Models\DebtFocus\Settings;
@@ -117,4 +118,81 @@ test('bill and envelope templates are listed regardless of active status', funct
     $templates = collect($response->viewData('page')['props']['billTemplates'])->pluck('name');
 
     expect($templates->all())->toContain('Active bill', 'Inactive bill');
+});
+
+test('stores a new bill for the authenticated user', function () {
+    $user = User::factory()->create();
+
+    $this->actingAs($user)->post('/budget/bills', [
+        'name' => 'Internet', 'expected_amount' => 45, 'due_day' => 15, 'active' => true,
+    ])->assertRedirect();
+
+    $bill = Bill::where('user_id', $user->id)->firstOrFail();
+    expect($bill->name)->toBe('Internet');
+    expect((float) $bill->expected_amount)->toBe(45.0);
+});
+
+test('storing a bill requires a name and a positive expected amount', function () {
+    $user = User::factory()->create();
+
+    $this->actingAs($user)->post('/budget/bills', [
+        'expected_amount' => 0, 'active' => true,
+    ])->assertSessionHasErrors(['name', 'expected_amount']);
+});
+
+test('updates an owned bill including deactivating it', function () {
+    $user = User::factory()->create();
+    $bill = Bill::factory()->for($user)->create(['name' => 'Old name', 'active' => true]);
+
+    $this->actingAs($user)->patch("/budget/bills/{$bill->id}", [
+        'name' => 'New name', 'expected_amount' => 90, 'due_day' => null, 'active' => false,
+    ])->assertRedirect();
+
+    $bill->refresh();
+    expect($bill->name)->toBe('New name');
+    expect($bill->active)->toBeFalse();
+});
+
+test('cannot update another user\'s bill', function () {
+    $owner = User::factory()->create();
+    $intruder = User::factory()->create();
+    $bill = Bill::factory()->for($owner)->create();
+
+    $this->actingAs($intruder)->patch("/budget/bills/{$bill->id}", [
+        'name' => 'Hacked', 'expected_amount' => 1, 'active' => true,
+    ])->assertForbidden();
+});
+
+test('deletes an owned bill', function () {
+    $user = User::factory()->create();
+    $bill = Bill::factory()->for($user)->create();
+
+    $this->actingAs($user)->delete("/budget/bills/{$bill->id}")->assertRedirect();
+
+    expect(Bill::find($bill->id))->toBeNull();
+});
+
+test('cannot delete another user\'s bill', function () {
+    $owner = User::factory()->create();
+    $intruder = User::factory()->create();
+    $bill = Bill::factory()->for($owner)->create();
+
+    $this->actingAs($intruder)->delete("/budget/bills/{$bill->id}")->assertForbidden();
+
+    expect(Bill::find($bill->id))->not->toBeNull();
+});
+
+test('a deactivated bill stops getting new period rows but keeps old ones', function () {
+    $user = User::factory()->create();
+    $bill = Bill::factory()->for($user)->create(['active' => true]);
+    $this->actingAs($user)->get('/budget?year=2026&month=7')->assertOk();
+
+    $this->actingAs($user)->patch("/budget/bills/{$bill->id}", [
+        'name' => $bill->name, 'expected_amount' => (float) $bill->expected_amount, 'due_day' => $bill->due_day, 'active' => false,
+    ])->assertRedirect();
+
+    $response = $this->actingAs($user)->get('/budget?year=2026&month=8')->assertOk();
+
+    expect($response->viewData('page')['props']['bills'])->toBe([]);
+    expect(BillPeriod::where('bill_id', $bill->id)->where('month', 7)->exists())->toBeTrue();
 });

@@ -14,6 +14,7 @@ use App\Services\DebtFocus\BudgetService;
 use App\Services\DebtFocus\PayoffEngine;
 use Carbon\Carbon;
 use Illuminate\Database\Eloquent\Collection as EloquentCollection;
+use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
 use Inertia\Inertia;
@@ -92,6 +93,33 @@ class BudgetController extends Controller
         ]);
     }
 
+    public function storeBill(Request $request): RedirectResponse
+    {
+        $validated = $request->validate($this->billRules());
+
+        $request->user()->debtFocusBills()->create($validated);
+
+        return back();
+    }
+
+    public function updateBill(Request $request, Bill $bill): RedirectResponse
+    {
+        abort_if($bill->user_id !== $request->user()->id, 403);
+
+        $bill->update($request->validate($this->billRules()));
+
+        return back();
+    }
+
+    public function destroyBill(Request $request, Bill $bill): RedirectResponse
+    {
+        abort_if($bill->user_id !== $request->user()->id, 403);
+
+        $bill->delete();
+
+        return back();
+    }
+
     /**
      * @return EloquentCollection<int, Debt>
      */
@@ -143,5 +171,18 @@ class BudgetController extends Controller
         $envelopesTotal = (float) $envelopePeriods->sum(fn (EnvelopePeriod $envelopePeriod) => (float) $envelopePeriod->target);
 
         return max(0.0, $income - $minimumsTotal - $billsTotal - $envelopesTotal);
+    }
+
+    /**
+     * @return array<string, array<int, mixed>>
+     */
+    private function billRules(): array
+    {
+        return [
+            'name' => ['required', 'string', 'max:100'],
+            'expected_amount' => ['required', 'numeric', 'min:0.01', 'max:99999999.99'],
+            'due_day' => ['nullable', 'integer', 'min:1', 'max:31'],
+            'active' => ['required', 'boolean'],
+        ];
     }
 }

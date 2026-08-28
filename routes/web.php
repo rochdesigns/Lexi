@@ -85,6 +85,9 @@ Route::middleware(['auth', 'verified'])->group(function (): void {
     Route::post('/payoff-plan/debts/{debt}/unlink', [PayoffPlanController::class, 'unlinkDebt'])->name('payoff-plan.debts.unlink');
     Route::patch('/payoff-plan/settings', [PayoffPlanController::class, 'updateSettings'])->name('payoff-plan.settings.update');
     Route::get('/budget', [BudgetController::class, 'index'])->name('budget.index');
+    Route::post('/budget/bills', [BudgetController::class, 'storeBill'])->name('budget.bills.store');
+    Route::patch('/budget/bills/{bill}', [BudgetController::class, 'updateBill'])->name('budget.bills.update');
+    Route::delete('/budget/bills/{bill}', [BudgetController::class, 'destroyBill'])->name('budget.bills.destroy');
     Route::inertia('/photos', 'Stub')->name('photos');
 
     // Legacy redirect — keeps old dashboard links working
