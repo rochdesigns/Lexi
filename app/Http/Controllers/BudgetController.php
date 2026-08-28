@@ -11,12 +11,15 @@ use App\Models\DebtFocus\EnvelopePeriod;
 use App\Models\DebtFocus\Transaction;
 use App\Models\User;
 use App\Services\DebtFocus\BudgetService;
+use App\Services\DebtFocus\LedgerService;
 use App\Services\DebtFocus\PayoffEngine;
 use Carbon\Carbon;
 use Illuminate\Database\Eloquent\Collection as EloquentCollection;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
+use Illuminate\Validation\Rule;
+use Illuminate\Validation\Rules\Exists;
 use Inertia\Inertia;
 use Inertia\Response;
 
@@ -163,6 +166,69 @@ class BudgetController extends Controller
         return back();
     }
 
+    public function confirmSweep(Request $request, EnvelopePeriod $envelopePeriod, BudgetService $budget, PayoffEngine $engine, LedgerService $ledger): RedirectResponse
+    {
+        abort_if($envelopePeriod->envelope->user_id !== $request->user()->id, 403);
+
+        $user = $request->user();
+        $validated = $request->validate([
+            'from_account_id' => ['required', 'integer', $this->assetAccountOwnershipRule($user->id)],
+        ]);
+
+        $settings = $user->debtFocusSettings()->firstOrCreate([], ['strategy' => 'avalanche', 'extra_monthly' => 0]);
+        $priorityDebt = $this->resolvePriorityLinkedDebt($this->liveDebts($user), $settings->strategy, $engine);
+
+        abort_if($priorityDebt === null, 422, 'No linked debt available for this sweep.');
+
+        $amount = round((float) $envelopePeriod->target - $budget->spentForPeriod($envelopePeriod), 2);
+        abort_if($amount <= 0.0, 422, 'Nothing to sweep for this envelope.');
+
+        $fromAccount = Account::findOrFail($validated['from_account_id']);
+        $ledger->recordTransfer($fromAccount, $priorityDebt->linkedAccount, $amount, "Envelope sweep: {$envelopePeriod->envelope->name}");
+
+        $envelopePeriod->update(['sweep_accepted' => true]);
+
+        return back();
+    }
+
+    public function declineSweep(Request $request, EnvelopePeriod $envelopePeriod): RedirectResponse
+    {
+        abort_if($envelopePeriod->envelope->user_id !== $request->user()->id, 403);
+
+        $envelopePeriod->update(['sweep_accepted' => false]);
+
+        return back();
+    }
+
+    public function confirmExtraPayment(Request $request, BudgetService $budget, PayoffEngine $engine, LedgerService $ledger): RedirectResponse
+    {
+        $user = $request->user();
+
+        $validated = $request->validate([
+            'from_account_id' => ['required', 'integer', $this->assetAccountOwnershipRule($user->id)],
+            'year' => ['required', 'integer', 'min:2000'],
+            'month' => ['required', 'integer', 'min:1', 'max:12'],
+        ]);
+
+        $debts = $this->liveDebts($user);
+        $settings = $user->debtFocusSettings()->firstOrCreate([], ['strategy' => 'avalanche', 'extra_monthly' => 0]);
+        $priorityDebt = $this->resolvePriorityLinkedDebt($debts, $settings->strategy, $engine);
+
+        abort_if($priorityDebt === null, 422, 'No linked debt available for the extra payment.');
+
+        $period = $budget->periodFor($user, (int) $validated['year'], (int) $validated['month']);
+        $minimumsTotal = (float) $debts->sum(fn (Debt $debt) => (float) $debt->minimum_payment);
+        $income = $this->incomeForPeriod($user, $budget, (int) $validated['year'], (int) $validated['month']);
+        $leftover = $this->computeLeftover($income, $minimumsTotal, $period['bills'], $period['envelopes']);
+
+        abort_if($leftover <= 0.0, 422, 'No leftover amount to send.');
+
+        $fromAccount = Account::findOrFail($validated['from_account_id']);
+        $ledger->recordTransfer($fromAccount, $priorityDebt->linkedAccount, round($leftover, 2), 'Extra payment from leftover budget');
+
+        return back();
+    }
+
     /**
      * @return EloquentCollection<int, Debt>
      */
@@ -240,5 +306,17 @@ class BudgetController extends Controller
             'default_target' => ['required', 'numeric', 'min:0.01', 'max:99999999.99'],
             'active' => ['required', 'boolean'],
         ];
+    }
+
+    private function assetAccountOwnershipRule(int $userId): Exists
+    {
+        // Note: `->where('is_liability', false)` here would silently break — Laravel's
+        // Exists rule builds its extra "wheres" as a comma-separated string, and PHP's
+        // bool-to-string cast turns `false` into `""` (not "0"), so the generated
+        // `exists:...,is_liability,""` clause never matches the stored 0/1 value. A
+        // closure passes the raw boolean straight to the query builder instead.
+        return Rule::exists('debt_focus_accounts', 'id')
+            ->where('user_id', $userId)
+            ->where(fn ($query) => $query->where('is_liability', false));
     }
 }

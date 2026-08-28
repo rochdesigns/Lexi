@@ -5,7 +5,9 @@ use App\Models\DebtFocus\Bill;
 use App\Models\DebtFocus\BillPeriod;
 use App\Models\DebtFocus\Debt;
 use App\Models\DebtFocus\Envelope;
+use App\Models\DebtFocus\EnvelopePeriod;
 use App\Models\DebtFocus\Settings;
+use App\Models\DebtFocus\Transaction;
 use App\Models\User;
 use App\Services\DebtFocus\LedgerService;
 
@@ -290,4 +292,86 @@ test('cannot mark another user\'s bill period paid', function () {
     $this->actingAs($intruder)->post("/budget/bill-periods/{$period->id}/pay", [
         'actual_amount' => 10,
     ])->assertForbidden();
+});
+
+test('confirming a sweep transfers the freed amount to the priority linked debt', function () {
+    $user = User::factory()->create();
+    Settings::factory()->for($user)->create(['strategy' => 'avalanche']);
+    $checking = Account::factory()->for($user)->create(['balance' => 1000]);
+    $card = Account::factory()->for($user)->liability()->create(['balance' => 500]);
+    $debt = Debt::factory()->for($user)->create(['linked_account_id' => $card->id, 'monthly_rate' => 20]);
+    $envelope = Envelope::factory()->for($user)->create(['default_target' => 100]);
+    $period = EnvelopePeriod::factory()->for($envelope)->create(['target' => 100, 'sweep_offered_at' => now()]);
+
+    $this->actingAs($user)->post("/budget/envelope-periods/{$period->id}/sweep/confirm", [
+        'from_account_id' => $checking->id,
+    ])->assertRedirect();
+
+    expect((float) $checking->fresh()->balance)->toBe(900.0);
+    expect((float) $card->fresh()->balance)->toBe(400.0);
+    expect($period->fresh()->sweep_accepted)->toBeTrue();
+});
+
+test('confirming a sweep with a liability account as the source is rejected', function () {
+    $user = User::factory()->create();
+    Settings::factory()->for($user)->create(['strategy' => 'avalanche']);
+    $card = Account::factory()->for($user)->liability()->create();
+    $debt = Debt::factory()->for($user)->create(['linked_account_id' => $card->id]);
+    $envelope = Envelope::factory()->for($user)->create(['default_target' => 100]);
+    $period = EnvelopePeriod::factory()->for($envelope)->create(['target' => 100]);
+
+    $this->actingAs($user)->post("/budget/envelope-periods/{$period->id}/sweep/confirm", [
+        'from_account_id' => $card->id,
+    ])->assertSessionHasErrors('from_account_id');
+});
+
+test('confirming a sweep with no linked debt anywhere is rejected', function () {
+    $user = User::factory()->create();
+    Settings::factory()->for($user)->create(['strategy' => 'avalanche']);
+    $checking = Account::factory()->for($user)->create();
+    $envelope = Envelope::factory()->for($user)->create(['default_target' => 100]);
+    $period = EnvelopePeriod::factory()->for($envelope)->create(['target' => 100]);
+
+    $this->actingAs($user)->post("/budget/envelope-periods/{$period->id}/sweep/confirm", [
+        'from_account_id' => $checking->id,
+    ])->assertStatus(422);
+});
+
+test('declining a sweep just records the decision with no transfer', function () {
+    $user = User::factory()->create();
+    $envelope = Envelope::factory()->for($user)->create();
+    $period = EnvelopePeriod::factory()->for($envelope)->create();
+
+    $this->actingAs($user)->post("/budget/envelope-periods/{$period->id}/sweep/decline")->assertRedirect();
+
+    expect($period->fresh()->sweep_accepted)->toBeFalse();
+    expect(Transaction::count())->toBe(0);
+});
+
+test('confirming the extra payment transfers the leftover to the priority linked debt', function () {
+    $user = User::factory()->create();
+    Settings::factory()->for($user)->create(['strategy' => 'avalanche']);
+    $checking = Account::factory()->for($user)->create(['balance' => 1000]);
+    (new LedgerService)->recordIncome($checking, 2000, 'Paycheck', now()->setDate(2026, 8, 1));
+    $card = Account::factory()->for($user)->liability()->create(['balance' => 500]);
+    Debt::factory()->for($user)->create(['linked_account_id' => $card->id, 'minimum_payment' => 200]);
+
+    $this->actingAs($user)->post('/budget/extra-payment/confirm', [
+        'from_account_id' => $checking->id, 'year' => 2026, 'month' => 8,
+    ])->assertRedirect();
+
+    // leftover = income (2000) - minimumsTotal (200) - bills (0) - envelopes (0) = 1800
+    expect((float) $card->fresh()->balance)->toBe(500.0 - 1800.0);
+});
+
+test('confirming the extra payment with nothing leftover is rejected', function () {
+    $user = User::factory()->create();
+    Settings::factory()->for($user)->create(['strategy' => 'avalanche']);
+    $checking = Account::factory()->for($user)->create();
+    $card = Account::factory()->for($user)->liability()->create();
+    Debt::factory()->for($user)->create(['linked_account_id' => $card->id, 'minimum_payment' => 200]);
+
+    $this->actingAs($user)->post('/budget/extra-payment/confirm', [
+        'from_account_id' => $checking->id, 'year' => 2026, 'month' => 8,
+    ])->assertStatus(422);
 });

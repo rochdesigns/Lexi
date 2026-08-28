@@ -92,6 +92,9 @@ Route::middleware(['auth', 'verified'])->group(function (): void {
     Route::patch('/budget/envelopes/{envelope}', [BudgetController::class, 'updateEnvelope'])->name('budget.envelopes.update');
     Route::delete('/budget/envelopes/{envelope}', [BudgetController::class, 'destroyEnvelope'])->name('budget.envelopes.destroy');
     Route::post('/budget/bill-periods/{billPeriod}/pay', [BudgetController::class, 'markBillPaid'])->name('budget.bill-periods.pay');
+    Route::post('/budget/envelope-periods/{envelopePeriod}/sweep/confirm', [BudgetController::class, 'confirmSweep'])->name('budget.envelope-periods.sweep.confirm');
+    Route::post('/budget/envelope-periods/{envelopePeriod}/sweep/decline', [BudgetController::class, 'declineSweep'])->name('budget.envelope-periods.sweep.decline');
+    Route::post('/budget/extra-payment/confirm', [BudgetController::class, 'confirmExtraPayment'])->name('budget.extra-payment.confirm');
     Route::inertia('/photos', 'Stub')->name('photos');
 
     // Legacy redirect — keeps old dashboard links working
