@@ -16,7 +16,7 @@ class Debt extends Model
     protected $table = 'debt_focus_debts';
 
     protected $fillable = [
-        'user_id', 'name', 'balance', 'monthly_rate', 'minimum_payment', 'debt_type', 'due_day',
+        'user_id', 'name', 'balance', 'monthly_rate', 'minimum_payment', 'debt_type', 'due_day', 'linked_account_id',
     ];
 
     protected $casts = [
@@ -31,5 +31,13 @@ class Debt extends Model
     public function user(): BelongsTo
     {
         return $this->belongsTo(User::class);
+    }
+
+    /**
+     * @return BelongsTo<Account, $this>
+     */
+    public function linkedAccount(): BelongsTo
+    {
+        return $this->belongsTo(Account::class, 'linked_account_id');
     }
 }

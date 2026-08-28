@@ -1,5 +1,6 @@
 <?php
 
+use App\Models\DebtFocus\Account;
 use App\Models\DebtFocus\Debt;
 use App\Models\User;
 
@@ -43,4 +44,39 @@ test('debt_type defaults to installment at the database level when not supplied'
     ]);
 
     expect($debt->fresh()->debt_type)->toBe('installment');
+});
+
+test('a debt can be linked to an account', function () {
+    $user = User::factory()->create();
+    $account = Account::factory()->for($user)->liability()->create();
+
+    $debt = Debt::factory()->for($user)->create([
+        'debt_type' => 'revolving',
+        'linked_account_id' => $account->id,
+    ]);
+
+    $fresh = $debt->fresh();
+
+    expect($fresh->linked_account_id)->toBe($account->id);
+    expect($fresh->linkedAccount)->toBeInstanceOf(Account::class);
+    expect($fresh->linkedAccount->id)->toBe($account->id);
+});
+
+test('linked_account_id defaults to null when not supplied', function () {
+    $user = User::factory()->create();
+
+    $debt = Debt::factory()->for($user)->create();
+
+    expect($debt->fresh()->linked_account_id)->toBeNull();
+    expect($debt->fresh()->linkedAccount)->toBeNull();
+});
+
+test('linked_account_id is set to null when the linked account is deleted', function () {
+    $user = User::factory()->create();
+    $account = Account::factory()->for($user)->liability()->create();
+    $debt = Debt::factory()->for($user)->create(['linked_account_id' => $account->id]);
+
+    $account->delete();
+
+    expect($debt->fresh()->linked_account_id)->toBeNull();
 });
