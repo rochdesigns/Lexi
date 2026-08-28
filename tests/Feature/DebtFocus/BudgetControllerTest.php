@@ -404,6 +404,29 @@ test('confirming the extra payment twice for the same period rejects the second 
     expect((float) $card->fresh()->balance)->toBe(500.0 - 1800.0);
 });
 
+test('confirming the extra payment twice for a past month rejects the second attempt and only transfers once', function () {
+    $user = User::factory()->create();
+    Settings::factory()->for($user)->create(['strategy' => 'avalanche']);
+    $pastMonth = now()->subMonthNoOverflow()->startOfMonth();
+    $year = (int) $pastMonth->year;
+    $month = (int) $pastMonth->month;
+
+    $checking = Account::factory()->for($user)->create(['balance' => 1000]);
+    (new LedgerService)->recordIncome($checking, 2000, 'Paycheck', $pastMonth->copy()->day(1));
+    $card = Account::factory()->for($user)->liability()->create(['balance' => 500]);
+    Debt::factory()->for($user)->create(['linked_account_id' => $card->id, 'minimum_payment' => 200]);
+
+    $this->actingAs($user)->post('/budget/extra-payment/confirm', [
+        'from_account_id' => $checking->id, 'year' => $year, 'month' => $month,
+    ])->assertRedirect();
+
+    $this->actingAs($user)->post('/budget/extra-payment/confirm', [
+        'from_account_id' => $checking->id, 'year' => $year, 'month' => $month,
+    ])->assertStatus(422);
+
+    expect((float) $card->fresh()->balance)->toBe(500.0 - 1800.0);
+});
+
 test('confirming the extra payment with nothing leftover is rejected', function () {
     $user = User::factory()->create();
     Settings::factory()->for($user)->create(['strategy' => 'avalanche']);

@@ -234,7 +234,13 @@ class BudgetController extends Controller
         abort_if($leftover <= 0.0, 422, 'No leftover amount to send.');
 
         $fromAccount = Account::findOrFail($validated['from_account_id']);
-        $ledger->recordTransfer($fromAccount, $priorityDebt->linkedAccount, round($leftover, 2), 'Extra payment from leftover budget');
+        $ledger->recordTransfer(
+            $fromAccount,
+            $priorityDebt->linkedAccount,
+            round($leftover, 2),
+            'Extra payment from leftover budget',
+            Carbon::create((int) $validated['year'], (int) $validated['month'], 1),
+        );
 
         return back();
     }
