@@ -105,7 +105,7 @@ function submitRow(): void {
 }
 
 function removeAccount(account: LedgerAccount): void {
-    if (!window.confirm(`Delete ${account.name} and all its transaction history?`)) {
+    if (!window.confirm(`Delete ${account.name}? This also removes any transfer records linking it to your other accounts.`)) {
         return;
     }
 
