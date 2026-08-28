@@ -1,0 +1,59 @@
+<?php
+
+namespace App\Services\DebtFocus;
+
+use App\Models\DebtFocus\Account;
+use App\Models\DebtFocus\Transaction;
+use Carbon\CarbonInterface;
+use Illuminate\Support\Facades\DB;
+
+class LedgerService
+{
+    public function recordIncome(Account $account, float $amount, ?string $description = null, ?CarbonInterface $occurredAt = null): Transaction
+    {
+        return DB::transaction(function () use ($account, $amount, $description, $occurredAt) {
+            $this->applyEffect($account, $amount, positive: true);
+
+            return Transaction::create([
+                'user_id' => $account->user_id,
+                'type' => 'income',
+                'account_id' => $account->id,
+                'amount' => $amount,
+                'description' => $description,
+                'occurred_at' => $occurredAt ?? now(),
+            ]);
+        });
+    }
+
+    public function recordExpense(Account $account, float $amount, ?string $description = null, ?CarbonInterface $occurredAt = null): Transaction
+    {
+        return DB::transaction(function () use ($account, $amount, $description, $occurredAt) {
+            $this->applyEffect($account, $amount, positive: false);
+
+            return Transaction::create([
+                'user_id' => $account->user_id,
+                'type' => 'expense',
+                'account_id' => $account->id,
+                'amount' => $amount,
+                'description' => $description,
+                'occurred_at' => $occurredAt ?? now(),
+            ]);
+        });
+    }
+
+    /**
+     * A "positive event" (income, or being a transfer's destination) increases an
+     * asset account's balance and decreases a liability account's balance; a
+     * "negative event" (expense, or being a transfer's source) does the opposite.
+     */
+    private function applyEffect(Account $account, float $amount, bool $positive): void
+    {
+        $delta = $positive ? $amount : -$amount;
+
+        if ($account->is_liability) {
+            $delta = -$delta;
+        }
+
+        $account->increment('balance', $delta);
+    }
+}
