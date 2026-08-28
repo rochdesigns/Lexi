@@ -120,6 +120,33 @@ class BudgetController extends Controller
         return back();
     }
 
+    public function storeEnvelope(Request $request): RedirectResponse
+    {
+        $validated = $request->validate($this->envelopeRules());
+
+        $request->user()->debtFocusEnvelopes()->create($validated);
+
+        return back();
+    }
+
+    public function updateEnvelope(Request $request, Envelope $envelope): RedirectResponse
+    {
+        abort_if($envelope->user_id !== $request->user()->id, 403);
+
+        $envelope->update($request->validate($this->envelopeRules()));
+
+        return back();
+    }
+
+    public function destroyEnvelope(Request $request, Envelope $envelope): RedirectResponse
+    {
+        abort_if($envelope->user_id !== $request->user()->id, 403);
+
+        $envelope->delete();
+
+        return back();
+    }
+
     /**
      * @return EloquentCollection<int, Debt>
      */
@@ -182,6 +209,19 @@ class BudgetController extends Controller
             'name' => ['required', 'string', 'max:100'],
             'expected_amount' => ['required', 'numeric', 'min:0.01', 'max:99999999.99'],
             'due_day' => ['nullable', 'integer', 'min:1', 'max:31'],
+            'active' => ['required', 'boolean'],
+        ];
+    }
+
+    /**
+     * @return array<string, array<int, mixed>>
+     */
+    private function envelopeRules(): array
+    {
+        return [
+            'name' => ['required', 'string', 'max:100'],
+            'icon' => ['nullable', 'string', 'max:50'],
+            'default_target' => ['required', 'numeric', 'min:0.01', 'max:99999999.99'],
             'active' => ['required', 'boolean'],
         ];
     }

@@ -88,6 +88,9 @@ Route::middleware(['auth', 'verified'])->group(function (): void {
     Route::post('/budget/bills', [BudgetController::class, 'storeBill'])->name('budget.bills.store');
     Route::patch('/budget/bills/{bill}', [BudgetController::class, 'updateBill'])->name('budget.bills.update');
     Route::delete('/budget/bills/{bill}', [BudgetController::class, 'destroyBill'])->name('budget.bills.destroy');
+    Route::post('/budget/envelopes', [BudgetController::class, 'storeEnvelope'])->name('budget.envelopes.store');
+    Route::patch('/budget/envelopes/{envelope}', [BudgetController::class, 'updateEnvelope'])->name('budget.envelopes.update');
+    Route::delete('/budget/envelopes/{envelope}', [BudgetController::class, 'destroyEnvelope'])->name('budget.envelopes.destroy');
     Route::inertia('/photos', 'Stub')->name('photos');
 
     // Legacy redirect — keeps old dashboard links working

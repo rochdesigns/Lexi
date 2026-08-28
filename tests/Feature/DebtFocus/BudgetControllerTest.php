@@ -196,3 +196,63 @@ test('a deactivated bill stops getting new period rows but keeps old ones', func
     expect($response->viewData('page')['props']['bills'])->toBe([]);
     expect(BillPeriod::where('bill_id', $bill->id)->where('month', 7)->exists())->toBeTrue();
 });
+
+test('stores a new envelope for the authenticated user', function () {
+    $user = User::factory()->create();
+
+    $this->actingAs($user)->post('/budget/envelopes', [
+        'name' => 'Groceries', 'icon' => 'shopping_cart', 'default_target' => 250, 'active' => true,
+    ])->assertRedirect();
+
+    $envelope = Envelope::where('user_id', $user->id)->firstOrFail();
+    expect($envelope->name)->toBe('Groceries');
+    expect((float) $envelope->default_target)->toBe(250.0);
+});
+
+test('storing an envelope requires a name and a positive target', function () {
+    $user = User::factory()->create();
+
+    $this->actingAs($user)->post('/budget/envelopes', [
+        'default_target' => 0, 'active' => true,
+    ])->assertSessionHasErrors(['name', 'default_target']);
+});
+
+test('updates an owned envelope', function () {
+    $user = User::factory()->create();
+    $envelope = Envelope::factory()->for($user)->create(['name' => 'Old name']);
+
+    $this->actingAs($user)->patch("/budget/envelopes/{$envelope->id}", [
+        'name' => 'New name', 'icon' => null, 'default_target' => 300, 'active' => true,
+    ])->assertRedirect();
+
+    expect($envelope->fresh()->name)->toBe('New name');
+});
+
+test('cannot update another user\'s envelope', function () {
+    $owner = User::factory()->create();
+    $intruder = User::factory()->create();
+    $envelope = Envelope::factory()->for($owner)->create();
+
+    $this->actingAs($intruder)->patch("/budget/envelopes/{$envelope->id}", [
+        'name' => 'Hacked', 'default_target' => 1, 'active' => true,
+    ])->assertForbidden();
+});
+
+test('deletes an owned envelope', function () {
+    $user = User::factory()->create();
+    $envelope = Envelope::factory()->for($user)->create();
+
+    $this->actingAs($user)->delete("/budget/envelopes/{$envelope->id}")->assertRedirect();
+
+    expect(Envelope::find($envelope->id))->toBeNull();
+});
+
+test('cannot delete another user\'s envelope', function () {
+    $owner = User::factory()->create();
+    $intruder = User::factory()->create();
+    $envelope = Envelope::factory()->for($owner)->create();
+
+    $this->actingAs($intruder)->delete("/budget/envelopes/{$envelope->id}")->assertForbidden();
+
+    expect(Envelope::find($envelope->id))->not->toBeNull();
+});
