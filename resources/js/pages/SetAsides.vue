@@ -197,7 +197,7 @@ function openTopUp(fund: Fund) {
     topUpForm.amount = String(fund.per_month || '');
     topUpForm.account_id = props.accounts[0]?.id ?? 0;
     topUpForm.to_account_id = props.accounts[1]?.id ?? props.accounts[0]?.id ?? 0;
-    topUpForm.transacted_at = new Date().toISOString().split('T')[0];
+    topUpForm.transacted_at = new Date().toLocaleDateString('en-CA');
     topUpForm.clearErrors();
     topUpModalOpen.value = true;
 }
@@ -232,7 +232,7 @@ function openPayment(fund: Fund) {
     payForm.amount = String(fund.target);
     payForm.merchant = fund.name;
     payForm.account_id = props.accounts[0]?.id ?? 0;
-    payForm.transacted_at = new Date().toISOString().split('T')[0];
+    payForm.transacted_at = new Date().toLocaleDateString('en-CA');
     payForm.clearErrors();
     payModalOpen.value = true;
 }

@@ -109,7 +109,7 @@ const addExpenseForm = reactive({
     amount: '',
     merchant: '',
     budget_category_id: null as number | null,
-    transacted_at: new Date().toISOString().split('T')[0],
+    transacted_at: new Date().toLocaleDateString('en-CA'),
 });
 const addExpenseAmountEvaluated = computed(() => evaluateArithmetic(addExpenseForm.amount));
 const addExpenseAmountHasExpr = computed(() => hasArithmetic(addExpenseForm.amount) && addExpenseAmountEvaluated.value !== null);
@@ -119,7 +119,7 @@ function openAddExpense() {
         amount: '',
         merchant: '',
         budget_category_id: null,
-        transacted_at: new Date().toISOString().split('T')[0],
+        transacted_at: new Date().toLocaleDateString('en-CA'),
     });
     addExpenseOpen.value = true;
 }

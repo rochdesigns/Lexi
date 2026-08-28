@@ -235,7 +235,7 @@ function openPayment(debt: Debt) {
     payForm.amount = String(debt.per_month || '');
     payForm.account_id = payableAccounts.value[0]?.id ?? 0;
     payForm.merchant = debt.name;
-    payForm.transacted_at = new Date().toISOString().split('T')[0];
+    payForm.transacted_at = new Date().toLocaleDateString('en-CA');
     payForm.clearErrors();
     payModalOpen.value = true;
 }

@@ -117,7 +117,7 @@ const transactionForm = useForm({
     to_account_id: null as number | null,
     amount: 0,
     description: null as string | null,
-    occurred_at: new Date().toISOString().slice(0, 10),
+    occurred_at: new Date().toLocaleDateString('en-CA'),
 });
 
 function openTransactionForm(): void {
@@ -130,7 +130,7 @@ function openTransactionForm(): void {
     transactionForm.to_account_id = props.accounts[1]?.id ?? null;
     transactionForm.amount = 0;
     transactionForm.description = null;
-    transactionForm.occurred_at = new Date().toISOString().slice(0, 10);
+    transactionForm.occurred_at = new Date().toLocaleDateString('en-CA');
 }
 
 function onTransactionTypeChange(): void {
