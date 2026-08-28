@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { Head, router, useForm } from '@inertiajs/vue3';
 import { ref } from 'vue';
-import { destroyAccount, storeAccount, updateAccount } from '@/actions/App/Http/Controllers/LedgerController';
+import { destroyAccount, storeAccount, storeTransaction, updateAccount } from '@/actions/App/Http/Controllers/LedgerController';
 
 type AccountType = 'checking' | 'savings' | 'credit' | 'cash' | 'investment';
 
@@ -105,6 +105,46 @@ function submitRow(): void {
     }
 }
 
+// ── Log a transaction ───────────────────────────────────────────────────
+
+type TransactionType = 'income' | 'expense' | 'transfer';
+
+const transactionFormOpen = ref(false);
+const transactionForm = useForm({
+    type: 'expense' as TransactionType,
+    account_id: null as number | null,
+    from_account_id: null as number | null,
+    to_account_id: null as number | null,
+    amount: 0,
+    description: null as string | null,
+    occurred_at: new Date().toISOString().slice(0, 10),
+});
+
+function openTransactionForm(): void {
+    transactionFormOpen.value = true;
+    expandedId.value = null;
+    transactionForm.clearErrors();
+    transactionForm.type = 'expense';
+    transactionForm.account_id = props.accounts[0]?.id ?? null;
+    transactionForm.from_account_id = props.accounts[0]?.id ?? null;
+    transactionForm.to_account_id = props.accounts[1]?.id ?? null;
+    transactionForm.amount = 0;
+    transactionForm.description = null;
+    transactionForm.occurred_at = new Date().toISOString().slice(0, 10);
+}
+
+function cancelTransactionForm(): void {
+    transactionFormOpen.value = false;
+    transactionForm.clearErrors();
+}
+
+function submitTransactionForm(): void {
+    transactionForm.post(storeTransaction().url, {
+        preserveScroll: true,
+        onSuccess: () => (transactionFormOpen.value = false),
+    });
+}
+
 function removeAccount(account: LedgerAccount): void {
     let message = `Delete ${account.name}? This also removes any transfer records linking it to your other accounts.`;
 
@@ -131,6 +171,92 @@ function removeAccount(account: LedgerAccount): void {
                 Ledger
             </h1>
             <p class="mt-1 text-[14px]" style="color: var(--hab-muted)">Your accounts and recent activity</p>
+        </div>
+
+        <!-- Log a transaction -->
+        <div
+            class="mb-5 rounded-[22px] p-6"
+            style="background: var(--hab-card-bg); border: 1px solid var(--hab-card-border); box-shadow: 0 8px 24px -20px var(--hab-card-shadow)"
+        >
+            <div class="flex items-center justify-between">
+                <h2 class="font-['Bricolage_Grotesque'] text-[18px] font-bold" style="color: var(--hab-ink)">Log a transaction</h2>
+                <button
+                    v-if="!transactionFormOpen"
+                    type="button"
+                    class="flex items-center gap-1 text-[13.5px] font-medium"
+                    style="color: var(--hab-accent)"
+                    :disabled="props.accounts.length === 0"
+                    @click="openTransactionForm"
+                >
+                    <span class="material-symbols-rounded" style="font-size: 18px">add</span>
+                    New entry
+                </button>
+            </div>
+
+            <p v-if="props.accounts.length === 0" class="mt-2 text-[14px]" style="color: var(--hab-muted)">
+                Add an account first to start logging transactions.
+            </p>
+
+            <div v-if="transactionFormOpen" class="mt-4 rounded-[12px] p-3" style="background: var(--hab-chip-fill)">
+                <div class="grid grid-cols-2 gap-2 sm:grid-cols-3">
+                    <div>
+                        <label class="mb-1 block text-[11px] font-medium" style="color: var(--hab-muted)">Type</label>
+                        <select v-model="transactionForm.type" class="w-full rounded-[8px] border px-2 py-1.5 text-[12.5px]" style="border-color: var(--hab-card-border); background: var(--hab-card-bg); color: var(--hab-ink)">
+                            <option value="income">Income</option>
+                            <option value="expense">Expense</option>
+                            <option value="transfer">Transfer</option>
+                        </select>
+                    </div>
+
+                    <div v-if="transactionForm.type !== 'transfer'">
+                        <label class="mb-1 block text-[11px] font-medium" style="color: var(--hab-muted)">Account</label>
+                        <select v-model.number="transactionForm.account_id" class="w-full rounded-[8px] border px-2 py-1.5 text-[12.5px]" style="border-color: var(--hab-card-border); background: var(--hab-card-bg); color: var(--hab-ink)">
+                            <option v-for="account in props.accounts" :key="account.id" :value="account.id">{{ account.name }}</option>
+                        </select>
+                    </div>
+
+                    <template v-else>
+                        <div>
+                            <label class="mb-1 block text-[11px] font-medium" style="color: var(--hab-muted)">From</label>
+                            <select v-model.number="transactionForm.from_account_id" class="w-full rounded-[8px] border px-2 py-1.5 text-[12.5px]" style="border-color: var(--hab-card-border); background: var(--hab-card-bg); color: var(--hab-ink)">
+                                <option v-for="account in props.accounts" :key="account.id" :value="account.id">{{ account.name }}</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label class="mb-1 block text-[11px] font-medium" style="color: var(--hab-muted)">To</label>
+                            <select v-model.number="transactionForm.to_account_id" class="w-full rounded-[8px] border px-2 py-1.5 text-[12.5px]" style="border-color: var(--hab-card-border); background: var(--hab-card-bg); color: var(--hab-ink)">
+                                <option v-for="account in props.accounts" :key="account.id" :value="account.id">{{ account.name }}</option>
+                            </select>
+                        </div>
+                    </template>
+
+                    <div>
+                        <label class="mb-1 block text-[11px] font-medium" style="color: var(--hab-muted)">Amount</label>
+                        <input v-model.number="transactionForm.amount" type="number" min="0.01" step="0.01" class="w-full rounded-[8px] border px-2 py-1.5 text-[12.5px]" style="border-color: var(--hab-card-border); background: var(--hab-card-bg); color: var(--hab-ink)" />
+                    </div>
+                    <div>
+                        <label class="mb-1 block text-[11px] font-medium" style="color: var(--hab-muted)">Date</label>
+                        <input v-model="transactionForm.occurred_at" type="date" class="w-full rounded-[8px] border px-2 py-1.5 text-[12.5px]" style="border-color: var(--hab-card-border); background: var(--hab-card-bg); color: var(--hab-ink)" />
+                    </div>
+                    <div>
+                        <label class="mb-1 block text-[11px] font-medium" style="color: var(--hab-muted)">Description (optional)</label>
+                        <input v-model="transactionForm.description" type="text" class="w-full rounded-[8px] border px-2 py-1.5 text-[12.5px]" style="border-color: var(--hab-card-border); background: var(--hab-card-bg); color: var(--hab-ink)" />
+                    </div>
+                </div>
+                <div class="mt-2 flex items-center gap-2">
+                    <button type="button" class="rounded-full px-3 py-1.5 text-[12px] font-semibold text-white disabled:opacity-50" style="background: var(--hab-accent)" :disabled="transactionForm.processing" @click="submitTransactionForm">
+                        Confirm
+                    </button>
+                    <button type="button" class="rounded-full px-3 py-1.5 text-[12px] font-medium" style="color: var(--hab-muted)" :disabled="transactionForm.processing" @click="cancelTransactionForm">
+                        Cancel
+                    </button>
+                </div>
+                <div v-if="transactionForm.errors.type" class="mt-2 text-[12px]" style="color: #c0512c">{{ transactionForm.errors.type }}</div>
+                <div v-if="transactionForm.errors.account_id" class="mt-2 text-[12px]" style="color: #c0512c">{{ transactionForm.errors.account_id }}</div>
+                <div v-if="transactionForm.errors.from_account_id" class="mt-2 text-[12px]" style="color: #c0512c">{{ transactionForm.errors.from_account_id }}</div>
+                <div v-if="transactionForm.errors.to_account_id" class="mt-2 text-[12px]" style="color: #c0512c">{{ transactionForm.errors.to_account_id }}</div>
+                <div v-if="transactionForm.errors.amount" class="mt-2 text-[12px]" style="color: #c0512c">{{ transactionForm.errors.amount }}</div>
+            </div>
         </div>
 
         <!-- Account list -->
