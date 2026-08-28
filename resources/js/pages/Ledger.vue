@@ -133,6 +133,18 @@ function openTransactionForm(): void {
     transactionForm.occurred_at = new Date().toISOString().slice(0, 10);
 }
 
+function onTransactionTypeChange(): void {
+    if (transactionForm.type === 'transfer') {
+        transactionForm.account_id = null;
+        transactionForm.from_account_id ??= props.accounts[0]?.id ?? null;
+        transactionForm.to_account_id ??= props.accounts[1]?.id ?? null;
+    } else {
+        transactionForm.account_id ??= props.accounts[0]?.id ?? null;
+        transactionForm.from_account_id = null;
+        transactionForm.to_account_id = null;
+    }
+}
+
 function cancelTransactionForm(): void {
     transactionFormOpen.value = false;
     transactionForm.clearErrors();
@@ -201,7 +213,7 @@ function removeAccount(account: LedgerAccount): void {
                 <div class="grid grid-cols-2 gap-2 sm:grid-cols-3">
                     <div>
                         <label class="mb-1 block text-[11px] font-medium" style="color: var(--hab-muted)">Type</label>
-                        <select v-model="transactionForm.type" class="w-full rounded-[8px] border px-2 py-1.5 text-[12.5px]" style="border-color: var(--hab-card-border); background: var(--hab-card-bg); color: var(--hab-ink)">
+                        <select v-model="transactionForm.type" class="w-full rounded-[8px] border px-2 py-1.5 text-[12.5px]" style="border-color: var(--hab-card-border); background: var(--hab-card-bg); color: var(--hab-ink)" @change="onTransactionTypeChange">
                             <option value="income">Income</option>
                             <option value="expense">Expense</option>
                             <option value="transfer">Transfer</option>

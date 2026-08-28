@@ -62,6 +62,12 @@ class LedgerController extends Controller
         DB::transaction(function () use ($account) {
             Debt::where('linked_account_id', $account->id)->delete();
             $account->delete();
+
+            Transaction::where('user_id', $account->user_id)
+                ->where('type', 'transfer')
+                ->whereNull('from_account_id')
+                ->whereNull('to_account_id')
+                ->delete();
         });
 
         return back();
@@ -76,9 +82,9 @@ class LedgerController extends Controller
             'account_id' => ['required_unless:type,transfer', 'nullable', 'integer', $ownedAccount],
             'from_account_id' => ['required_if:type,transfer', 'nullable', 'integer', 'different:to_account_id', $ownedAccount],
             'to_account_id' => ['required_if:type,transfer', 'nullable', 'integer', $ownedAccount],
-            'amount' => ['required', 'numeric', 'min:0.01'],
+            'amount' => ['required', 'numeric', 'min:0.01', 'max:99999999.99'],
             'description' => ['nullable', 'string', 'max:255'],
-            'occurred_at' => ['required', 'date'],
+            'occurred_at' => ['required', 'date_format:Y-m-d'],
         ]);
 
         $amount = (float) $validated['amount'];

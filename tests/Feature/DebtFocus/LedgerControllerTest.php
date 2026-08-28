@@ -278,3 +278,42 @@ test('transaction amount must be positive', function () {
         'occurred_at' => '2026-08-28',
     ])->assertSessionHasErrors('amount');
 });
+
+test('transaction amount cannot exceed the amount column\'s precision', function () {
+    $user = User::factory()->create();
+    $account = Account::factory()->for($user)->create();
+
+    $this->actingAs($user)->post('/ledger/transactions', [
+        'type' => 'income',
+        'account_id' => $account->id,
+        'amount' => 100000000,
+        'occurred_at' => '2026-08-28',
+    ])->assertSessionHasErrors('amount');
+});
+
+test('transaction date must be in Y-m-d format', function () {
+    $user = User::factory()->create();
+    $account = Account::factory()->for($user)->create();
+
+    $this->actingAs($user)->post('/ledger/transactions', [
+        'type' => 'income',
+        'account_id' => $account->id,
+        'amount' => 10,
+        'occurred_at' => 'next monday',
+    ])->assertSessionHasErrors('occurred_at');
+});
+
+test('deleting both accounts on a transfer removes the now-fully-orphaned transaction', function () {
+    $user = User::factory()->create();
+    $checking = Account::factory()->for($user)->create(['name' => 'Checking']);
+    $savings = Account::factory()->for($user)->create(['name' => 'Savings']);
+    (new LedgerService)->recordTransfer($checking, $savings, 100, 'Move to savings');
+    $transaction = Transaction::where('type', 'transfer')->firstOrFail();
+
+    $this->actingAs($user)->delete("/ledger/accounts/{$checking->id}")->assertRedirect();
+    expect(Transaction::find($transaction->id))->not->toBeNull();
+
+    $this->actingAs($user)->delete("/ledger/accounts/{$savings->id}")->assertRedirect();
+
+    expect(Transaction::find($transaction->id))->toBeNull();
+});
