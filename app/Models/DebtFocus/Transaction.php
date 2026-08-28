@@ -1,0 +1,58 @@
+<?php
+
+namespace App\Models\DebtFocus;
+
+use App\Models\User;
+use Database\Factories\DebtFocus\TransactionFactory;
+use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
+
+class Transaction extends Model
+{
+    /** @use HasFactory<TransactionFactory> */
+    use HasFactory;
+
+    protected $table = 'debt_focus_transactions';
+
+    protected $fillable = [
+        'user_id', 'type', 'account_id', 'from_account_id', 'to_account_id', 'amount', 'description', 'occurred_at',
+    ];
+
+    protected $casts = [
+        'amount' => 'decimal:2',
+        'occurred_at' => 'date',
+    ];
+
+    /**
+     * @return BelongsTo<User, $this>
+     */
+    public function user(): BelongsTo
+    {
+        return $this->belongsTo(User::class);
+    }
+
+    /**
+     * @return BelongsTo<Account, $this>
+     */
+    public function account(): BelongsTo
+    {
+        return $this->belongsTo(Account::class, 'account_id');
+    }
+
+    /**
+     * @return BelongsTo<Account, $this>
+     */
+    public function fromAccount(): BelongsTo
+    {
+        return $this->belongsTo(Account::class, 'from_account_id');
+    }
+
+    /**
+     * @return BelongsTo<Account, $this>
+     */
+    public function toAccount(): BelongsTo
+    {
+        return $this->belongsTo(Account::class, 'to_account_id');
+    }
+}
