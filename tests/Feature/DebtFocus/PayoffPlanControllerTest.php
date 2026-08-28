@@ -375,3 +375,72 @@ test('index exposes the user\'s liability accounts, with balance, for the debt-l
     expect(collect($liabilityAccounts)->pluck('name')->all())->toBe(['Visa']);
     expect((float) $liabilityAccounts[0]['balance'])->toBe(640.0);
 });
+
+test('a linked revolving debt shows spend vs payment for the current month', function () {
+    $user = User::factory()->create();
+    $card = Account::factory()->for($user)->liability()->create(['balance' => 500]);
+    $checking = Account::factory()->for($user)->create(['balance' => 1000]);
+    $debt = Debt::factory()->for($user)->create([
+        'debt_type' => 'revolving',
+        'linked_account_id' => $card->id,
+        'balance' => 500,
+    ]);
+    $ledger = new LedgerService;
+    $ledger->recordExpense($card, 150, 'Groceries', now());
+    $ledger->recordTransfer($checking, $card, 200, 'Card payment', now());
+
+    $response = $this->actingAs($user)->get('/payoff-plan')->assertOk();
+    $spendVsPayment = $response->viewData('page')['props']['debts'][0]['spend_vs_payment'];
+
+    expect($spendVsPayment['spent'])->toBe(150.0);
+    expect($spendVsPayment['paid'])->toBe(200.0);
+    expect($spendVsPayment['net'])->toBe(50.0);
+});
+
+test('spend vs payment excludes transactions from a previous month', function () {
+    $user = User::factory()->create();
+    $card = Account::factory()->for($user)->liability()->create();
+    $debt = Debt::factory()->for($user)->create(['debt_type' => 'revolving', 'linked_account_id' => $card->id]);
+    (new LedgerService)->recordExpense($card, 999, 'Old spend', now()->subMonthNoOverflow()->startOfMonth());
+
+    $response = $this->actingAs($user)->get('/payoff-plan')->assertOk();
+    $spendVsPayment = $response->viewData('page')['props']['debts'][0]['spend_vs_payment'];
+
+    expect($spendVsPayment['spent'])->toBe(0.0);
+    expect($spendVsPayment['paid'])->toBe(0.0);
+});
+
+test('an installment debt has no spend vs payment figure even if linked', function () {
+    $user = User::factory()->create();
+    $card = Account::factory()->for($user)->liability()->create();
+    Debt::factory()->for($user)->create(['debt_type' => 'installment', 'linked_account_id' => $card->id]);
+
+    $response = $this->actingAs($user)->get('/payoff-plan')->assertOk();
+
+    expect($response->viewData('page')['props']['debts'][0]['spend_vs_payment'])->toBeNull();
+});
+
+test('a revolving debt with no linked account has no spend vs payment figure', function () {
+    $user = User::factory()->create();
+    Debt::factory()->for($user)->create(['debt_type' => 'revolving', 'linked_account_id' => null]);
+
+    $response = $this->actingAs($user)->get('/payoff-plan')->assertOk();
+
+    expect($response->viewData('page')['props']['debts'][0]['spend_vs_payment'])->toBeNull();
+});
+
+test('spend vs payment only counts expenses and incoming transfers on the linked account, not payments made from it', function () {
+    $user = User::factory()->create();
+    $card = Account::factory()->for($user)->liability()->create();
+    $checking = Account::factory()->for($user)->create(['balance' => 1000]);
+    $debt = Debt::factory()->for($user)->create(['debt_type' => 'revolving', 'linked_account_id' => $card->id]);
+    $ledger = new LedgerService;
+    $ledger->recordIncome($checking, 50, 'Unrelated income', now());
+    $ledger->recordTransfer($card, $checking, 20, 'Refund routed elsewhere', now());
+
+    $response = $this->actingAs($user)->get('/payoff-plan')->assertOk();
+    $spendVsPayment = $response->viewData('page')['props']['debts'][0]['spend_vs_payment'];
+
+    expect($spendVsPayment['spent'])->toBe(0.0);
+    expect($spendVsPayment['paid'])->toBe(0.0);
+});

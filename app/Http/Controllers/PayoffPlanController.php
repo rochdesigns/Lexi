@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\DebtFocus\Account;
 use App\Models\DebtFocus\Debt;
 use App\Models\DebtFocus\Settings;
+use App\Models\DebtFocus\Transaction;
 use App\Services\DebtFocus\PayoffEngine;
 use Carbon\Carbon;
 use Illuminate\Http\RedirectResponse;
@@ -48,6 +49,7 @@ class PayoffPlanController extends Controller
             'linked_account_name' => $debt->linkedAccount?->name,
             'payoff_month' => $perDebt->get($debt->id)['payoffMonth'] ?? null,
             'total_interest' => $perDebt->get($debt->id)['totalInterest'] ?? null,
+            'spend_vs_payment' => $this->spendVsPayment($debt),
         ])->values();
 
         $liabilityAccounts = $user->debtFocusAccounts()->where('is_liability', true)->orderBy('name')->get()
@@ -181,6 +183,39 @@ class PayoffPlanController extends Controller
         $paid = max(0.0, $starting - (float) $debt->balance);
 
         return min(1.0, $paid / $starting);
+    }
+
+    /**
+     * @return array{spent: float, paid: float, net: float, period_label: string}|null
+     */
+    private function spendVsPayment(Debt $debt): ?array
+    {
+        if ($debt->debt_type !== 'revolving' || $debt->linked_account_id === null) {
+            return null;
+        }
+
+        $periodStart = Carbon::now()->startOfMonth()->toDateString();
+
+        $spent = (float) Transaction::query()
+            ->where('user_id', $debt->user_id)
+            ->where('type', 'expense')
+            ->where('account_id', $debt->linked_account_id)
+            ->where('occurred_at', '>=', $periodStart)
+            ->sum('amount');
+
+        $paid = (float) Transaction::query()
+            ->where('user_id', $debt->user_id)
+            ->where('type', 'transfer')
+            ->where('to_account_id', $debt->linked_account_id)
+            ->where('occurred_at', '>=', $periodStart)
+            ->sum('amount');
+
+        return [
+            'spent' => round($spent, 2),
+            'paid' => round($paid, 2),
+            'net' => round($paid - $spent, 2),
+            'period_label' => Carbon::now()->format('F Y'),
+        ];
     }
 
     /**
