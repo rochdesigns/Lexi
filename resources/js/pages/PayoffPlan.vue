@@ -12,6 +12,13 @@ import {
 
 type DebtType = 'revolving' | 'installment';
 
+type SpendVsPayment = {
+    spent: number;
+    paid: number;
+    net: number;
+    period_label: string;
+};
+
 type PayoffDebt = {
     id: number;
     name: string;
@@ -26,6 +33,7 @@ type PayoffDebt = {
     linked_account_name: string | null;
     payoff_month: number | null;
     total_interest: number | null;
+    spend_vs_payment: SpendVsPayment | null;
 };
 
 type LiabilityAccount = { id: number; name: string; balance: number };
@@ -380,6 +388,16 @@ function removeDebt(debt: PayoffDebt): void {
                                 class="h-full rounded-full"
                                 :style="{ background: 'var(--hab-accent)', width: `${Math.round(debt.percent_paid * 100)}%` }"
                             ></div>
+                        </div>
+                        <div
+                            v-if="debt.debt_type === 'revolving' && debt.spend_vs_payment !== null"
+                            class="mt-1.5 text-[11.5px]"
+                            style="color: var(--hab-muted)"
+                        >
+                            {{ formatMoney(debt.spend_vs_payment.paid) }} paid · {{ formatMoney(debt.spend_vs_payment.spent) }} spent this month →
+                            <span :style="{ color: debt.spend_vs_payment.net >= 0 ? 'var(--hab-accent)' : '#c0512c' }">
+                                net {{ formatMoney(debt.spend_vs_payment.net) }}
+                            </span>
                         </div>
                     </button>
                     <div class="shrink-0 text-right">
