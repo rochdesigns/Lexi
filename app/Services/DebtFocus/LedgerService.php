@@ -26,9 +26,9 @@ class LedgerService
         });
     }
 
-    public function recordExpense(Account $account, float $amount, ?string $description = null, ?CarbonInterface $occurredAt = null): Transaction
+    public function recordExpense(Account $account, float $amount, ?string $description = null, ?CarbonInterface $occurredAt = null, ?int $envelopeId = null): Transaction
     {
-        return DB::transaction(function () use ($account, $amount, $description, $occurredAt) {
+        return DB::transaction(function () use ($account, $amount, $description, $occurredAt, $envelopeId) {
             $this->applyEffect($account, $amount, positive: false);
 
             return Transaction::create([
@@ -38,6 +38,7 @@ class LedgerService
                 'amount' => $amount,
                 'description' => $description,
                 'occurred_at' => $occurredAt ?? now(),
+                'envelope_id' => $envelopeId,
             ]);
         });
     }

@@ -2,6 +2,7 @@
 
 use App\Models\DebtFocus\Account;
 use App\Models\DebtFocus\Debt;
+use App\Models\DebtFocus\Envelope;
 use App\Models\DebtFocus\Transaction;
 use App\Models\User;
 use App\Services\DebtFocus\LedgerService;
@@ -316,4 +317,52 @@ test('deleting both accounts on a transfer removes the now-fully-orphaned transa
     $this->actingAs($user)->delete("/ledger/accounts/{$savings->id}")->assertRedirect();
 
     expect(Transaction::find($transaction->id))->toBeNull();
+});
+
+test('logging an expense with an owned envelope tags the transaction', function () {
+    $user = User::factory()->create();
+    $account = Account::factory()->for($user)->create(['balance' => 100]);
+    $envelope = Envelope::factory()->for($user)->create();
+
+    $this->actingAs($user)->post('/ledger/transactions', [
+        'type' => 'expense', 'account_id' => $account->id, 'amount' => 20,
+        'occurred_at' => '2026-08-28', 'envelope_id' => $envelope->id,
+    ])->assertRedirect();
+
+    $transaction = Transaction::where('account_id', $account->id)->firstOrFail();
+    expect($transaction->envelope_id)->toBe($envelope->id);
+});
+
+test('cannot tag a transaction with another user\'s envelope', function () {
+    $owner = User::factory()->create();
+    $intruder = User::factory()->create();
+    $account = Account::factory()->for($intruder)->create(['balance' => 100]);
+    $envelope = Envelope::factory()->for($owner)->create();
+
+    $this->actingAs($intruder)->post('/ledger/transactions', [
+        'type' => 'expense', 'account_id' => $account->id, 'amount' => 20,
+        'occurred_at' => '2026-08-28', 'envelope_id' => $envelope->id,
+    ])->assertSessionHasErrors('envelope_id');
+});
+
+test('envelope_id is rejected on income and transfer transactions', function () {
+    $user = User::factory()->create();
+    $account = Account::factory()->for($user)->create(['balance' => 100]);
+    $envelope = Envelope::factory()->for($user)->create();
+
+    $this->actingAs($user)->post('/ledger/transactions', [
+        'type' => 'income', 'account_id' => $account->id, 'amount' => 20,
+        'occurred_at' => '2026-08-28', 'envelope_id' => $envelope->id,
+    ])->assertSessionHasErrors('envelope_id');
+});
+
+test('the ledger page exposes the active envelope list', function () {
+    $user = User::factory()->create();
+    Envelope::factory()->for($user)->create(['name' => 'Groceries', 'active' => true]);
+    Envelope::factory()->for($user)->create(['name' => 'Old one', 'active' => false]);
+
+    $response = $this->actingAs($user)->get('/ledger')->assertOk();
+    $envelopes = collect($response->viewData('page')['props']['envelopes'])->pluck('name');
+
+    expect($envelopes->all())->toBe(['Groceries']);
 });
