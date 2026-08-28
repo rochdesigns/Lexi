@@ -125,6 +125,21 @@ class PayoffEngine
     }
 
     /**
+     * @param  Collection<int, Debt>  $debts
+     * @return Collection<int, Debt>
+     */
+    public function orderByPriority(Collection $debts, string $strategy): Collection
+    {
+        $ordered = $debts->values()->all();
+
+        usort($ordered, fn (Debt $a, Debt $b) => $strategy === 'snowball'
+            ? [(float) $a->balance, $a->id] <=> [(float) $b->balance, $b->id]
+            : [(float) ($b->monthly_rate ?? -1), $a->id] <=> [(float) ($a->monthly_rate ?? -1), $b->id]);
+
+        return collect($ordered);
+    }
+
+    /**
      * @param  Collection<int, Debt>  $active
      * @return array<int, array{balance: float, minimumPayment: float, monthlyRate: float, totalInterest: float|null, payoffMonth: int|null}>
      */

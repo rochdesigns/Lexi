@@ -10,7 +10,6 @@ use App\Services\DebtFocus\PayoffEngine;
 use Carbon\Carbon;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
-use Illuminate\Support\Collection;
 use Illuminate\Validation\Rule;
 use Inertia\Inertia;
 use Inertia\Response;
@@ -33,7 +32,7 @@ class PayoffPlanController extends Controller
         $result = $engine->simulate($debts, $settings->strategy, (float) $settings->extra_monthly);
         $perDebt = collect($result['perDebt'])->keyBy('debtId');
 
-        $ordered = $this->orderByPriority($debts, $settings->strategy);
+        $ordered = $engine->orderByPriority($debts, $settings->strategy);
 
         $debtProps = $ordered->map(fn (Debt $debt) => [
             'id' => $debt->id,
@@ -297,20 +296,5 @@ class PayoffPlanController extends Controller
             'status' => $status,
             'deltaAmount' => round(abs($delta), 2),
         ];
-    }
-
-    /**
-     * @param  \Illuminate\Database\Eloquent\Collection<int, Debt>  $debts
-     * @return Collection<int, Debt>
-     */
-    private function orderByPriority($debts, string $strategy)
-    {
-        $ordered = $debts->values()->all();
-
-        usort($ordered, fn (Debt $a, Debt $b) => $strategy === 'snowball'
-            ? [(float) $a->balance, $a->id] <=> [(float) $b->balance, $b->id]
-            : [(float) ($b->monthly_rate ?? -1), $a->id] <=> [(float) ($a->monthly_rate ?? -1), $b->id]);
-
-        return collect($ordered);
     }
 }

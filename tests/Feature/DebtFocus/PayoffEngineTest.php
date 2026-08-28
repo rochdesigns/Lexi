@@ -140,3 +140,23 @@ test('a negative extra monthly payment throws', function () {
 
     (new PayoffEngine)->simulate(collect([$debt]), 'avalanche', extraMonthly: -50);
 })->throws(InvalidArgumentException::class);
+
+test('orderByPriority sorts by highest monthly rate first under avalanche', function () {
+    $user = User::factory()->create();
+    $lowRate = Debt::factory()->for($user)->create(['name' => 'Low rate', 'monthly_rate' => 5]);
+    $highRate = Debt::factory()->for($user)->create(['name' => 'High rate', 'monthly_rate' => 20]);
+
+    $ordered = (new PayoffEngine)->orderByPriority(collect([$lowRate, $highRate]), 'avalanche');
+
+    expect($ordered->pluck('name')->all())->toBe(['High rate', 'Low rate']);
+});
+
+test('orderByPriority sorts by lowest balance first under snowball', function () {
+    $user = User::factory()->create();
+    $bigBalance = Debt::factory()->for($user)->create(['name' => 'Big balance', 'balance' => 5000]);
+    $smallBalance = Debt::factory()->for($user)->create(['name' => 'Small balance', 'balance' => 500]);
+
+    $ordered = (new PayoffEngine)->orderByPriority(collect([$bigBalance, $smallBalance]), 'snowball');
+
+    expect($ordered->pluck('name')->all())->toBe(['Small balance', 'Big balance']);
+});
