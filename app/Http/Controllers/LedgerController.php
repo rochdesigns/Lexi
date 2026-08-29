@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\DebtFocus\Account;
 use App\Models\DebtFocus\Debt;
+use App\Models\DebtFocus\Envelope;
 use App\Models\DebtFocus\Transaction;
 use App\Services\DebtFocus\LedgerService;
 use Carbon\Carbon;
@@ -32,8 +33,13 @@ class LedgerController extends Controller
             'linked_debt_names' => Debt::where('linked_account_id', $account->id)->pluck('name')->all(),
         ])->values();
 
+        $envelopes = $request->user()->debtFocusEnvelopes()->where('active', true)->orderBy('name')->get()
+            ->map(fn (Envelope $envelope) => ['id' => $envelope->id, 'name' => $envelope->name])
+            ->values();
+
         return Inertia::render('Ledger', [
             'accounts' => $accountProps,
+            'envelopes' => $envelopes,
         ]);
     }
 
@@ -82,6 +88,7 @@ class LedgerController extends Controller
             'account_id' => ['required_unless:type,transfer', 'nullable', 'integer', $ownedAccount],
             'from_account_id' => ['required_if:type,transfer', 'nullable', 'integer', 'different:to_account_id', $ownedAccount],
             'to_account_id' => ['required_if:type,transfer', 'nullable', 'integer', $ownedAccount],
+            'envelope_id' => ['nullable', 'integer', 'prohibited_unless:type,expense', $this->envelopeOwnershipRule($request->user()->id)],
             'amount' => ['required', 'numeric', 'min:0.01', 'max:99999999.99'],
             'description' => ['nullable', 'string', 'max:255'],
             'occurred_at' => ['required', 'date_format:Y-m-d'],
@@ -93,7 +100,7 @@ class LedgerController extends Controller
 
         match ($validated['type']) {
             'income' => $ledger->recordIncome(Account::findOrFail($validated['account_id']), $amount, $description, $occurredAt),
-            'expense' => $ledger->recordExpense(Account::findOrFail($validated['account_id']), $amount, $description, $occurredAt),
+            'expense' => $ledger->recordExpense(Account::findOrFail($validated['account_id']), $amount, $description, $occurredAt, $validated['envelope_id'] ?? null),
             'transfer' => $ledger->recordTransfer(Account::findOrFail($validated['from_account_id']), Account::findOrFail($validated['to_account_id']), $amount, $description, $occurredAt),
         };
 
@@ -156,5 +163,10 @@ class LedgerController extends Controller
     private function accountOwnershipRule(int $userId): Exists
     {
         return Rule::exists('debt_focus_accounts', 'id')->where('user_id', $userId);
+    }
+
+    private function envelopeOwnershipRule(int $userId): Exists
+    {
+        return Rule::exists('debt_focus_envelopes', 'id')->where('user_id', $userId);
     }
 }

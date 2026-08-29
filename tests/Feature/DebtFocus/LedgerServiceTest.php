@@ -1,6 +1,7 @@
 <?php
 
 use App\Models\DebtFocus\Account;
+use App\Models\DebtFocus\Envelope;
 use App\Models\User;
 use App\Services\DebtFocus\LedgerService;
 
@@ -99,4 +100,21 @@ test('recordTransfer does not mutate either balance when accounts belong to diff
 
     expect((float) $from->fresh()->balance)->toBe(500.0);
     expect((float) $to->fresh()->balance)->toBe(200.0);
+});
+
+test('recordExpense tags the transaction with an envelope id when given one', function () {
+    $account = Account::factory()->create(['balance' => 200]);
+    $envelope = Envelope::factory()->create(['user_id' => $account->user_id]);
+
+    $transaction = (new LedgerService)->recordExpense($account, 30, 'Groceries', null, $envelope->id);
+
+    expect($transaction->envelope_id)->toBe($envelope->id);
+});
+
+test('recordExpense leaves envelope_id null when none is given', function () {
+    $account = Account::factory()->create(['balance' => 200]);
+
+    $transaction = (new LedgerService)->recordExpense($account, 30, 'Groceries');
+
+    expect($transaction->envelope_id)->toBeNull();
 });

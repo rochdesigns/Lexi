@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\AccountController;
 use App\Http\Controllers\BudgetCategoryController;
+use App\Http\Controllers\BudgetController;
 use App\Http\Controllers\CalendarController;
 use App\Http\Controllers\CashflowController;
 use App\Http\Controllers\DebtController;
@@ -87,6 +88,17 @@ Route::middleware(['auth', 'verified'])->group(function (): void {
     Route::post('/payoff-plan/debts/{debt}/link', [PayoffPlanController::class, 'linkDebt'])->name('payoff-plan.debts.link');
     Route::post('/payoff-plan/debts/{debt}/unlink', [PayoffPlanController::class, 'unlinkDebt'])->name('payoff-plan.debts.unlink');
     Route::patch('/payoff-plan/settings', [PayoffPlanController::class, 'updateSettings'])->name('payoff-plan.settings.update');
+    Route::get('/budget', [BudgetController::class, 'index'])->name('budget.index');
+    Route::post('/budget/bills', [BudgetController::class, 'storeBill'])->name('budget.bills.store');
+    Route::patch('/budget/bills/{bill}', [BudgetController::class, 'updateBill'])->name('budget.bills.update');
+    Route::delete('/budget/bills/{bill}', [BudgetController::class, 'destroyBill'])->name('budget.bills.destroy');
+    Route::post('/budget/envelopes', [BudgetController::class, 'storeEnvelope'])->name('budget.envelopes.store');
+    Route::patch('/budget/envelopes/{envelope}', [BudgetController::class, 'updateEnvelope'])->name('budget.envelopes.update');
+    Route::delete('/budget/envelopes/{envelope}', [BudgetController::class, 'destroyEnvelope'])->name('budget.envelopes.destroy');
+    Route::post('/budget/bill-periods/{billPeriod}/pay', [BudgetController::class, 'markBillPaid'])->name('budget.bill-periods.pay');
+    Route::post('/budget/envelope-periods/{envelopePeriod}/sweep/confirm', [BudgetController::class, 'confirmSweep'])->name('budget.envelope-periods.sweep.confirm');
+    Route::post('/budget/envelope-periods/{envelopePeriod}/sweep/decline', [BudgetController::class, 'declineSweep'])->name('budget.envelope-periods.sweep.decline');
+    Route::post('/budget/extra-payment/confirm', [BudgetController::class, 'confirmExtraPayment'])->name('budget.extra-payment.confirm');
     Route::inertia('/photos', 'Stub')->name('photos');
 
     // Legacy redirect — keeps old dashboard links working
