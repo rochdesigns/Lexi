@@ -246,27 +246,29 @@ function confirmExtraPaymentNow(): void {
         </div>
 
         <!-- Sweep nudges -->
-        <div v-for="candidate in props.sweepCandidates" :key="candidate.id" class="mb-4 rounded-[22px] p-5"
-            style="background: var(--hab-card-bg); border: 1px solid var(--hab-card-border); box-shadow: 0 8px 24px -20px var(--hab-card-shadow)">
-            <p class="text-[14px]" style="color: var(--hab-ink)">
-                You freed {{ formatMoney(candidate.freed_amount) }} in {{ candidate.envelope_name }} — send it to
-                <span class="font-semibold">{{ props.priorityDebt?.name }}</span>?
-            </p>
-            <div class="mt-2 flex items-center gap-2">
-                <select v-model.number="sweepAccountId" class="rounded-[8px] border px-2 py-1.5 text-[12.5px]"
-                    style="border-color: var(--hab-card-border); background: var(--hab-card-bg); color: var(--hab-ink)">
-                    <option v-for="account in props.assetAccounts" :key="account.id" :value="account.id">{{ account.name }}</option>
-                </select>
-                <button type="button" class="rounded-full px-3 py-1.5 text-[12px] font-semibold text-white" style="background: var(--hab-accent)"
-                    @click="confirmSweepFor(candidate)">
-                    Send it
-                </button>
-                <button type="button" class="rounded-full px-3 py-1.5 text-[12px] font-medium" style="color: var(--hab-muted)"
-                    @click="declineSweepFor(candidate)">
-                    Keep in envelope
-                </button>
+        <template v-if="props.priorityDebt">
+            <div v-for="candidate in props.sweepCandidates" :key="candidate.id" class="mb-4 rounded-[22px] p-5"
+                style="background: var(--hab-card-bg); border: 1px solid var(--hab-card-border); box-shadow: 0 8px 24px -20px var(--hab-card-shadow)">
+                <p class="text-[14px]" style="color: var(--hab-ink)">
+                    You freed {{ formatMoney(candidate.freed_amount) }} in {{ candidate.envelope_name }} — send it to
+                    <span class="font-semibold">{{ props.priorityDebt?.name }}</span>?
+                </p>
+                <div class="mt-2 flex items-center gap-2">
+                    <select v-model.number="sweepAccountId" class="rounded-[8px] border px-2 py-1.5 text-[12.5px]"
+                        style="border-color: var(--hab-card-border); background: var(--hab-card-bg); color: var(--hab-ink)">
+                        <option v-for="account in props.assetAccounts" :key="account.id" :value="account.id">{{ account.name }}</option>
+                    </select>
+                    <button type="button" class="rounded-full px-3 py-1.5 text-[12px] font-semibold text-white" style="background: var(--hab-accent)"
+                        @click="confirmSweepFor(candidate)">
+                        Send it
+                    </button>
+                    <button type="button" class="rounded-full px-3 py-1.5 text-[12px] font-medium" style="color: var(--hab-muted)"
+                        @click="declineSweepFor(candidate)">
+                        Keep in envelope
+                    </button>
+                </div>
             </div>
-        </div>
+        </template>
 
         <!-- Debt minimums -->
         <div class="mb-5 rounded-[22px] p-6"

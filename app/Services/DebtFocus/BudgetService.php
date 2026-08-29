@@ -32,9 +32,11 @@ class BudgetService
                 ['target' => $envelope->default_target],
             ));
 
-        $sweepCandidates = $isFirstViewOfMonth
-            ? $this->detectSweepCandidates($user, $year, $month)
-            : collect();
+        if ($isFirstViewOfMonth) {
+            $this->detectSweepCandidates($user, $year, $month);
+        }
+
+        $sweepCandidates = $this->pendingSweepCandidates($user, $year, $month);
 
         return ['bills' => $bills, 'envelopes' => $envelopes, 'sweepCandidates' => $sweepCandidates];
     }
@@ -46,7 +48,8 @@ class BudgetService
         return (float) Transaction::query()
             ->where('envelope_id', $period->envelope_id)
             ->where('type', 'expense')
-            ->whereBetween('occurred_at', [$start, $end])
+            ->whereDate('occurred_at', '>=', $start)
+            ->whereDate('occurred_at', '<=', $end)
             ->sum('amount');
     }
 
@@ -74,9 +77,12 @@ class BudgetService
     }
 
     /**
-     * @return Collection<int, EnvelopePeriod>
+     * Stamps sweep_offered_at on any newly-underspent prior-month envelope period
+     * that hasn't been offered yet. Does not return anything — pendingSweepCandidates()
+     * is the single source of truth for what's currently shown to the user, whether
+     * newly detected this call or still awaiting an answer from an earlier visit.
      */
-    private function detectSweepCandidates(User $user, int $year, int $month): Collection
+    private function detectSweepCandidates(User $user, int $year, int $month): void
     {
         [$prevYear, $prevMonth] = $month === 1 ? [$year - 1, 12] : [$year, $month - 1];
 
@@ -85,10 +91,21 @@ class BudgetService
             ->whereNull('sweep_offered_at')
             ->get();
 
-        $underspent = $candidates->filter(fn (EnvelopePeriod $period) => (float) $period->target > $this->spentForPeriod($period));
+        $candidates->filter(fn (EnvelopePeriod $period) => (float) $period->target > $this->spentForPeriod($period))
+            ->each(fn (EnvelopePeriod $period) => $period->update(['sweep_offered_at' => now()]));
+    }
 
-        $underspent->each(fn (EnvelopePeriod $period) => $period->update(['sweep_offered_at' => now()]));
+    /**
+     * @return Collection<int, EnvelopePeriod>
+     */
+    private function pendingSweepCandidates(User $user, int $year, int $month): Collection
+    {
+        [$prevYear, $prevMonth] = $month === 1 ? [$year - 1, 12] : [$year, $month - 1];
 
-        return $underspent->values();
+        return EnvelopePeriod::whereIn('envelope_id', $user->debtFocusEnvelopes()->pluck('id'))
+            ->where('year', $prevYear)->where('month', $prevMonth)
+            ->whereNotNull('sweep_offered_at')
+            ->whereNull('sweep_accepted')
+            ->get();
     }
 }

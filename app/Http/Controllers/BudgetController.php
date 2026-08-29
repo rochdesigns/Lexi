@@ -28,8 +28,14 @@ class BudgetController extends Controller
     public function index(Request $request, BudgetService $budget, PayoffEngine $engine): Response
     {
         $user = $request->user();
-        $year = (int) $request->integer('year', (int) now()->year);
-        $month = (int) $request->integer('month', (int) now()->month);
+
+        $validated = $request->validate([
+            'year' => ['nullable', 'integer', 'min:2000', 'max:2100'],
+            'month' => ['nullable', 'integer', 'min:1', 'max:12'],
+        ]);
+
+        $year = (int) ($validated['year'] ?? now()->year);
+        $month = (int) ($validated['month'] ?? now()->month);
 
         $period = $budget->periodFor($user, $year, $month);
 
@@ -170,6 +176,7 @@ class BudgetController extends Controller
     {
         abort_if($envelopePeriod->envelope->user_id !== $request->user()->id, 403);
         abort_if($envelopePeriod->sweep_accepted !== null, 422, 'This sweep has already been answered.');
+        abort_if($envelopePeriod->sweep_offered_at === null, 422, 'This envelope was never offered for a sweep.');
 
         $user = $request->user();
         $validated = $request->validate([
@@ -258,7 +265,7 @@ class BudgetController extends Controller
             }
         }
 
-        return $debts;
+        return $debts->filter(fn (Debt $debt) => (float) $debt->balance > 0)->values();
     }
 
     /**
@@ -282,7 +289,8 @@ class BudgetController extends Controller
         return (float) Transaction::query()
             ->where('user_id', $user->id)
             ->where('type', 'income')
-            ->whereBetween('occurred_at', [$start, $end])
+            ->whereDate('occurred_at', '>=', $start)
+            ->whereDate('occurred_at', '<=', $end)
             ->sum('amount');
     }
 

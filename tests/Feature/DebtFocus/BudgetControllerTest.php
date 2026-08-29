@@ -10,6 +10,7 @@ use App\Models\DebtFocus\Settings;
 use App\Models\DebtFocus\Transaction;
 use App\Models\User;
 use App\Services\DebtFocus\LedgerService;
+use Carbon\Carbon;
 
 test('guests are redirected to login', function () {
     $this->get('/budget')->assertRedirect('/login');
@@ -339,7 +340,7 @@ test('confirming a sweep with a liability account as the source is rejected', fu
     $card = Account::factory()->for($user)->liability()->create();
     $debt = Debt::factory()->for($user)->create(['linked_account_id' => $card->id]);
     $envelope = Envelope::factory()->for($user)->create(['default_target' => 100]);
-    $period = EnvelopePeriod::factory()->for($envelope)->create(['target' => 100]);
+    $period = EnvelopePeriod::factory()->for($envelope)->create(['target' => 100, 'sweep_offered_at' => now()]);
 
     $this->actingAs($user)->post("/budget/envelope-periods/{$period->id}/sweep/confirm", [
         'from_account_id' => $card->id,
@@ -351,7 +352,7 @@ test('confirming a sweep with no linked debt anywhere is rejected', function () 
     Settings::factory()->for($user)->create(['strategy' => 'avalanche']);
     $checking = Account::factory()->for($user)->create();
     $envelope = Envelope::factory()->for($user)->create(['default_target' => 100]);
-    $period = EnvelopePeriod::factory()->for($envelope)->create(['target' => 100]);
+    $period = EnvelopePeriod::factory()->for($envelope)->create(['target' => 100, 'sweep_offered_at' => now()]);
 
     $this->actingAs($user)->post("/budget/envelope-periods/{$period->id}/sweep/confirm", [
         'from_account_id' => $checking->id,
@@ -437,4 +438,70 @@ test('confirming the extra payment with nothing leftover is rejected', function 
     $this->actingAs($user)->post('/budget/extra-payment/confirm', [
         'from_account_id' => $checking->id, 'year' => 2026, 'month' => 8,
     ])->assertStatus(422);
+});
+
+test('a paid-off debt is excluded from minimums and is never the priority target', function () {
+    $user = User::factory()->create();
+    Settings::factory()->for($user)->create(['strategy' => 'avalanche']);
+    $paidOffAccount = Account::factory()->for($user)->liability()->create(['balance' => 0]);
+    Debt::factory()->for($user)->create(['name' => 'Paid off', 'balance' => 0, 'linked_account_id' => $paidOffAccount->id, 'monthly_rate' => 30]);
+    $liveAccount = Account::factory()->for($user)->liability()->create(['balance' => 800]);
+    $live = Debt::factory()->for($user)->create(['name' => 'Still owed', 'balance' => 800, 'linked_account_id' => $liveAccount->id, 'monthly_rate' => 10]);
+
+    $response = $this->actingAs($user)->get('/budget')->assertOk();
+    $props = $response->viewData('page')['props'];
+
+    expect(collect($props['debtMinimums'])->pluck('name')->all())->toBe(['Still owed']);
+    expect($props['priorityDebt']['id'])->toBe($live->id);
+});
+
+test('income dated the last day of the month counts toward that period leftover', function () {
+    $user = User::factory()->create();
+    $checking = Account::factory()->for($user)->create();
+    (new LedgerService)->recordIncome($checking, 500, 'Late paycheck', Carbon::create(2026, 8, 31));
+
+    $response = $this->actingAs($user)->get('/budget?year=2026&month=8')->assertOk();
+
+    expect((float) $response->viewData('page')['props']['leftover'])->toBe(500.0);
+});
+
+test('cannot confirm another user\'s sweep', function () {
+    $owner = User::factory()->create();
+    $intruder = User::factory()->create();
+    $envelope = Envelope::factory()->for($owner)->create();
+    $period = EnvelopePeriod::factory()->for($envelope)->create(['sweep_offered_at' => now()]);
+    $account = Account::factory()->for($intruder)->create();
+
+    $this->actingAs($intruder)->post("/budget/envelope-periods/{$period->id}/sweep/confirm", [
+        'from_account_id' => $account->id,
+    ])->assertForbidden();
+});
+
+test('cannot decline another user\'s sweep', function () {
+    $owner = User::factory()->create();
+    $intruder = User::factory()->create();
+    $envelope = Envelope::factory()->for($owner)->create();
+    $period = EnvelopePeriod::factory()->for($envelope)->create();
+
+    $this->actingAs($intruder)->post("/budget/envelope-periods/{$period->id}/sweep/decline")->assertForbidden();
+});
+
+test('cannot confirm a sweep for an envelope that was never offered one', function () {
+    $user = User::factory()->create();
+    Settings::factory()->for($user)->create(['strategy' => 'avalanche']);
+    $checking = Account::factory()->for($user)->create();
+    $card = Account::factory()->for($user)->liability()->create();
+    Debt::factory()->for($user)->create(['linked_account_id' => $card->id]);
+    $envelope = Envelope::factory()->for($user)->create(['default_target' => 100]);
+    $period = EnvelopePeriod::factory()->for($envelope)->create(['target' => 100, 'sweep_offered_at' => null]);
+
+    $this->actingAs($user)->post("/budget/envelope-periods/{$period->id}/sweep/confirm", [
+        'from_account_id' => $checking->id,
+    ])->assertStatus(422);
+});
+
+test('rejects an out-of-range month on the budget page', function () {
+    $user = User::factory()->create();
+
+    $this->actingAs($user)->get('/budget?year=2026&month=13')->assertSessionHasErrors('month');
 });

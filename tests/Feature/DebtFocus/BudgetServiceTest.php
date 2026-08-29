@@ -8,6 +8,7 @@ use App\Models\DebtFocus\EnvelopePeriod;
 use App\Models\User;
 use App\Services\DebtFocus\BudgetService;
 use App\Services\DebtFocus\LedgerService;
+use Carbon\Carbon;
 
 test('periodFor lazily creates a bill period snapshotting the template amount', function () {
     $user = User::factory()->create();
@@ -68,6 +69,18 @@ test('spentForPeriod sums expense transactions tagged to the envelope within the
     expect($spent)->toBe(50.0);
 });
 
+test('spentForPeriod includes an expense dated the last day of the month', function () {
+    $user = User::factory()->create();
+    $account = Account::factory()->for($user)->create(['balance' => 1000]);
+    $envelope = Envelope::factory()->for($user)->create();
+    $period = EnvelopePeriod::factory()->for($envelope)->create(['year' => 2026, 'month' => 8]);
+    (new LedgerService)->recordExpense($account, 25, 'Last day', Carbon::create(2026, 8, 31), $envelope->id);
+
+    $spent = (new BudgetService)->spentForPeriod($period);
+
+    expect($spent)->toBe(25.0);
+});
+
 test('opening a new month offers a sweep for an underspent, unoffered prior-month envelope', function () {
     $user = User::factory()->create();
     $account = Account::factory()->for($user)->create(['balance' => 1000]);
@@ -94,27 +107,45 @@ test('an envelope that was fully spent is not offered as a sweep candidate', fun
     expect($period['sweepCandidates'])->toHaveCount(0);
 });
 
-test('an already-offered sweep is not offered again on a later visit', function () {
+test('an already-offered but still-unanswered sweep keeps appearing on later visits', function () {
     $user = User::factory()->create();
     $envelope = Envelope::factory()->for($user)->create(['default_target' => 100]);
     EnvelopePeriod::factory()->for($envelope)->create(['year' => 2026, 'month' => 7, 'target' => 100, 'sweep_offered_at' => now()]);
 
     $period = (new BudgetService)->periodFor($user, 2026, 8);
 
-    expect($period['sweepCandidates'])->toHaveCount(0);
+    expect($period['sweepCandidates'])->toHaveCount(1);
 });
 
-test('revisiting the same month does not re-run sweep detection', function () {
+test('revisiting the same month does not re-run sweep detection or re-stamp the offer', function () {
     $user = User::factory()->create();
     $account = Account::factory()->for($user)->create(['balance' => 1000]);
     $envelope = Envelope::factory()->for($user)->create(['default_target' => 100]);
-    EnvelopePeriod::factory()->for($envelope)->create(['year' => 2026, 'month' => 7, 'target' => 100]);
+    $priorPeriod = EnvelopePeriod::factory()->for($envelope)->create(['year' => 2026, 'month' => 7, 'target' => 100]);
     (new LedgerService)->recordExpense($account, 40, 'Groceries', now()->setDate(2026, 7, 10), $envelope->id);
 
-    (new BudgetService)->periodFor($user, 2026, 8);
-    $second = (new BudgetService)->periodFor($user, 2026, 8);
+    $first = (new BudgetService)->periodFor($user, 2026, 8);
+    $firstOfferedAt = $priorPeriod->fresh()->sweep_offered_at;
 
-    expect($second['sweepCandidates'])->toHaveCount(0);
+    $second = (new BudgetService)->periodFor($user, 2026, 8);
+    $secondOfferedAt = $priorPeriod->fresh()->sweep_offered_at;
+
+    expect($first['sweepCandidates'])->toHaveCount(1);
+    expect($second['sweepCandidates'])->toHaveCount(1);
+    expect($secondOfferedAt->equalTo($firstOfferedAt))->toBeTrue();
+});
+
+test('a sweep candidate stops appearing once it has been answered', function () {
+    $user = User::factory()->create();
+    $envelope = Envelope::factory()->for($user)->create(['default_target' => 100]);
+    EnvelopePeriod::factory()->for($envelope)->create([
+        'year' => 2026, 'month' => 7, 'target' => 100,
+        'sweep_offered_at' => now(), 'sweep_accepted' => false,
+    ]);
+
+    $period = (new BudgetService)->periodFor($user, 2026, 8);
+
+    expect($period['sweepCandidates'])->toHaveCount(0);
 });
 
 test('periodBounds returns the first and last date of the given month', function () {
