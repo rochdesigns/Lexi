@@ -2,6 +2,7 @@
 import { Head, Link, useForm, usePage } from '@inertiajs/vue3';
 import { computed, ref } from 'vue';
 import { pay as payRecurringBill } from '@/actions/App/Http/Controllers/RecurringBillController';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 
 type Cycle = { start: string; end: string; label: string };
 
@@ -65,6 +66,66 @@ function formatMoney(n: number): string {
     return n < 0 ? `-${formatted}` : formatted;
 }
 
+// ── This cycle's breakdown (donut) ──────────────────────────────────────
+type BreakdownItem = { key: string; label: string; value: number; color: string };
+type DonutSegment = BreakdownItem & { start: number; end: number; percent: number };
+
+const breakdownItems = computed<BreakdownItem[]>(() => [
+    { key: 'debt', label: 'Debt', value: props.debtPaid, color: '#2a78d6' },
+    { key: 'monthlyBills', label: 'Monthly bills', value: props.totalBillsPerCycle, color: '#eb6834' },
+    { key: 'annualBills', label: 'Annual bills (set asides)', value: props.setAsidesHeld, color: '#1baf7a' },
+    { key: 'everyday', label: 'Everyday expenses', value: props.everydayExpenses, color: '#eda100' },
+]);
+
+const breakdownTotal = computed(() => breakdownItems.value.reduce((sum, item) => sum + item.value, 0));
+
+const donutSegments = computed<DonutSegment[]>(() => {
+    const total = breakdownTotal.value;
+
+    if (total <= 0) {
+        return [];
+    }
+
+    const items = breakdownItems.value.filter((item) => item.value > 0);
+    const gapDeg = items.length > 1 ? 3 : 0;
+    const usable = 360 - gapDeg * items.length;
+
+    let angle = 0;
+
+    return items.map((item) => {
+        const span = Math.min((item.value / total) * usable, 359.99);
+        const start = angle;
+        const end = start + span;
+        angle = end + gapDeg;
+
+        return { ...item, start, end, percent: (item.value / total) * 100 };
+    });
+});
+
+const breakdownAriaLabel = computed(() =>
+    `Breakdown of ${formatMoney(breakdownTotal.value)} this cycle: ${breakdownItems.value
+        .map((item) => `${item.label} ${formatMoney(item.value)}`)
+        .join(', ')}`,
+);
+
+function polarToCartesian(cx: number, cy: number, r: number, angleDeg: number) {
+    const rad = ((angleDeg - 90) * Math.PI) / 180;
+
+    return { x: cx + r * Math.cos(rad), y: cy + r * Math.sin(rad) };
+}
+
+function arcPath(cx: number, cy: number, r: number, start: number, end: number): string {
+    const startPoint = polarToCartesian(cx, cy, r, end);
+    const endPoint = polarToCartesian(cx, cy, r, start);
+    const largeArcFlag = end - start <= 180 ? 0 : 1;
+
+    return `M ${startPoint.x} ${startPoint.y} A ${r} ${r} 0 ${largeArcFlag} 0 ${endPoint.x} ${endPoint.y}`;
+}
+
+function percentOf(value: number): number {
+    return breakdownTotal.value > 0 ? Math.round((value / breakdownTotal.value) * 100) : 0;
+}
+
 // ── Mark paid (inline, recurring bills only) ────────────────────────────────
 
 const payingBillId = ref<number | null>(null);
@@ -77,7 +138,7 @@ const payForm = useForm({
 });
 
 function today(): string {
-    return new Date().toISOString().slice(0, 10);
+    return new Date().toLocaleDateString('en-CA');
 }
 
 function openPayRow(bill: UpcomingBill): void {
@@ -108,6 +169,7 @@ function submitPayRow(bill: UpcomingBill): void {
 <template>
     <Head title="Money" />
 
+    <TooltipProvider :delay-duration="400">
     <div class="mx-auto w-full max-w-[1180px] px-4 sm:px-6 lg:px-[30px] pb-[46px] pt-6">
 
         <!-- Header -->
@@ -160,7 +222,17 @@ function submitPayRow(bill: UpcomingBill): void {
                         class="rounded-[22px] p-5"
                         style="background: var(--hab-card-bg); border: 1px solid var(--hab-card-border); box-shadow: 0 8px 24px -20px var(--hab-card-shadow)"
                     >
-                        <p class="text-[13px]" style="color: var(--hab-muted)">Everyday expenses</p>
+                        <Tooltip>
+                            <TooltipTrigger as-child>
+                                <p class="inline-flex items-center gap-1 text-[13px]" style="color: var(--hab-muted); cursor: help">
+                                    Everyday expenses
+                                    <span class="material-symbols-rounded" style="font-size: 14px">info</span>
+                                </p>
+                            </TooltipTrigger>
+                            <TooltipContent side="bottom" class="max-w-[220px] text-center">
+                                All expense transactions logged this cycle, excluding debt payments (those are counted separately under Debt paid).
+                            </TooltipContent>
+                        </Tooltip>
                         <p class="mt-1.5 font-['Bricolage_Grotesque'] text-[26px] font-bold" style="color: var(--hab-ink)">
                             {{ formatMoney(everydayExpenses) }}
                         </p>
@@ -368,7 +440,64 @@ function submitPayRow(bill: UpcomingBill): void {
                         {{ formatMoney(setAsidesHeld) }}
                     </p>
                 </Link>
+
+                <!-- Where this cycle's money goes -->
+                <div
+                    class="rounded-[22px] p-6"
+                    style="background: var(--hab-card-bg); border: 1px solid var(--hab-card-border); box-shadow: 0 8px 24px -20px var(--hab-card-shadow)"
+                >
+                    <h2 class="mb-4 font-['Bricolage_Grotesque'] text-[18px] font-bold" style="color: var(--hab-ink)">
+                        Where this cycle's money goes
+                    </h2>
+
+                    <div v-if="breakdownTotal <= 0" class="py-4 text-center text-[13px]" style="color: var(--hab-muted)">
+                        Nothing tracked yet this cycle
+                    </div>
+
+                    <div v-else class="flex flex-col items-center gap-5">
+                        <div class="relative shrink-0" style="width: 160px; height: 160px">
+                            <svg viewBox="0 0 160 160" width="160" height="160" role="img" :aria-label="breakdownAriaLabel">
+                                <path
+                                    v-for="seg in donutSegments"
+                                    :key="seg.key"
+                                    :d="arcPath(80, 80, 64, seg.start, seg.end)"
+                                    fill="none"
+                                    :stroke="seg.color"
+                                    stroke-width="24"
+                                    stroke-linecap="butt"
+                                >
+                                    <title>{{ seg.label }}: {{ formatMoney(seg.value) }} ({{ Math.round(seg.percent) }}%)</title>
+                                </path>
+                            </svg>
+                            <div class="pointer-events-none absolute inset-0 flex flex-col items-center justify-center">
+                                <p class="font-['Bricolage_Grotesque'] text-[19px] font-bold leading-none" style="color: var(--hab-ink)">
+                                    {{ formatMoney(breakdownTotal) }}
+                                </p>
+                                <p class="mt-1.5 text-[11px]" style="color: var(--hab-muted)">this cycle</p>
+                            </div>
+                        </div>
+
+                        <div class="w-full">
+                            <div v-for="(item, i) in breakdownItems" :key="item.key">
+                                <div v-if="i > 0" class="h-px" style="background: var(--hab-hairline)"></div>
+                                <div class="flex items-center gap-3 py-2">
+                                    <span class="h-2.5 w-2.5 shrink-0 rounded-full" :style="{ background: item.color }"></span>
+                                    <span class="min-w-0 flex-1 truncate text-[13.5px] font-medium" style="color: var(--hab-ink)">
+                                        {{ item.label }}
+                                    </span>
+                                    <span class="shrink-0 text-[13px] font-semibold" style="color: var(--hab-ink)">
+                                        {{ formatMoney(item.value) }}
+                                    </span>
+                                    <span class="w-9 shrink-0 text-right text-[12px]" style="color: var(--hab-muted)">
+                                        {{ percentOf(item.value) }}%
+                                    </span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
             </div>
         </div>
     </div>
+    </TooltipProvider>
 </template>

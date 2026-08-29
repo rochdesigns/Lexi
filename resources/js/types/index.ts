@@ -1,4 +1,4 @@
 export * from './auth';
-export * from './habitat';
+export * from './lexi';
 export * from './navigation';
 export * from './ui';

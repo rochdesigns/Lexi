@@ -7,7 +7,7 @@ import {
     destroy as destroyVisionBoardItem,
 } from '@/actions/App/Http/Controllers/VisionBoardItemController';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import type { HabitatTheme } from '@/types';
+import type { LexiTheme } from '@/types';
 
 type TodayEvent = { id: number; title: string; time: string; end_time: string | null; tag: string; color: string };
 type TodayTask = { id: number; label: string; section_id: number; done: boolean };
@@ -18,7 +18,7 @@ type HealthMetric = { name: string; value: string; sub: string; pct: number; col
 type VisionBoardItem = { id: number; imageUrl: string; caption: string };
 
 const props = defineProps<{
-    user: { name: string; firstName: string; theme: HabitatTheme };
+    user: { name: string; firstName: string; theme: LexiTheme };
     todayEvents: TodayEvent[];
     todayTasks: TodayTask[];
     moneySummary: MoneySummary;
@@ -136,7 +136,16 @@ function setVisionPreview(url: string | null, isBlob: boolean): void {
     visionImagePreviewIsBlob = isBlob;
 }
 
-const emptyVisionSlots = computed(() => Math.max(0, 6 - props.visionBoardItems.length));
+const emptyVisionSlots = computed(() => Math.max(0, 9 - props.visionBoardItems.length));
+
+// Full-image lightbox
+const visionLightboxOpen = ref(false);
+const viewingVisionItem = ref<VisionBoardItem | null>(null);
+
+function openVisionLightbox(item: VisionBoardItem): void {
+    viewingVisionItem.value = item;
+    visionLightboxOpen.value = true;
+}
 
 function openAddVisionItem(): void {
     editingVisionItem.value = null;
@@ -266,6 +275,55 @@ watch(visionModalOpen, (open) => {
 
             <!-- ── Left column ── -->
             <div class="flex flex-col gap-5">
+
+                <!-- Vision board -->
+                <div
+                    class="rounded-[22px] p-6"
+                    style="background: var(--hab-card-bg); border: 1px solid var(--hab-card-border); box-shadow: 0 8px 24px -20px var(--hab-card-shadow)"
+                >
+                    <div class="mb-4 flex items-center justify-between">
+                        <h2 class="font-['Bricolage_Grotesque'] text-[18px] font-bold" style="color: var(--hab-ink)">
+                            Vision board
+                        </h2>
+                    </div>
+
+                    <div class="columns-2 gap-3 sm:columns-3">
+                        <div
+                            v-for="item in visionBoardItems"
+                            :key="item.id"
+                            class="group relative mb-3 cursor-pointer break-inside-avoid overflow-hidden"
+                            @click="openVisionLightbox(item)"
+                        >
+                            <img :src="item.imageUrl" :alt="item.caption" class="block h-auto w-full" />
+                            <div
+                                class="pointer-events-none absolute inset-x-0 bottom-0 h-1/2"
+                                style="background: linear-gradient(transparent, rgba(0,0,0,.7))"
+                            ></div>
+                            <span class="absolute inset-x-2 bottom-2 truncate text-[12px] font-medium text-white">
+                                {{ item.caption }}
+                            </span>
+                            <button
+                                type="button"
+                                class="absolute right-2 top-2 flex h-7 w-7 items-center justify-center rounded-full opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100 focus-visible:opacity-100"
+                                style="background: rgba(0,0,0,.55)"
+                                @click.stop="openEditVisionItem(item)"
+                            >
+                                <span class="material-symbols-rounded text-white" style="font-size: 15px">edit</span>
+                            </button>
+                        </div>
+
+                        <button
+                            v-for="n in emptyVisionSlots"
+                            :key="'empty-' + n"
+                            type="button"
+                            class="mb-3 flex aspect-square w-full break-inside-avoid items-center justify-center border-2 border-dashed transition-colors hover:opacity-80"
+                            style="border-color: var(--hab-hairline)"
+                            @click="openAddVisionItem"
+                        >
+                            <span class="material-symbols-rounded" style="font-size: 26px; color: var(--hab-faint)">add</span>
+                        </button>
+                    </div>
+                </div>
 
                 <!-- Today's schedule -->
                 <div
@@ -496,54 +554,6 @@ watch(visionModalOpen, (open) => {
             </div>
         </div>
 
-        <!-- Vision board -->
-        <div
-            class="mt-5 rounded-[22px] p-6"
-            style="background: var(--hab-card-bg); border: 1px solid var(--hab-card-border); box-shadow: 0 8px 24px -20px var(--hab-card-shadow)"
-        >
-            <div class="mb-4 flex items-center justify-between">
-                <h2 class="font-['Bricolage_Grotesque'] text-[18px] font-bold" style="color: var(--hab-ink)">
-                    Vision board
-                </h2>
-            </div>
-
-            <div class="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
-                <div
-                    v-for="item in visionBoardItems"
-                    :key="item.id"
-                    class="group relative aspect-square overflow-hidden rounded-[14px]"
-                >
-                    <img :src="item.imageUrl" :alt="item.caption" class="h-full w-full object-cover" />
-                    <div
-                        class="pointer-events-none absolute inset-x-0 bottom-0 h-1/2"
-                        style="background: linear-gradient(transparent, rgba(0,0,0,.7))"
-                    ></div>
-                    <span class="absolute inset-x-2 bottom-2 truncate text-[12px] font-medium text-white">
-                        {{ item.caption }}
-                    </span>
-                    <button
-                        type="button"
-                        class="absolute right-2 top-2 flex h-7 w-7 items-center justify-center rounded-full opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100 focus-visible:opacity-100"
-                        style="background: rgba(0,0,0,.55)"
-                        @click="openEditVisionItem(item)"
-                    >
-                        <span class="material-symbols-rounded text-white" style="font-size: 15px">edit</span>
-                    </button>
-                </div>
-
-                <button
-                    v-for="n in emptyVisionSlots"
-                    :key="'empty-' + n"
-                    type="button"
-                    class="flex aspect-square items-center justify-center rounded-[14px] border-2 border-dashed transition-colors hover:opacity-80"
-                    style="border-color: var(--hab-hairline)"
-                    @click="openAddVisionItem"
-                >
-                    <span class="material-symbols-rounded" style="font-size: 26px; color: var(--hab-faint)">add</span>
-                </button>
-            </div>
-        </div>
-
         <!-- Vision board modal -->
         <Dialog v-model:open="visionModalOpen">
             <DialogContent style="max-width: 400px">
@@ -623,6 +633,23 @@ watch(visionModalOpen, (open) => {
                         </div>
                     </div>
                 </form>
+            </DialogContent>
+        </Dialog>
+
+        <!-- Vision board lightbox -->
+        <Dialog v-model:open="visionLightboxOpen">
+            <DialogContent style="max-width: 720px">
+                <DialogHeader>
+                    <DialogTitle style="font-family: 'Bricolage Grotesque'; font-size: 18px; font-weight: 700">
+                        {{ viewingVisionItem?.caption }}
+                    </DialogTitle>
+                </DialogHeader>
+                <img
+                    v-if="viewingVisionItem"
+                    :src="viewingVisionItem.imageUrl"
+                    :alt="viewingVisionItem.caption"
+                    class="w-full rounded-[12px]"
+                />
             </DialogContent>
         </Dialog>
     </div>

@@ -9,6 +9,7 @@ import { edit as editAppearance } from '@/routes/appearance';
 import { edit as editBills } from '@/routes/bills';
 import { edit as editBudgetCycle } from '@/routes/budget-cycle';
 import { edit as editCategories } from '@/routes/categories';
+import { edit as editInvesting } from '@/routes/investing';
 import { edit as editProfile } from '@/routes/profile';
 import { edit as editSecurity } from '@/routes/security';
 import type { NavItem } from '@/types';
@@ -37,6 +38,10 @@ const sidebarNavItems: NavItem[] = [
     {
         title: 'Bills',
         href: editBills(),
+    },
+    {
+        title: 'Investing',
+        href: editInvesting(),
     },
 ];
 

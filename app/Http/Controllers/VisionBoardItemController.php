@@ -13,7 +13,7 @@ class VisionBoardItemController extends Controller
     {
         $user = $request->user();
 
-        if ($user->visionBoardItems()->count() >= 6) {
+        if ($user->visionBoardItems()->count() >= 9) {
             return back()->withErrors(['image' => 'Your vision board is full — remove an item before adding another.']);
         }
 

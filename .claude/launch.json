@@ -7,7 +7,7 @@
       "runtimeArgs": ["run", "dev"],
       "autoPort": true,
       "port": 5173,
-      "url": "http://habitat.test"
+      "url": "http://lexi.test"
     }
   ]
 }

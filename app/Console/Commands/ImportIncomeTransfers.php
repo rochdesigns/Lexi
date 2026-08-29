@@ -27,7 +27,7 @@ class ImportIncomeTransfers extends Command
         $oldDb = new PDO('sqlite:'.self::OLD_DB);
         $oldDb->setAttribute(PDO::ATTR_DEFAULT_FETCH_MODE, PDO::FETCH_ASSOC);
 
-        // Build account name → Habitat id map
+        // Build account name → Lexi id map
         $accountMap = Account::where('user_id', $user->id)
             ->pluck('id', 'name')
             ->all();

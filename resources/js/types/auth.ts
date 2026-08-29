@@ -1,4 +1,4 @@
-import type { HabitatTheme } from './habitat';
+import type { LexiTheme } from './lexi';
 
 export type User = {
     id: number;
@@ -9,7 +9,7 @@ export type User = {
     two_factor_enabled?: boolean;
     created_at: string;
     updated_at: string;
-    theme?: HabitatTheme;
+    theme?: LexiTheme;
     [key: string]: unknown;
 };
 

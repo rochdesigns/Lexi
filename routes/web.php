@@ -3,8 +3,10 @@
 use App\Http\Controllers\AccountController;
 use App\Http\Controllers\BudgetCategoryController;
 use App\Http\Controllers\CalendarController;
+use App\Http\Controllers\CashflowController;
 use App\Http\Controllers\DebtController;
 use App\Http\Controllers\EventController;
+use App\Http\Controllers\ForecastController;
 use App\Http\Controllers\LedgerController;
 use App\Http\Controllers\MoneyController;
 use App\Http\Controllers\PayoffPlanController;
@@ -52,6 +54,8 @@ Route::middleware(['auth', 'verified'])->group(function (): void {
     Route::delete('/accounts/{account}', [AccountController::class, 'destroy'])->name('accounts.destroy');
     Route::get('/accounts/{account}/transactions', [AccountController::class, 'transactions'])->name('accounts.transactions');
     Route::get('/money', [MoneyController::class, 'index'])->name('money');
+    Route::get('/forecast', [ForecastController::class, 'index'])->name('forecast');
+    Route::get('/cashflow', [CashflowController::class, 'index'])->name('cashflow');
     Route::post('/transactions', [TransactionController::class, 'store'])->name('transactions.store');
     Route::patch('/transactions/{transaction}', [TransactionController::class, 'update'])->name('transactions.update');
     Route::delete('/transactions/{transaction}', [TransactionController::class, 'destroy'])->name('transactions.destroy');

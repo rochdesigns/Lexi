@@ -15,13 +15,13 @@ import {
 import UserMenuContent from '@/components/UserMenuContent.vue';
 import { useCurrentUrl } from '@/composables/useCurrentUrl';
 import { getInitials } from '@/composables/useInitials';
-import type { HabitatNavSection } from '@/types';
+import type { LexiNavSection } from '@/types';
 
 const page = usePage();
 const user = computed(() => page.props.auth?.user as any);
 const { isCurrentUrl } = useCurrentUrl();
 
-const navSections: HabitatNavSection[] = [
+const navSections: LexiNavSection[] = [
     {
         label: 'Day',
         items: [
@@ -48,6 +48,8 @@ const navSections: HabitatNavSection[] = [
         items: [
             { title: 'Accounts', href: '/accounts', icon: 'account_balance' },
             { title: 'Money', href: '/money', icon: 'account_balance_wallet' },
+            { title: 'Forecast', href: '/forecast', icon: 'timeline' },
+            { title: 'Cashflow', href: '/cashflow', icon: 'calendar_view_month' },
             { title: 'Set-asides', href: '/set-asides', icon: 'savings' },
             { title: 'Debt', href: '/debt', icon: 'credit_card' },
             { title: 'Payoff Plan', href: '/payoff-plan', icon: 'trending_down' },

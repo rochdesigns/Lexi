@@ -17,7 +17,7 @@ class SyncOutlookCalendar extends Command
                             {--to= : End of the synced window (Y-m-d). Defaults to the latest date in the payload}
                             {--no-prune : Leave events Outlook no longer returns in place instead of marking them cancelled}';
 
-    protected $description = 'Sync Outlook calendar events into Habitat';
+    protected $description = 'Sync Outlook calendar events into Lexi';
 
     public function handle(): int
     {

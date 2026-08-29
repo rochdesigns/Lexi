@@ -127,7 +127,7 @@ class MigrateFromLifeDashboard extends Command
 
         $this->newLine();
         $this->info('Migration complete.');
-        $this->warn('Note: income, transfer, and contribution transactions were not migrated (no equivalent in Habitat).');
+        $this->warn('Note: income, transfer, and contribution transactions were not migrated (no equivalent in Lexi).');
 
         return self::SUCCESS;
     }

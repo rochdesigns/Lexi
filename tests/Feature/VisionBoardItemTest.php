@@ -57,8 +57,8 @@ test('store rejects oversized image files', function (): void {
     ])->assertSessionHasErrors('image');
 });
 
-test('store rejects a 7th item when the board is full', function (): void {
-    VisionBoardItem::factory()->for($this->user)->count(6)->create();
+test('store rejects a 10th item when the board is full', function (): void {
+    VisionBoardItem::factory()->for($this->user)->count(9)->create();
 
     $file = UploadedFile::fake()->image('trip.jpg');
 
@@ -67,7 +67,7 @@ test('store rejects a 7th item when the board is full', function (): void {
         'caption' => 'One too many',
     ])->assertSessionHasErrors('image');
 
-    expect(VisionBoardItem::where('user_id', $this->user->id)->count())->toBe(6);
+    expect(VisionBoardItem::where('user_id', $this->user->id)->count())->toBe(9);
 });
 
 test('update edits the caption without touching the image', function (): void {

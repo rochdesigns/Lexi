@@ -34,7 +34,7 @@ group, following the pattern of `GoalController`/`BudgetCategoryController`):
 
 - `store(Request $request)`
   - Rejects with `back()->withErrors(['image' => ...])` if the user already
-    has 6 `vision_board_items` (matches `DebtController`'s business-rule
+    has 9 `vision_board_items` (matches `DebtController`'s business-rule
     error convention, checked before validation)
   - Validates: `image` (`image`, max 5MB, mimes: jpg,jpeg,png,webp, required),
     `caption` (`required|string|max:80`)
@@ -83,7 +83,9 @@ existing card style (`rounded-[22px]`, `var(--hab-card-bg)`, etc.) and
 header pattern (title + optional right-aligned action, like other Today
 cards).
 
-**Grid:** always renders 6 tiles regardless of how many items exist.
+**Grid:** always renders 9 tiles regardless of how many items exist. Clicking
+a filled tile's image opens a full-image lightbox (separate from the edit
+modal, which opens only from the hover pencil icon).
 - `grid-cols-2` on mobile, `sm:grid-cols-3`, `lg:grid-cols-6`
 - Each tile is a square-ish (`aspect-square` or similar) rounded tile
 
@@ -110,7 +112,7 @@ lightweight local implementation):
 
 No drag-to-reorder in v1. Items append in the order added (`position` is
 server-assigned); deleting an item leaves a gap that the next add fills by
-appending at the end (not by backfilling the gap) — six tiles is simply
+appending at the end (not by backfilling the gap) — nine tiles is simply
 "however many items exist, in `position` order, followed by empty '+'
 tiles."
 
@@ -122,8 +124,8 @@ tiles."
   persisted, visible in `Today` page props (`visionBoardItems`)
 - Validation: image required on create; caption required, max 80 chars;
   oversized/wrong-mimetype files rejected
-- Max-6 enforcement: a 7th upload attempt is rejected (422/redirect with
-  errors), existing 6 items untouched
+- Max-9 enforcement: a 10th upload attempt is rejected (422/redirect with
+  errors), existing 9 items untouched
 - Update: caption-only edit persists without touching `image_path`;
   replacing the image updates `image_path` and deletes the old file from
   the fake disk
@@ -136,4 +138,4 @@ tiles."
 - Linking items to financial goals/sinking funds
 - Drag-to-reorder
 - Target dates or any field beyond image + caption
-- More than 6 items
+- More than 9 items

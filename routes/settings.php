@@ -3,6 +3,7 @@
 use App\Http\Controllers\BudgetCategoryController;
 use App\Http\Controllers\RecurringBillController;
 use App\Http\Controllers\Settings\BudgetCycleController;
+use App\Http\Controllers\Settings\InvestingController;
 use App\Http\Controllers\Settings\ProfileController;
 use App\Http\Controllers\Settings\SecurityController;
 use Illuminate\Auth\Middleware\RequirePassword;
@@ -34,6 +35,9 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::get('settings/categories', [BudgetCategoryController::class, 'index'])->name('categories.edit');
 
     Route::get('settings/bills', [RecurringBillController::class, 'index'])->name('bills.edit');
+
+    Route::get('settings/investing', [InvestingController::class, 'edit'])->name('investing.edit');
+    Route::patch('settings/investing', [InvestingController::class, 'update'])->name('investing.update');
 });
 
 Route::get('.well-known/passkey-endpoints', function () {
