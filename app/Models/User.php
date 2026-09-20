@@ -41,36 +41,57 @@ class User extends Authenticatable implements PasskeyUser
     /** @use HasFactory<UserFactory> */
     use HasFactory, Notifiable, PasskeyAuthenticatable, TwoFactorAuthenticatable;
 
+    /**
+     * @return HasOne<Setting, $this>
+     */
     public function setting(): HasOne
     {
         return $this->hasOne(Setting::class);
     }
 
+    /**
+     * @return HasMany<Event, $this>
+     */
     public function events(): HasMany
     {
         return $this->hasMany(Event::class);
     }
 
+    /**
+     * @return HasMany<Task, $this>
+     */
     public function tasks(): HasMany
     {
         return $this->hasMany(Task::class);
     }
 
+    /**
+     * @return HasMany<HealthMetric, $this>
+     */
     public function healthMetrics(): HasMany
     {
         return $this->hasMany(HealthMetric::class);
     }
 
+    /**
+     * @return HasMany<Habit, $this>
+     */
     public function habits(): HasMany
     {
         return $this->hasMany(Habit::class);
     }
 
+    /**
+     * @return HasMany<VisionBoardItem, $this>
+     */
     public function visionBoardItems(): HasMany
     {
         return $this->hasMany(VisionBoardItem::class);
     }
 
+    /**
+     * @return HasMany<TaskSection, $this>
+     */
     public function taskSections(): HasMany
     {
         return $this->hasMany(TaskSection::class);

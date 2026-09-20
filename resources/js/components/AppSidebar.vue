@@ -46,7 +46,11 @@ const navSections: LexiNavSection[] = [
     {
         label: 'Money',
         items: [
-            { title: 'Payoff Plan', href: '/payoff-plan', icon: 'trending_down' },
+            {
+                title: 'Payoff Plan',
+                href: '/payoff-plan',
+                icon: 'trending_down',
+            },
             { title: 'Ledger', href: '/ledger', icon: 'receipt_long' },
             { title: 'Budget', href: '/budget', icon: 'wallet' },
             { title: 'Forecast', href: '/forecast', icon: 'insights' },
@@ -64,18 +68,31 @@ const navSections: LexiNavSection[] = [
         <SidebarHeader class="px-4 py-5">
             <div class="flex items-center gap-3">
                 <!-- Logo mark -->
-                <div class="flex h-7 w-7 items-center justify-center rounded-lg bg-white">
-                    <span style="font-family: 'Georgia', serif; font-size: 17px; font-weight: 700; color: #142731; line-height: 1; letter-spacing: -0.5px">L</span>
+                <div
+                    class="flex h-7 w-7 items-center justify-center rounded-lg bg-white"
+                >
+                    <span
+                        style="
+                            font-family: 'Georgia', serif;
+                            font-size: 17px;
+                            font-weight: 700;
+                            color: #142731;
+                            line-height: 1;
+                            letter-spacing: -0.5px;
+                        "
+                        >L</span
+                    >
                 </div>
                 <!-- Wordmark -->
                 <span
                     class="font-['Bricolage_Grotesque'] text-[17px] font-bold text-white"
-                >Lexi</span>
+                    >Lexi</span
+                >
                 <!-- User pill -->
                 <span
                     v-if="user"
                     class="ml-auto rounded-full px-2.5 py-0.5 text-[11px] font-medium text-white/80"
-                    style="background: rgba(255,255,255,.15)"
+                    style="background: rgba(255, 255, 255, 0.15)"
                 >
                     {{ user.name.split(' ')[0] }}
                 </span>
@@ -83,11 +100,15 @@ const navSections: LexiNavSection[] = [
         </SidebarHeader>
 
         <!-- Nav sections -->
-        <SidebarContent class="px-2 py-0 overflow-y-auto">
-            <div v-for="section in navSections" :key="section.label" class="mb-4">
+        <SidebarContent class="overflow-y-auto px-2 py-0">
+            <div
+                v-for="section in navSections"
+                :key="section.label"
+                class="mb-4"
+            >
                 <!-- Group label -->
                 <p
-                    class="px-3 py-1.5 text-[10px] font-semibold uppercase tracking-widest"
+                    class="px-3 py-1.5 text-[10px] font-semibold tracking-widest uppercase"
                     style="color: #8a978f"
                 >
                     {{ section.label }}
@@ -98,15 +119,31 @@ const navSections: LexiNavSection[] = [
                         v-for="item in section.items"
                         :key="item.href"
                         :href="item.href"
-                        :class="['flex items-center gap-3 rounded-lg px-3 py-2 text-[13.5px] transition-colors', isCurrentUrl(item.href) ? 'font-semibold' : 'font-medium']"
-                        :style="isCurrentUrl(item.href)
-                            ? { background: 'var(--hab-brand)', color: 'var(--hab-brand-ink)' }
-                            : { color: '#c3d1c9' }"
+                        :class="[
+                            'flex items-center gap-3 rounded-lg px-3 py-2 text-[13.5px] transition-colors',
+                            isCurrentUrl(item.href)
+                                ? 'font-semibold'
+                                : 'font-medium',
+                        ]"
+                        :style="
+                            isCurrentUrl(item.href)
+                                ? {
+                                      background: 'var(--hab-brand)',
+                                      color: 'var(--hab-brand-ink)',
+                                  }
+                                : { color: '#c3d1c9' }
+                        "
                     >
                         <span
                             class="material-symbols-rounded text-[18px]"
-                            :style="{ color: isCurrentUrl(item.href) ? 'var(--hab-brand-ink)' : '#94a89d', fontSize: '18px' }"
-                        >{{ item.icon }}</span>
+                            :style="{
+                                color: isCurrentUrl(item.href)
+                                    ? 'var(--hab-brand-ink)'
+                                    : '#94a89d',
+                                fontSize: '18px',
+                            }"
+                            >{{ item.icon }}</span
+                        >
                         <span>{{ item.title }}</span>
                     </Link>
                 </nav>
@@ -123,17 +160,28 @@ const navSections: LexiNavSection[] = [
                         <!-- Avatar -->
                         <div
                             class="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-[13px] font-semibold"
-                            :style="{ background: 'var(--hab-brand)', color: 'var(--hab-brand-ink)' }"
+                            :style="{
+                                background: 'var(--hab-brand)',
+                                color: 'var(--hab-brand-ink)',
+                            }"
                         >
                             {{ user ? getInitials(user.name) : '?' }}
                         </div>
                         <div class="min-w-0 flex-1">
-                            <p class="truncate text-[13px] font-medium text-white">
+                            <p
+                                class="truncate text-[13px] font-medium text-white"
+                            >
                                 {{ user?.name }}
                             </p>
-                            <p class="text-[11px]" style="color: #8a978f">Free plan</p>
+                            <p class="text-[11px]" style="color: #8a978f">
+                                Free plan
+                            </p>
                         </div>
-                        <span class="material-symbols-rounded text-[16px]" style="color: #8a978f; font-size: 16px">chevron_right</span>
+                        <span
+                            class="material-symbols-rounded text-[16px]"
+                            style="color: #8a978f; font-size: 16px"
+                            >chevron_right</span
+                        >
                     </button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end" side="right" class="w-56">

@@ -11,6 +11,9 @@ class HabitLog extends Model
 
     protected $casts = ['date' => 'date', 'done' => 'boolean'];
 
+    /**
+     * @return BelongsTo<Habit, $this>
+     */
     public function habit(): BelongsTo
     {
         return $this->belongsTo(Habit::class);

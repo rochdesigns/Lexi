@@ -11,6 +11,9 @@ class HealthWeek extends Model
 
     protected $fillable = ['user_id', 'day', 'steps'];
 
+    /**
+     * @return BelongsTo<User, $this>
+     */
     public function user(): BelongsTo
     {
         return $this->belongsTo(User::class);

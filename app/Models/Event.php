@@ -3,13 +3,44 @@
 namespace App\Models;
 
 use Carbon\Carbon;
+use Database\Factories\EventFactory;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\SoftDeletes;
 
+/**
+ * @property int $id
+ * @property int $user_id
+ * @property string $title
+ * @property Carbon $date
+ * @property string $time
+ * @property string|null $end_time
+ * @property string $tag
+ * @property string $color
+ * @property string|null $source
+ * @property string|null $recurrence_type
+ * @property int $recurrence_interval
+ * @property list<string>|null $recurrence_days
+ * @property Carbon|null $recurrence_ends_on
+ * @property-read string $bg
+ *
+ * @phpstan-type EventOccurrence array{
+ *     id: int,
+ *     title: string,
+ *     date: string,
+ *     time: string,
+ *     end_time: string|null,
+ *     tag: string,
+ *     color: string,
+ *     bg: string,
+ *     is_recurring: bool,
+ *     recurrence_type: string|null,
+ * }
+ */
 class Event extends Model
 {
+    /** @use HasFactory<EventFactory> */
     use HasFactory, SoftDeletes;
 
     protected $fillable = [
@@ -23,6 +54,9 @@ class Event extends Model
         'recurrence_ends_on' => 'date',
     ];
 
+    /**
+     * @return BelongsTo<User, $this>
+     */
     public function user(): BelongsTo
     {
         return $this->belongsTo(User::class);
@@ -40,6 +74,9 @@ class Event extends Model
         };
     }
 
+    /**
+     * @return list<EventOccurrence>
+     */
     public static function expandRecurring(Carbon $rangeStart, Carbon $rangeEnd, int $userId): array
     {
         $events = static::where('user_id', $userId)
@@ -62,9 +99,9 @@ class Event extends Model
 
         foreach ($events as $event) {
             if ($event->recurrence_type === null) {
-                $occurrences[] = static::toOccurrence($event, $event->date->toDateString());
+                $occurrences[] = self::toOccurrence($event, $event->date->toDateString());
             } else {
-                $occurrences = array_merge($occurrences, static::expandEvent($event, $rangeStart, $rangeEnd));
+                $occurrences = array_merge($occurrences, self::expandEvent($event, $rangeStart, $rangeEnd));
             }
         }
 
@@ -73,6 +110,9 @@ class Event extends Model
         return $occurrences;
     }
 
+    /**
+     * @return list<EventOccurrence>
+     */
     private static function expandEvent(self $event, Carbon $rangeStart, Carbon $rangeEnd): array
     {
         $occurrences = [];
@@ -85,7 +125,7 @@ class Event extends Model
                 $cursor = $eventDate->copy();
                 while ($cursor->lte($effectiveEnd)) {
                     if ($cursor->gte($rangeStart)) {
-                        $occurrences[] = static::toOccurrence($event, $cursor->toDateString());
+                        $occurrences[] = self::toOccurrence($event, $cursor->toDateString());
                     }
                     $cursor->addDays($event->recurrence_interval);
                 }
@@ -102,7 +142,7 @@ class Event extends Model
                             }
                             $occDate = $weekStart->copy()->addDays($offset);
                             if ($occDate->gte($eventDate) && $occDate->gte($rangeStart) && $occDate->lte($effectiveEnd)) {
-                                $occurrences[] = static::toOccurrence($event, $occDate->toDateString());
+                                $occurrences[] = self::toOccurrence($event, $occDate->toDateString());
                             }
                         }
                         $weekStart->addWeeks($event->recurrence_interval);
@@ -111,7 +151,7 @@ class Event extends Model
                     $cursor = $eventDate->copy();
                     while ($cursor->lte($effectiveEnd)) {
                         if ($cursor->gte($rangeStart)) {
-                            $occurrences[] = static::toOccurrence($event, $cursor->toDateString());
+                            $occurrences[] = self::toOccurrence($event, $cursor->toDateString());
                         }
                         $cursor->addWeeks($event->recurrence_interval);
                     }
@@ -121,7 +161,7 @@ class Event extends Model
                 $cursor = $eventDate->copy();
                 while ($cursor->lte($effectiveEnd)) {
                     if ($cursor->gte($rangeStart)) {
-                        $occurrences[] = static::toOccurrence($event, $cursor->toDateString());
+                        $occurrences[] = self::toOccurrence($event, $cursor->toDateString());
                     }
                     $cursor->addMonths($event->recurrence_interval);
                 }
@@ -130,7 +170,7 @@ class Event extends Model
                 $cursor = $eventDate->copy();
                 while ($cursor->lte($effectiveEnd)) {
                     if ($cursor->gte($rangeStart)) {
-                        $occurrences[] = static::toOccurrence($event, $cursor->toDateString());
+                        $occurrences[] = self::toOccurrence($event, $cursor->toDateString());
                     }
                     $cursor->addYears($event->recurrence_interval);
                 }
@@ -141,6 +181,9 @@ class Event extends Model
         return $occurrences;
     }
 
+    /**
+     * @return EventOccurrence
+     */
     private static function toOccurrence(self $event, string $date): array
     {
         return [

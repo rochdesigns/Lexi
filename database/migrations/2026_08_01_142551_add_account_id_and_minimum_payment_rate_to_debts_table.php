@@ -12,7 +12,7 @@ return new class extends Migration
     public function up(): void
     {
         Schema::table('debts', function (Blueprint $table): void {
-            $table->foreignId('account_id')->nullable()->constrained('accounts')->nullOnDelete()->after('budget_category_id');
+            $table->foreignId('account_id')->nullable()->after('budget_category_id')->constrained('accounts')->nullOnDelete();
             $table->decimal('minimum_payment_rate', 5, 2)->nullable()->after('interest_rate_period');
         });
     }

@@ -14,6 +14,9 @@ class VisionBoardItem extends Model
 
     protected $fillable = ['user_id', 'image_path', 'caption', 'position'];
 
+    /**
+     * @return BelongsTo<User, $this>
+     */
     public function user(): BelongsTo
     {
         return $this->belongsTo(User::class);
