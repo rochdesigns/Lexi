@@ -16,11 +16,12 @@ class Settings extends Model
     protected $table = 'debt_focus_settings';
 
     protected $fillable = [
-        'user_id', 'strategy', 'extra_monthly',
+        'user_id', 'strategy', 'extra_monthly', 'priority_debt_id', 'expected_monthly_income',
     ];
 
     protected $casts = [
         'extra_monthly' => 'decimal:2',
+        'expected_monthly_income' => 'decimal:2',
     ];
 
     /**
@@ -29,5 +30,15 @@ class Settings extends Model
     public function user(): BelongsTo
     {
         return $this->belongsTo(User::class);
+    }
+
+    /**
+     * A debt the user pinned as the payoff target, overriding the strategy order.
+     *
+     * @return BelongsTo<Debt, $this>
+     */
+    public function priorityDebt(): BelongsTo
+    {
+        return $this->belongsTo(Debt::class, 'priority_debt_id');
     }
 }

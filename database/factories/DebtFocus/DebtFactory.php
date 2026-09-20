@@ -20,6 +20,8 @@ class DebtFactory extends Factory
             'monthly_rate' => fake()->randomFloat(2, 0, 2.5),
             'minimum_payment' => fake()->randomFloat(2, 20, 500),
             'debt_type' => fake()->randomElement(['revolving', 'installment']),
+            // Derived, not random: a revolving debt is a card, everything else amortises.
+            'kind' => fn (array $attributes) => $attributes['debt_type'] === 'revolving' ? 'card' : 'loan',
             'due_day' => fake()->numberBetween(1, 28),
         ];
     }

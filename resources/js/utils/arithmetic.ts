@@ -4,15 +4,27 @@
  * Returns null if the expression is invalid or empty.
  */
 export function evaluateArithmetic(expr: string | number): number | null {
-    const cleaned = String(expr).replace(/\s/g, '');
-    if (!cleaned) return null;
-    if (!/^[\d+\-*/().]+$/.test(cleaned)) return null;
+    // Currency symbols and thousands separators are how people actually write
+    // amounts — "₱1,200" and "1,200" should both land on 1200 rather than being
+    // thrown away. Stripping them here cannot widen what the allowlist below
+    // permits, since neither character can form an identifier or a call.
+    const cleaned = String(expr).replace(/[\s,₱$€£]/g, '');
+
+    if (!cleaned) {
+        return null;
+    }
+
+    if (!/^[\d+\-*/().]+$/.test(cleaned)) {
+        return null;
+    }
+
     try {
-        // eslint-disable-next-line no-new-func
         const result = new Function(`return (${cleaned})`)() as unknown;
+
         if (typeof result === 'number' && isFinite(result)) {
             return Math.round(result * 100) / 100;
         }
+
         return null;
     } catch {
         return null;
@@ -25,5 +37,6 @@ export function evaluateArithmetic(expr: string | number): number | null {
  */
 export function hasArithmetic(expr: string | number): boolean {
     const s = String(expr).trim();
+
     return /[+*/]/.test(s) || /\d-/.test(s);
 }

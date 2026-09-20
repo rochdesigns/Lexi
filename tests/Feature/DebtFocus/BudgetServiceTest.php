@@ -154,3 +154,17 @@ test('periodBounds returns the first and last date of the given month', function
     expect($start)->toBe('2026-02-01');
     expect($end)->toBe('2026-02-28');
 });
+
+test('unplaced reports the shortfall when the plan outruns the income', function () {
+    $service = new BudgetService;
+
+    $unplaced = $service->unplaced(
+        income: 10000,
+        minimumsTotal: 4000,
+        billPeriods: collect(),
+        envelopePeriods: collect(),
+        extraSentToDebts: 8000,
+    );
+
+    expect($unplaced)->toBe(-2000.0);
+});

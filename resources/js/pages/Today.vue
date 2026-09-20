@@ -12,7 +12,7 @@ import type { LexiTheme } from '@/types';
 type TodayEvent = { id: number; title: string; time: string; end_time: string | null; tag: string; color: string };
 type TodayTask = { id: number; label: string; section_id: number; done: boolean };
 type MoneySummary = { safeToSpend: number; budget: number; spent: number };
-type UpcomingBill = { id: string; name: string; icon: string; color: string; bg: string; amount: number; dueLabel: string; daysUntil: number; type: string };
+type UpcomingBill = { id: string; name: string; amount: number; dueLabel: string; daysUntil: number };
 type Habit = { id: number; name: string; icon: string; color: string; pct: number; streak: number };
 type HealthMetric = { name: string; value: string; sub: string; pct: number; color: string; icon: string };
 type VisionBoardItem = { id: number; imageUrl: string; caption: string };
@@ -429,7 +429,7 @@ watch(visionModalOpen, (open) => {
 
                 <!-- Money snapshot -->
                 <Link
-                    href="/money"
+                    href="/budget"
                     class="block rounded-[22px] p-5 transition-opacity hover:opacity-90"
                     style="background: var(--hab-card-bg); border: 1px solid var(--hab-card-border); box-shadow: 0 8px 24px -20px var(--hab-card-shadow)"
                 >

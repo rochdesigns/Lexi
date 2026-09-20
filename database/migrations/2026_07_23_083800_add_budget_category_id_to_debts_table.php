@@ -1,6 +1,5 @@
 <?php
 
-use App\Models\BudgetCategory;
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Schema;
@@ -17,8 +16,7 @@ return new class extends Migration
     public function down(): void
     {
         Schema::table('debts', function (Blueprint $table): void {
-            $table->dropForeignIdFor(BudgetCategory::class);
-            $table->dropColumn('budget_category_id');
+            $table->dropConstrainedForeignId('budget_category_id');
         });
     }
 };

@@ -66,51 +66,6 @@ class User extends Authenticatable implements PasskeyUser
         return $this->hasMany(Habit::class);
     }
 
-    public function accounts(): HasMany
-    {
-        return $this->hasMany(Account::class);
-    }
-
-    public function budgetMonths(): HasMany
-    {
-        return $this->hasMany(BudgetMonth::class);
-    }
-
-    public function budgetCategories(): HasMany
-    {
-        return $this->hasMany(BudgetCategory::class);
-    }
-
-    public function budgetCycles(): HasMany
-    {
-        return $this->hasMany(BudgetCycle::class);
-    }
-
-    public function transactions(): HasMany
-    {
-        return $this->hasMany(Transaction::class);
-    }
-
-    public function sinkingFunds(): HasMany
-    {
-        return $this->hasMany(SinkingFund::class);
-    }
-
-    public function debts(): HasMany
-    {
-        return $this->hasMany(Debt::class);
-    }
-
-    public function recurringBills(): HasMany
-    {
-        return $this->hasMany(RecurringBill::class);
-    }
-
-    public function goals(): HasMany
-    {
-        return $this->hasMany(Goal::class);
-    }
-
     public function visionBoardItems(): HasMany
     {
         return $this->hasMany(VisionBoardItem::class);

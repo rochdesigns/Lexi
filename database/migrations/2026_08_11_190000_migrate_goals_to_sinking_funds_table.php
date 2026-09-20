@@ -1,7 +1,5 @@
 <?php
 
-use App\Models\Goal;
-use App\Models\SinkingFund;
 use Carbon\Carbon;
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Support\Facades\DB;
@@ -13,10 +11,10 @@ return new class extends Migration
         $now = Carbon::now();
 
         DB::transaction(function () use ($now): void {
-            Goal::orderBy('id')->get()->each(function (Goal $goal) use ($now): void {
-                $maxPosition = (int) SinkingFund::where('user_id', $goal->user_id)->max('position');
+            DB::table('goals')->orderBy('id')->get()->each(function (object $goal) use ($now): void {
+                $maxPosition = (int) DB::table('sinking_funds')->where('user_id', $goal->user_id)->max('position');
 
-                SinkingFund::create([
+                DB::table('sinking_funds')->insert([
                     'user_id' => $goal->user_id,
                     'name' => $goal->name,
                     'icon' => $goal->icon,
@@ -38,7 +36,7 @@ return new class extends Migration
     public function down(): void
     {
         DB::transaction(function (): void {
-            SinkingFund::whereNotNull('migrated_goal_id')->delete();
+            DB::table('sinking_funds')->whereNotNull('migrated_goal_id')->delete();
         });
     }
 };

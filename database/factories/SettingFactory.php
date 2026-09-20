@@ -21,10 +21,6 @@ class SettingFactory extends Factory
         return [
             'user_id' => User::factory(),
             'theme' => 'ocean',
-            'budget_cycle_days' => 30,
-            'budget_cycle_anchor' => now()->toDateString(),
-            'cycle_type' => 'fixed_days',
-            'monthly_start_day' => null,
         ];
     }
 }

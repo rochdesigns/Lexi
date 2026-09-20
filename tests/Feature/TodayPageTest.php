@@ -1,8 +1,11 @@
 <?php
 
-use App\Models\BudgetCategory;
-use App\Models\RecurringBill;
-use App\Models\Setting;
+use App\Models\DebtFocus\Account;
+use App\Models\DebtFocus\Bill;
+use App\Models\DebtFocus\BillPeriod;
+use App\Models\DebtFocus\Envelope;
+use App\Models\DebtFocus\EnvelopePeriod;
+use App\Models\DebtFocus\Transaction;
 use App\Models\User;
 use App\Models\VisionBoardItem;
 use Database\Seeders\DatabaseSeeder;
@@ -51,19 +54,69 @@ test('today page includes vision board items ordered by position', function (): 
         );
 });
 
-test('the money card includes bills due within the next 7 days', function () {
+test('the money card includes bills due within the next 7 days', function (): void {
+    $this->travelTo(Carbon::parse('2026-03-10'));
     $user = User::factory()->create();
-    Setting::factory()->create(['user_id' => $user->id]);
-    $category = BudgetCategory::factory()->for($user)->create();
 
-    RecurringBill::factory()->for($user)->create([
-        'name' => 'Internet', 'day_of_month' => Carbon::now()->addDays(2)->day, 'budget_category_id' => $category->id,
-    ]);
+    Bill::factory()->for($user)->create(['name' => 'Internet', 'due_day' => 12]);
+    Bill::factory()->for($user)->create(['name' => 'Insurance', 'due_day' => 28]);
 
     $this->actingAs($user)
         ->get('/today')
         ->assertInertia(fn ($page) => $page
             ->has('upcomingBills', 1)
             ->where('upcomingBills.0.name', 'Internet')
+            ->where('upcomingBills.0.dueLabel', 'Due in 2 days')
+        );
+});
+
+test('the money card reaches across the month boundary', function (): void {
+    $this->travelTo(Carbon::parse('2026-03-29'));
+    $user = User::factory()->create();
+
+    Bill::factory()->for($user)->create(['name' => 'Rent', 'due_day' => 2]);
+
+    $this->actingAs($user)
+        ->get('/today')
+        ->assertInertia(fn ($page) => $page
+            ->has('upcomingBills', 1)
+            ->where('upcomingBills.0.name', 'Rent')
+            ->where('upcomingBills.0.dueLabel', 'Due in 4 days')
+        );
+});
+
+test('a bill already marked paid drops off the money card', function (): void {
+    $this->travelTo(Carbon::parse('2026-03-10'));
+    $user = User::factory()->create();
+
+    $bill = Bill::factory()->for($user)->create(['name' => 'Internet', 'due_day' => 12]);
+    BillPeriod::factory()->create([
+        'bill_id' => $bill->id, 'year' => 2026, 'month' => 3, 'paid_at' => now(),
+    ]);
+
+    $this->actingAs($user)
+        ->get('/today')
+        ->assertInertia(fn ($page) => $page->has('upcomingBills', 0));
+});
+
+test('the money summary comes from this month\'s envelopes', function (): void {
+    $this->travelTo(Carbon::parse('2026-03-10'));
+    $user = User::factory()->create();
+
+    Account::factory()->for($user)->create(['balance' => 20000]);
+    $envelope = Envelope::factory()->for($user)->create();
+    EnvelopePeriod::factory()->create([
+        'envelope_id' => $envelope->id, 'year' => 2026, 'month' => 3, 'target' => 1000,
+    ]);
+    Transaction::factory()->for($user)->create([
+        'envelope_id' => $envelope->id, 'type' => 'expense', 'amount' => 400, 'occurred_at' => '2026-03-05',
+    ]);
+
+    $this->actingAs($user)
+        ->get('/today')
+        ->assertInertia(fn ($page) => $page
+            ->where('moneySummary.budget', 1000)
+            ->where('moneySummary.spent', 400)
+            ->where('moneySummary.safeToSpend', 600)
         );
 });

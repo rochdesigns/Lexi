@@ -1,9 +1,5 @@
 <?php
 
-use App\Http\Controllers\BudgetCategoryController;
-use App\Http\Controllers\RecurringBillController;
-use App\Http\Controllers\Settings\BudgetCycleController;
-use App\Http\Controllers\Settings\InvestingController;
 use App\Http\Controllers\Settings\ProfileController;
 use App\Http\Controllers\Settings\SecurityController;
 use Illuminate\Auth\Middleware\RequirePassword;
@@ -28,16 +24,6 @@ Route::middleware(['auth', 'verified'])->group(function () {
         ->name('user-password.update');
 
     Route::inertia('settings/appearance', 'settings/Appearance')->name('appearance.edit');
-
-    Route::get('settings/budget-cycle', [BudgetCycleController::class, 'edit'])->name('budget-cycle.edit');
-    Route::patch('settings/budget-cycle', [BudgetCycleController::class, 'update'])->name('budget-cycle.update');
-
-    Route::get('settings/categories', [BudgetCategoryController::class, 'index'])->name('categories.edit');
-
-    Route::get('settings/bills', [RecurringBillController::class, 'index'])->name('bills.edit');
-
-    Route::get('settings/investing', [InvestingController::class, 'edit'])->name('investing.edit');
-    Route::patch('settings/investing', [InvestingController::class, 'update'])->name('investing.update');
 });
 
 Route::get('.well-known/passkey-endpoints', function () {

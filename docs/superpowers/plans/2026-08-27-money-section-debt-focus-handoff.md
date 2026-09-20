@@ -4,7 +4,7 @@
 
 ## Context
 
-The user asked: if the money section of this app were built for public release, how should it work? They explicitly asked to disregard the existing money pages/code/memory for this conversation — this is a from-scratch design exploration, not a critique or continuation of what's already implemented. (The pre-DebtFocus money-section plans/specs this superseded — phase-1 design, credit-card debt/account integration, debt snowball payoff plan, and the envelope budgeting work — have since been deleted from `docs/superpowers/`; the old `/money`+`/debt` code itself is untouched and still live, per the "Resolved" note below.)
+The user asked: if the money section of this app were built for public release, how should it work? They explicitly asked to disregard the existing money pages/code/memory for this conversation — this is a from-scratch design exploration, not a critique or continuation of what's already implemented. (The pre-DebtFocus money-section plans/specs this superseded — phase-1 design, credit-card debt/account integration, debt snowball payoff plan, and the envelope budgeting work — have since been deleted from `docs/superpowers/`; the old `/money`+`/debt` code has since been deleted outright — see the "Resolved" note below.)
 
 Constraints established during the conversation:
 - The app will be **free** — no revenue to absorb per-user costs like Plaid.
@@ -75,6 +75,7 @@ The shape above got a full design pass and the first backend slice is built:
 - How statement balance vs. current balance should factor into the revolving-debt UI (flagged as a follow-up, not yet answered).
 - Net worth / reporting surfaces.
 - **Resolved (2026-08-28):** manual entry UX is no longer an open question — a "Log a transaction" quick-entry flow shipped on `/ledger` (see "Progress since this handoff" above), and its known follow-ups (hidden-field validation confusion, orphaned transfer rows, loose date/amount validation, UTC date-default) have since all been fixed too.
+- **Done (2026-09-06):** the cutover happened. The whole legacy money stack — `/accounts`, `/money`, `/forecast`, `/cashflow`, `/set-asides`, `/debt`, their controllers, models, services, settings pages, console commands and tests — is deleted, leaving `DebtFocus` (`/ledger`, `/payoff-plan`, `/budget`) as the only money UI. The legacy database tables were deliberately left in place; dropping them is a separate decision.
 - **Resolved (2026-08-28):** reconciliation with the pre-existing `/money`+`/debt` implementation is no longer open — the user explicitly confirmed `DebtFocus` stays **completely separate**, not merged or reconciled. The old system stays as the only live money UI until `DebtFocus` reaches functional parity, then gets replaced in one cutover, not blended incrementally. So this remains three separate systems in the codebase (`/money`+`/debt`, the standalone `/payoff-plan`, and the new `DebtFocus` ledger) by design, not as an open question — only the old system is expected to go away, and only once `DebtFocus` can fully replace it.
 
 ## Suggested next step

@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\DebtFocus\EnvelopePeriod;
 use App\Models\Event;
 use App\Models\Habit;
 use App\Models\HabitLog;
@@ -9,8 +10,7 @@ use App\Models\HealthMetric;
 use App\Models\Task;
 use App\Models\TaskSection;
 use App\Models\VisionBoardItem;
-use App\Services\BudgetCycle;
-use App\Services\UpcomingBills;
+use App\Services\DebtFocus\BudgetService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Storage;
@@ -19,6 +19,8 @@ use Inertia\Response;
 
 class TodayController extends Controller
 {
+    public function __construct(private BudgetService $budget) {}
+
     public function __invoke(Request $request): Response
     {
         $user = $request->user();
@@ -41,24 +43,24 @@ class TodayController extends Controller
                 ->get(['id', 'label', 'section_id', 'done'])
             : collect();
 
-        $period = (new BudgetCycle($user->setting))->containing($today);
-        $cycleStart = $period->start;
-        $cycleEnd = $period->end;
-
-        $cycleBudget = (float) $user->budgetCategories()->sum('limit_amount');
-        $saPerMonth = (float) $user->sinkingFunds()->sum('per_month');
-        $totalSpent = (float) $user->transactions()
-            ->whereBetween('transacted_at', [$cycleStart->toDateString(), $cycleEnd->toDateString()])
-            ->where('type', 'expense')
-            ->sum('amount');
+        $envelopePeriods = EnvelopePeriod::query()
+            ->whereIn('envelope_id', $user->debtFocusEnvelopes()->where('active', true)->select('id'))
+            ->where('year', $today->year)
+            ->where('month', $today->month)
+            ->get();
 
         $moneySummary = [
-            'safeToSpend' => $cycleBudget - $totalSpent - $saPerMonth,
-            'budget' => $cycleBudget,
-            'spent' => $totalSpent,
+            'safeToSpend' => $this->budget->safeToSpend(
+                $envelopePeriods,
+                $today->year,
+                $today->month,
+                $this->budget->cashAvailable($user, $this->budget->sealedTotalFor($user, $today->year, $today->month)),
+            )['unspent'],
+            'budget' => round((float) $envelopePeriods->sum('target'), 2),
+            'spent' => round((float) $envelopePeriods->sum(fn (EnvelopePeriod $period) => $this->budget->spentForPeriod($period)), 2),
         ];
 
-        $upcomingBills = (new UpcomingBills)->within($user, $period);
+        $upcomingBills = $this->budget->upcomingBills($user, $today);
 
         $habits = Habit::where('user_id', $user->id)->get();
 

@@ -25,7 +25,7 @@ test('new users can register', function () {
     $response->assertRedirect(route('dashboard', absolute: false));
 });
 
-test('registration creates a setting with budget_cycle_days = 30', function () {
+test('registration creates the default settings row', function () {
     $this->post(route('register.store'), [
         'name' => 'Cycle Test',
         'email' => 'cycle@example.com',
@@ -36,6 +36,5 @@ test('registration creates a setting with budget_cycle_days = 30', function () {
     $user = User::where('email', 'cycle@example.com')->first();
 
     expect($user->setting)->not->toBeNull();
-    expect($user->setting->budget_cycle_days)->toBe(30);
-    expect($user->setting->budget_cycle_anchor)->not->toBeNull();
+    expect($user->setting->theme)->toBe('ocean');
 });
