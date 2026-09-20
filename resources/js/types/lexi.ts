@@ -1,4 +1,5 @@
-export type LexiTheme = 'ocean' | 'forest' | 'plum' | 'clay' | 'slate' | 'garden';
+export type LexiTheme =
+    'ocean' | 'forest' | 'plum' | 'clay' | 'slate' | 'garden';
 
 export type LexiNavItem = {
     title: string;
