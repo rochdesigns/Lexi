@@ -2,9 +2,13 @@
 
 namespace Database\Factories;
 
+use App\Models\Event;
 use App\Models\User;
 use Illuminate\Database\Eloquent\Factories\Factory;
 
+/**
+ * @extends Factory<Event>
+ */
 class EventFactory extends Factory
 {
     public function definition(): array
@@ -44,6 +48,9 @@ class EventFactory extends Factory
         ]);
     }
 
+    /**
+     * @param  list<string>|null  $days
+     */
     public function weekly(?array $days = null, int $interval = 1): static
     {
         return $this->state([

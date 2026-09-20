@@ -43,6 +43,12 @@ class SyncOutlookCalendar extends Command
             }
 
             $json = file_get_contents($file);
+
+            if ($json === false) {
+                $this->error("Failed to read --file: {$file}");
+
+                return self::FAILURE;
+            }
         }
 
         if ($json === null || $json === '') {

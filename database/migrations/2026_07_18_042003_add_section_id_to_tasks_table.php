@@ -1,5 +1,6 @@
 <?php
 
+use App\Models\Task;
 use App\Models\TaskSection;
 use App\Models\User;
 use Illuminate\Database\Migrations\Migration;
@@ -33,8 +34,10 @@ return new class extends Migration
                 $sectionIds[$default['key']] = $section->id;
             }
 
-            $user->tasks()->each(function ($task) use ($sectionIds): void {
-                $task->update(['section_id' => $sectionIds[$task->group] ?? $sectionIds['today']]);
+            $user->tasks()->each(function (Task $task) use ($sectionIds): void {
+                $group = $task->getAttribute('group');
+                $key = is_string($group) ? $group : 'today';
+                $task->update(['section_id' => $sectionIds[$key] ?? $sectionIds['today']]);
             });
         });
 

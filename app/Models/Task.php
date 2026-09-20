@@ -11,11 +11,17 @@ class Task extends Model
 
     protected $casts = ['done' => 'boolean'];
 
+    /**
+     * @return BelongsTo<User, $this>
+     */
     public function user(): BelongsTo
     {
         return $this->belongsTo(User::class);
     }
 
+    /**
+     * @return BelongsTo<TaskSection, $this>
+     */
     public function section(): BelongsTo
     {
         return $this->belongsTo(TaskSection::class, 'section_id');
