@@ -116,7 +116,7 @@ class TodayController extends Controller
             'user' => [
                 'name' => $user->name,
                 'firstName' => $firstName,
-                'theme' => $user->setting?->theme ?? 'ocean',
+                'theme' => $user->setting->theme ?? 'ocean',
             ],
             'todayEvents' => $todayEvents,
             'todayTasks' => $todayTasks,

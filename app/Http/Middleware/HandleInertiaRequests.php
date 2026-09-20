@@ -45,7 +45,7 @@ class HandleInertiaRequests extends Middleware
                     'email' => $request->user()->email,
                     'email_verified_at' => $request->user()->email_verified_at,
                     'avatar' => $request->user()->avatar ?? null,
-                    'theme' => $request->user()->setting?->theme ?? 'ocean',
+                    'theme' => $request->user()->setting->theme ?? 'ocean',
                 ] : null,
             ],
             'sidebarOpen' => ! $request->hasCookie('sidebar_state') || $request->cookie('sidebar_state') === 'true',
