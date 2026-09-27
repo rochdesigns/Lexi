@@ -12,6 +12,10 @@ createInertiaApp({
     layout: (name) => {
         switch (true) {
             case name === 'Welcome':
+            // Error and legal pages are reachable while signed out, so they
+            // must not assume the authenticated app shell.
+            case name === 'ErrorPage':
+            case name.startsWith('legal/'):
                 return null;
             case name.startsWith('auth/'):
                 return AuthLayout;
