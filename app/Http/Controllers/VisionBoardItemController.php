@@ -5,7 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\VisionBoardItem;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Storage;
+use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class VisionBoardItemController extends Controller
 {
@@ -22,7 +22,10 @@ class VisionBoardItemController extends Controller
             'caption' => ['required', 'string', 'max:80'],
         ]);
 
-        $path = $request->file('image')->store('vision-board/'.$user->id, 'public');
+        $path = $request->file('image')->store(
+            VisionBoardItem::directoryFor($user->id),
+            ['disk' => config('filesystems.uploads'), 'visibility' => 'private'],
+        );
 
         $position = (int) $user->visionBoardItems()->max('position') + 1;
 
@@ -47,8 +50,11 @@ class VisionBoardItemController extends Controller
         $update = ['caption' => $validated['caption']];
 
         if ($request->hasFile('image')) {
-            Storage::disk('public')->delete($visionBoardItem->image_path);
-            $update['image_path'] = $request->file('image')->store('vision-board/'.$visionBoardItem->user_id, 'public');
+            VisionBoardItem::disk()->delete($visionBoardItem->image_path);
+            $update['image_path'] = $request->file('image')->store(
+                VisionBoardItem::directoryFor($visionBoardItem->user_id),
+                ['disk' => config('filesystems.uploads'), 'visibility' => 'private'],
+            );
         }
 
         $visionBoardItem->update($update);
@@ -60,9 +66,29 @@ class VisionBoardItemController extends Controller
     {
         abort_if($visionBoardItem->user_id !== $request->user()->id, 403);
 
-        Storage::disk('public')->delete($visionBoardItem->image_path);
+        VisionBoardItem::disk()->delete($visionBoardItem->image_path);
         $visionBoardItem->delete();
 
         return back();
+    }
+
+    /**
+     * Stream a vision board image to its owner.
+     *
+     * The images live on a private disk and have no public URL; this is the
+     * only way to read one, and it checks ownership on every request.
+     */
+    public function image(Request $request, VisionBoardItem $visionBoardItem): StreamedResponse
+    {
+        abort_if($visionBoardItem->user_id !== $request->user()->id, 403);
+
+        $disk = VisionBoardItem::disk();
+
+        abort_unless($disk->exists($visionBoardItem->image_path), 404);
+
+        return $disk->response(
+            $visionBoardItem->image_path,
+            headers: ['Cache-Control' => 'private, max-age=3600'],
+        );
     }
 }

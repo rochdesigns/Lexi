@@ -96,5 +96,58 @@ class FortifyServiceProvider extends ServiceProvider
                 ($request->input('credential.id') ?: $request->session()->getId()).'|'.$request->ip(),
             );
         });
+
+        RateLimiter::for('fortify', function (Request $request): array|Limit {
+            return match (true) {
+                $request->routeIs('register.store') => $this->registrationLimits($request),
+                $request->routeIs('password.email') => $this->passwordResetLinkLimits($request),
+                $request->routeIs('password.update') => Limit::perMinute(5)->by($this->throttleKeyFor($request)),
+                default => Limit::none(),
+            };
+        });
+    }
+
+    /**
+     * Get the limits applied to account creation.
+     *
+     * Fortify offers no limiter hook for its registration route, so the
+     * 'fortify' limiter is attached to every Fortify route and narrowed
+     * by route name. Without this, account creation is unlimited.
+     *
+     * @return array<int, Limit>
+     */
+    private function registrationLimits(Request $request): array
+    {
+        return [
+            Limit::perMinute(5)->by($this->throttleKeyFor($request)),
+            Limit::perHour(20)->by($this->throttleKeyFor($request)),
+        ];
+    }
+
+    /**
+     * Get the limits applied to password reset link requests.
+     *
+     * Limited per address as well as per IP, so that rotating IPs cannot be
+     * used to mail-bomb one address, and one IP cannot enumerate many.
+     *
+     * @return array<int, Limit>
+     */
+    private function passwordResetLinkLimits(Request $request): array
+    {
+        $email = Str::transliterate(Str::lower((string) $request->input(Fortify::username())));
+
+        return [
+            Limit::perMinute(3)->by($email.'|'.$this->throttleKeyFor($request)),
+            Limit::perHour(10)->by($this->throttleKeyFor($request)),
+            Limit::perHour(5)->by('password-reset:'.$email),
+        ];
+    }
+
+    /**
+     * Get the per-client throttle key for an unauthenticated request.
+     */
+    private function throttleKeyFor(Request $request): string
+    {
+        return (string) $request->ip();
     }
 }

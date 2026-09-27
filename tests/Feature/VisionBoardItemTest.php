@@ -6,7 +6,7 @@ use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Storage;
 
 beforeEach(function (): void {
-    Storage::fake('public');
+    Storage::fake(config('filesystems.uploads'));
     $this->user = User::factory()->create();
     $this->actingAs($this->user);
 });
@@ -23,7 +23,7 @@ test('store uploads an image and creates a vision board item', function (): void
     expect($item)->not->toBeNull();
     expect($item->caption)->toBe('Japan trip 2027');
     expect($item->position)->toBe(1);
-    Storage::disk('public')->assertExists($item->image_path);
+    VisionBoardItem::disk()->assertExists($item->image_path);
 });
 
 test('store validates required fields', function (): void {
@@ -75,7 +75,7 @@ test('update edits the caption without touching the image', function (): void {
         'image_path' => 'vision-board/original.jpg',
         'caption' => 'Old caption',
     ]);
-    Storage::disk('public')->put('vision-board/original.jpg', 'fake-contents');
+    VisionBoardItem::disk()->put('vision-board/original.jpg', 'fake-contents');
 
     $this->patch("/vision-board-items/{$item->id}", [
         'caption' => 'New caption',
@@ -84,14 +84,14 @@ test('update edits the caption without touching the image', function (): void {
     $item->refresh();
     expect($item->caption)->toBe('New caption');
     expect($item->image_path)->toBe('vision-board/original.jpg');
-    Storage::disk('public')->assertExists('vision-board/original.jpg');
+    VisionBoardItem::disk()->assertExists('vision-board/original.jpg');
 });
 
 test('update replaces the image and deletes the old file', function (): void {
     $item = VisionBoardItem::factory()->for($this->user)->create([
         'image_path' => 'vision-board/original.jpg',
     ]);
-    Storage::disk('public')->put('vision-board/original.jpg', 'fake-contents');
+    VisionBoardItem::disk()->put('vision-board/original.jpg', 'fake-contents');
 
     $newFile = UploadedFile::fake()->image('new.jpg');
 
@@ -102,8 +102,8 @@ test('update replaces the image and deletes the old file', function (): void {
 
     $item->refresh();
     expect($item->image_path)->not->toBe('vision-board/original.jpg');
-    Storage::disk('public')->assertMissing('vision-board/original.jpg');
-    Storage::disk('public')->assertExists($item->image_path);
+    VisionBoardItem::disk()->assertMissing('vision-board/original.jpg');
+    VisionBoardItem::disk()->assertExists($item->image_path);
 });
 
 test('update returns 403 for another user\'s item', function (): void {
@@ -119,12 +119,12 @@ test('destroy deletes the item and its file', function (): void {
     $item = VisionBoardItem::factory()->for($this->user)->create([
         'image_path' => 'vision-board/original.jpg',
     ]);
-    Storage::disk('public')->put('vision-board/original.jpg', 'fake-contents');
+    VisionBoardItem::disk()->put('vision-board/original.jpg', 'fake-contents');
 
     $this->delete("/vision-board-items/{$item->id}")->assertRedirect();
 
     expect(VisionBoardItem::find($item->id))->toBeNull();
-    Storage::disk('public')->assertMissing('vision-board/original.jpg');
+    VisionBoardItem::disk()->assertMissing('vision-board/original.jpg');
 });
 
 test('destroy returns 403 for another user\'s item', function (): void {
@@ -134,4 +134,72 @@ test('destroy returns 403 for another user\'s item', function (): void {
     $this->delete("/vision-board-items/{$item->id}")->assertForbidden();
 
     expect(VisionBoardItem::find($item->id))->not->toBeNull();
+});
+
+test('images are stored on the private uploads disk, not the public one', function (): void {
+    Storage::fake('public');
+
+    $this->post('/vision-board-items', [
+        'image' => UploadedFile::fake()->image('trip.jpg'),
+        'caption' => 'Japan trip 2027',
+    ])->assertRedirect();
+
+    $item = VisionBoardItem::where('user_id', $this->user->id)->firstOrFail();
+
+    VisionBoardItem::disk()->assertExists($item->image_path);
+    Storage::disk('public')->assertMissing($item->image_path);
+});
+
+test('the owner can load their own image through the signed route', function (): void {
+    $item = VisionBoardItem::factory()->for($this->user)->create([
+        'image_path' => 'vision-board/'.$this->user->id.'/original.jpg',
+    ]);
+    VisionBoardItem::disk()->put($item->image_path, 'fake-contents');
+
+    $this->get($item->temporaryImageUrl())
+        ->assertOk()
+        ->assertHeader('cache-control', 'max-age=3600, private');
+});
+
+test('the image route returns 403 for another user\'s item', function (): void {
+    $other = User::factory()->create();
+    $item = VisionBoardItem::factory()->for($other)->create([
+        'image_path' => 'vision-board/'.$other->id.'/private.jpg',
+    ]);
+    VisionBoardItem::disk()->put($item->image_path, 'fake-contents');
+
+    $this->get($item->temporaryImageUrl())->assertForbidden();
+});
+
+test('the image route rejects an unsigned url', function (): void {
+    $item = VisionBoardItem::factory()->for($this->user)->create();
+
+    $this->get(route('vision-board-items.image', $item))->assertForbidden();
+});
+
+test('the image route rejects a tampered signature', function (): void {
+    $item = VisionBoardItem::factory()->for($this->user)->create();
+    $other = VisionBoardItem::factory()->for($this->user)->create();
+
+    $url = $item->temporaryImageUrl();
+    $tampered = str_replace((string) $item->id, (string) $other->id, $url);
+
+    $this->get($tampered)->assertForbidden();
+});
+
+test('the image route 404s when the file is gone', function (): void {
+    $item = VisionBoardItem::factory()->for($this->user)->create([
+        'image_path' => 'vision-board/'.$this->user->id.'/deleted.jpg',
+    ]);
+
+    $this->get($item->temporaryImageUrl())->assertNotFound();
+});
+
+test('an unauthenticated visitor cannot load an image', function (): void {
+    $item = VisionBoardItem::factory()->for($this->user)->create();
+    $url = $item->temporaryImageUrl();
+
+    auth()->logout();
+
+    $this->get($url)->assertRedirect(route('login'));
 });

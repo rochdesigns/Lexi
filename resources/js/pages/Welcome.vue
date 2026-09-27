@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { Head, Link } from '@inertiajs/vue3';
 import { onBeforeUnmount, onMounted } from 'vue';
-import { dashboard, login, register } from '@/routes';
+import { dashboard, login, privacy, register, terms } from '@/routes';
 
 type NavItem = { title: string; icon: string; delay: string };
 type NavSection = { label: string; items: Omit<NavItem, 'delay'>[] };
@@ -392,6 +392,24 @@ onBeforeUnmount((): void => {
                 </Link>
             </div>
         </section>
+
+        <footer class="px-6 pb-12">
+            <div
+                class="mx-auto flex max-w-6xl flex-wrap items-center gap-x-4 gap-y-2 border-t pt-6 text-[13.5px]"
+                style="
+                    border-color: var(--hab-card-border);
+                    color: var(--hab-muted);
+                "
+            >
+                <Link :href="terms()" class="underline underline-offset-4"
+                    >Terms of service</Link
+                >
+                <span aria-hidden="true">&middot;</span>
+                <Link :href="privacy()" class="underline underline-offset-4"
+                    >Privacy policy</Link
+                >
+            </div>
+        </footer>
     </div>
 </template>
 
