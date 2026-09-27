@@ -1,6 +1,8 @@
 <?php
 
 use App\Models\User;
+use App\Models\VisionBoardItem;
+use Illuminate\Support\Facades\Storage;
 
 test('profile page is displayed', function () {
     $user = User::factory()->create();
@@ -82,4 +84,31 @@ test('correct password must be provided to delete account', function () {
         ->assertRedirect(route('profile.edit'));
 
     expect($user->fresh())->not->toBeNull();
+});
+
+test('deleting an account removes its uploaded files', function () {
+    Storage::fake(config('filesystems.uploads'));
+
+    $user = User::factory()->create();
+    $other = User::factory()->create();
+
+    $item = VisionBoardItem::factory()->for($user)->create([
+        'image_path' => VisionBoardItem::directoryFor($user->id).'/keepsake.jpg',
+    ]);
+    $survivor = VisionBoardItem::factory()->for($other)->create([
+        'image_path' => VisionBoardItem::directoryFor($other->id).'/keepsake.jpg',
+    ]);
+
+    VisionBoardItem::disk()->put($item->image_path, 'fake-contents');
+    VisionBoardItem::disk()->put($survivor->image_path, 'fake-contents');
+
+    $this->actingAs($user)
+        ->delete(route('profile.destroy'), ['password' => 'password'])
+        ->assertRedirect(route('home'));
+
+    VisionBoardItem::disk()->assertMissing($item->image_path);
+    VisionBoardItem::disk()->assertDirectoryEmpty(VisionBoardItem::directoryFor($user->id));
+
+    // Another account's directory is untouched.
+    VisionBoardItem::disk()->assertExists($survivor->image_path);
 });

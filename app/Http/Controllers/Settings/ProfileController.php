@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Settings;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Settings\ProfileDeleteRequest;
 use App\Http\Requests\Settings\ProfileUpdateRequest;
+use App\Models\VisionBoardItem;
 use Illuminate\Contracts\Auth\MustVerifyEmail;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -51,6 +52,13 @@ class ProfileController extends Controller
         $user = $request->user();
 
         Auth::logout();
+
+        // The database cascades handle the rows; uploaded files are outside
+        // the database and have to be removed explicitly, before the row that
+        // records where they live is gone.
+        VisionBoardItem::disk()->deleteDirectory(
+            VisionBoardItem::directoryFor($user->id),
+        );
 
         $user->delete();
 

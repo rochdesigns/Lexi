@@ -54,6 +54,20 @@ test('today page includes vision board items ordered by position', function (): 
         );
 });
 
+test('today page hands out signed image urls, never public storage urls', function (): void {
+    $user = User::where('email', 'elle@example.com')->first();
+
+    VisionBoardItem::factory()->for($user)->create(['caption' => 'Only', 'position' => 1]);
+
+    $this->actingAs($user)
+        ->get('/today')
+        ->assertInertia(fn ($page) => $page
+            ->where('visionBoardItems.0.imageUrl', fn (string $url): bool => str_contains($url, '/image?')
+                && str_contains($url, 'signature=')
+                && ! str_contains($url, '/storage/'))
+        );
+});
+
 test('the money card includes bills due within the next 7 days', function (): void {
     $this->travelTo(Carbon::parse('2026-03-10'));
     $user = User::factory()->create();

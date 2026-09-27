@@ -14,11 +14,17 @@ use Illuminate\Support\Facades\Route;
 
 Route::inertia('/', 'Welcome')->name('home');
 
+Route::inertia('/privacy', 'legal/Privacy')->name('privacy');
+Route::inertia('/terms', 'legal/Terms')->name('terms');
+
 Route::middleware(['auth', 'verified'])->group(function (): void {
     Route::get('/today', TodayController::class)->name('today');
     Route::post('/vision-board-items', [VisionBoardItemController::class, 'store'])->name('vision-board-items.store');
     Route::patch('/vision-board-items/{visionBoardItem}', [VisionBoardItemController::class, 'update'])->name('vision-board-items.update');
     Route::delete('/vision-board-items/{visionBoardItem}', [VisionBoardItemController::class, 'destroy'])->name('vision-board-items.destroy');
+    Route::get('/vision-board-items/{visionBoardItem}/image', [VisionBoardItemController::class, 'image'])
+        ->middleware('signed')
+        ->name('vision-board-items.image');
     Route::patch('/tasks/{task}', [TaskController::class, 'update'])->name('tasks.update');
     Route::delete('/tasks/{task}', [TaskController::class, 'destroy'])->name('tasks.destroy');
     Route::get('/tasks', [TaskController::class, 'index'])->name('tasks.index');

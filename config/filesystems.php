@@ -17,6 +17,19 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Private Uploads Disk
+    |--------------------------------------------------------------------------
+    |
+    | The disk that user-uploaded files are written to. It must never be a
+    | publicly served disk: these files belong to one account and are handed
+    | out only through signed, ownership-checked routes.
+    |
+    */
+
+    'uploads' => env('UPLOADS_DISK', 'local'),
+
+    /*
+    |--------------------------------------------------------------------------
     | Filesystem Disks
     |--------------------------------------------------------------------------
     |

@@ -13,7 +13,6 @@ use App\Models\VisionBoardItem;
 use App\Services\DebtFocus\BudgetService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
-use Illuminate\Support\Facades\Storage;
 use Inertia\Inertia;
 use Inertia\Response;
 
@@ -106,7 +105,7 @@ class TodayController extends Controller
             ->get()
             ->map(fn (VisionBoardItem $item): array => [
                 'id' => $item->id,
-                'imageUrl' => Storage::disk('public')->url($item->image_path),
+                'imageUrl' => $item->temporaryImageUrl(),
                 'caption' => $item->caption,
             ]);
 
