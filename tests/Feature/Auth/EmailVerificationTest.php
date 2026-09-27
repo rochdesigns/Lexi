@@ -2,7 +2,10 @@
 
 use App\Models\User;
 use Illuminate\Auth\Events\Verified;
+use Illuminate\Auth\Notifications\VerifyEmail;
+use Illuminate\Contracts\Auth\MustVerifyEmail;
 use Illuminate\Support\Facades\Event;
+use Illuminate\Support\Facades\Notification;
 use Illuminate\Support\Facades\URL;
 use Laravel\Fortify\Features;
 
@@ -98,4 +101,38 @@ test('already verified user visiting verification link is redirected without fir
 
     Event::assertNotDispatched(Verified::class);
     expect($user->fresh()->hasVerifiedEmail())->toBeTrue();
+});
+
+test('the user model requires email verification', function () {
+    expect(new User)->toBeInstanceOf(MustVerifyEmail::class);
+});
+
+test('registration sends a verification notification', function () {
+    Notification::fake();
+
+    $this->post(route('register.store'), [
+        'name' => 'Fresh User',
+        'email' => 'fresh@example.com',
+        'password' => 'password',
+        'password_confirmation' => 'password',
+        'terms' => 'on',
+    ]);
+
+    Notification::assertSentTo(
+        User::where('email', 'fresh@example.com')->firstOrFail(),
+        VerifyEmail::class,
+    );
+});
+
+test('an unverified user cannot reach a verified route', function () {
+    $user = User::factory()->unverified()->create();
+
+    $this->actingAs($user)->get(route('today'))
+        ->assertRedirect(route('verification.notice', absolute: false));
+});
+
+test('a verified user can reach a verified route', function () {
+    $user = User::factory()->create();
+
+    $this->actingAs($user)->get(route('today'))->assertOk();
 });

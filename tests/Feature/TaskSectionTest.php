@@ -141,6 +141,7 @@ test('new user gets three default sections', function (): void {
         'email' => 'test@example.com',
         'password' => 'password',
         'password_confirmation' => 'password',
+        'terms' => 'on',
     ]);
 
     $user = User::where('email', 'test@example.com')->first();
