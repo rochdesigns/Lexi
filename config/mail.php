@@ -45,7 +45,13 @@ return [
             'port' => env('MAIL_PORT', 2525),
             'username' => env('MAIL_USERNAME'),
             'password' => env('MAIL_PASSWORD'),
-            'timeout' => null,
+
+            /*
+             * Without a timeout, PHP's default_socket_timeout of 60s applies,
+             * and a host that silently drops outbound SMTP holds the request
+             * open until nginx returns a 504 with nothing in the log.
+             */
+            'timeout' => env('MAIL_TIMEOUT', 10),
             'local_domain' => env('MAIL_EHLO_DOMAIN', parse_url((string) env('APP_URL', 'http://localhost'), PHP_URL_HOST)),
         ],
 
