@@ -47,8 +47,10 @@ class AppServiceProvider extends ServiceProvider
      */
     protected function assertProductionConfiguration(): void
     {
-        if ($this->app->isProduction()) {
-            $this->app->make(ProductionConfigGuard::class)->assert();
+        $guard = $this->app->make(ProductionConfigGuard::class);
+
+        if ($guard->appliesTo(app())) {
+            $guard->assert();
         }
     }
 

@@ -2,6 +2,8 @@
 
 use App\Services\ProductionConfigGuard;
 use Illuminate\Config\Repository;
+use Illuminate\Foundation\Application;
+use Illuminate\Support\Env;
 
 /**
  * @param  array<string, mixed>  $overrides
@@ -66,5 +68,81 @@ test('every failure is reported together', function () {
             ->toContain('SESSION_SECURE_COOKIE')
             ->toContain('SESSION_ENCRYPT')
             ->toContain('SESSION_SAME_SITE');
+    });
+});
+
+/**
+ * Build an application that reports the given environment.
+ *
+ * @param  bool  $withEnvFile  whether an env file sits at the environment path
+ */
+function appIn(string $environment, bool $withEnvFile = true): Application
+{
+    $app = new Application(sys_get_temp_dir());
+
+    $path = sys_get_temp_dir().'/guard-'.uniqid();
+    mkdir($path);
+    $app->useEnvironmentPath($path);
+
+    if ($withEnvFile) {
+        touch($path.'/.env');
+    }
+
+    $app->detectEnvironment(fn (): string => $environment);
+
+    return $app;
+}
+
+/**
+ * Run a callback with APP_ENV absent from the process environment.
+ *
+ * Laravel's Env repository is immutable, so clear() on it is a no-op; the
+ * underlying storage every adapter reads is what has to go, and come back.
+ */
+function withoutAppEnv(Closure $callback): void
+{
+    $previous = Env::get('APP_ENV');
+
+    unset($_ENV['APP_ENV'], $_SERVER['APP_ENV']);
+    putenv('APP_ENV');
+
+    try {
+        $callback();
+    } finally {
+        if ($previous !== null) {
+            $_ENV['APP_ENV'] = $_SERVER['APP_ENV'] = $previous;
+            putenv('APP_ENV='.$previous);
+        }
+    }
+}
+
+test('the guard applies to a declared production environment', function () {
+    expect(guardFor()->appliesTo(appIn('production')))->toBeTrue();
+});
+
+test('the guard does not apply outside production', function (string $environment) {
+    expect(guardFor()->appliesTo(appIn($environment)))->toBeFalse();
+})->with(['local', 'testing', 'staging']);
+
+test('the guard does not apply before any environment exists', function () {
+    // `composer install` runs package:discover before `composer setup` writes
+    // the .env, and a fresh clone never had one. Laravel resolves the unset
+    // APP_ENV to production, so the app claims production on stock defaults.
+    withoutAppEnv(function () {
+        expect(guardFor(['mail' => ['default' => 'log']])->appliesTo(appIn('production', withEnvFile: false)))
+            ->toBeFalse();
+    });
+});
+
+test('the guard applies when APP_ENV is set without an env file', function () {
+    // A container deploy carries real environment variables and no .env.
+    expect(guardFor()->appliesTo(appIn('production', withEnvFile: false)))->toBeTrue();
+});
+
+test('the guard applies when an env file exists but APP_ENV is unset', function () {
+    // A host whose .env omits APP_ENV still resolves to production, and there
+    // the default is load-bearing — the guard must not be talked out of it.
+    withoutAppEnv(function () {
+        expect(guardFor()->appliesTo(appIn('production')))->toBeTrue();
     });
 });

@@ -3,6 +3,8 @@
 namespace App\Services;
 
 use Illuminate\Contracts\Config\Repository;
+use Illuminate\Foundation\Application;
+use Illuminate\Support\Env;
 use RuntimeException;
 
 /**
@@ -20,6 +22,30 @@ class ProductionConfigGuard
     private const NON_DELIVERING_MAILERS = ['log', 'array', 'null'];
 
     public function __construct(private Repository $config) {}
+
+    /**
+     * Determine whether these invariants apply to the given application.
+     *
+     * Laravel resolves an unset APP_ENV to `production`, so an application
+     * booted before any environment has been established claims production
+     * without being it: `composer install` fires package:discover before
+     * `composer setup` writes the .env, and a fresh clone never had one.
+     * Both would fail on stock defaults.
+     *
+     * Requiring that production was actually declared — by a real APP_ENV
+     * variable, as a container deploy supplies, or by the presence of an env
+     * file — lets those boots through while keeping `config:cache` on a real
+     * host failing. Where an env file exists but omits APP_ENV, the default
+     * is load-bearing and the guard still applies.
+     */
+    public function appliesTo(Application $app): bool
+    {
+        if (! $app->isProduction()) {
+            return false;
+        }
+
+        return Env::get('APP_ENV') !== null || file_exists($app->environmentFilePath());
+    }
 
     /**
      * Assert every production requirement, or throw describing all failures.
