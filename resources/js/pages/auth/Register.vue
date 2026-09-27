@@ -4,10 +4,11 @@ import InputError from '@/components/InputError.vue';
 import PasswordInput from '@/components/PasswordInput.vue';
 import TextLink from '@/components/TextLink.vue';
 import { Button } from '@/components/ui/button';
+import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Spinner } from '@/components/ui/spinner';
-import { login } from '@/routes';
+import { login, privacy, terms } from '@/routes';
 import { store } from '@/routes/register';
 
 defineProps<{
@@ -89,10 +90,39 @@ defineOptions({
                 <InputError :message="errors.password_confirmation" />
             </div>
 
+            <div class="grid gap-2">
+                <Label
+                    for="terms"
+                    class="flex items-start gap-3 text-sm leading-relaxed font-normal"
+                >
+                    <Checkbox
+                        id="terms"
+                        name="terms"
+                        :tabindex="5"
+                        class="mt-0.5"
+                    />
+                    <span>
+                        I agree to the
+                        <TextLink
+                            :href="terms()"
+                            class="underline underline-offset-4"
+                            >terms of service</TextLink
+                        >
+                        and
+                        <TextLink
+                            :href="privacy()"
+                            class="underline underline-offset-4"
+                            >privacy policy</TextLink
+                        >.
+                    </span>
+                </Label>
+                <InputError :message="errors.terms" />
+            </div>
+
             <Button
                 type="submit"
                 class="mt-2 w-full"
-                tabindex="5"
+                tabindex="6"
                 :disabled="processing"
                 data-test="register-user-button"
             >
@@ -106,7 +136,7 @@ defineOptions({
             <TextLink
                 :href="login()"
                 class="underline underline-offset-4"
-                :tabindex="6"
+                :tabindex="7"
                 >Log in</TextLink
             >
         </div>

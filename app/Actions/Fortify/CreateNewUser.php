@@ -24,6 +24,9 @@ class CreateNewUser implements CreatesNewUsers
         Validator::make($input, [
             ...$this->profileRules(),
             'password' => $this->passwordRules(),
+            'terms' => ['accepted'],
+        ], [
+            'terms.accepted' => 'Please accept the terms of service and privacy policy to continue.',
         ])->validate();
 
         $user = User::create([
@@ -31,6 +34,10 @@ class CreateNewUser implements CreatesNewUsers
             'email' => $input['email'],
             'password' => $input['password'],
         ]);
+
+        // Not fillable: consent is recorded by the application, never taken
+        // from request input.
+        $user->forceFill(['terms_accepted_at' => now()])->save();
 
         Setting::create([
             'user_id' => $user->id,
