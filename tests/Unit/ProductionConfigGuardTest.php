@@ -21,6 +21,9 @@ function guardFor(array $overrides = []): ProductionConfigGuard
             'encrypt' => true,
             'same_site' => 'strict',
         ],
+        'services' => [
+            'resend' => ['key' => 're_a_key'],
+        ],
     ], $overrides)));
 }
 
@@ -37,6 +40,17 @@ test('smtp without a host is rejected', function () {
     expect(fn () => guardFor(['mail' => ['mailers' => ['smtp' => ['host' => null]]]])->assert())
         ->toThrow(RuntimeException::class, 'MAIL_HOST is empty');
 });
+
+test('the resend mailer without an api key is rejected', function () {
+    expect(fn () => guardFor([
+        'mail' => ['default' => 'resend'],
+        'services' => ['resend' => ['key' => null]],
+    ])->assert())->toThrow(RuntimeException::class, 'RESEND_API_KEY is empty');
+});
+
+test('the resend mailer with an api key passes', function () {
+    guardFor(['mail' => ['default' => 'resend']])->assert();
+})->throwsNoExceptions();
 
 test('a missing from address is rejected', function () {
     expect(fn () => guardFor(['mail' => ['from' => ['address' => '']]])->assert())

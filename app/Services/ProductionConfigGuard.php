@@ -81,6 +81,10 @@ class ProductionConfigGuard
             return ['MAIL_MAILER is [smtp] but MAIL_HOST is empty.'];
         }
 
+        if ($mailer === 'resend' && blank($this->config->get('services.resend.key'))) {
+            return ['MAIL_MAILER is [resend] but RESEND_API_KEY is empty.'];
+        }
+
         if (blank($this->config->get('mail.from.address'))) {
             return ['MAIL_FROM_ADDRESS is empty.'];
         }

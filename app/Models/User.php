@@ -7,6 +7,8 @@ use App\Models\DebtFocus\Bill as DebtFocusBill;
 use App\Models\DebtFocus\Debt as DebtFocusDebt;
 use App\Models\DebtFocus\Envelope as DebtFocusEnvelope;
 use App\Models\DebtFocus\Settings as DebtFocusSettings;
+use App\Notifications\QueuedResetPassword;
+use App\Notifications\QueuedVerifyEmail;
 use Database\Factories\UserFactory;
 use Illuminate\Contracts\Auth\MustVerifyEmail;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
@@ -41,6 +43,24 @@ class User extends Authenticatable implements MustVerifyEmail, PasskeyUser
 {
     /** @use HasFactory<UserFactory> */
     use HasFactory, Notifiable, PasskeyAuthenticatable, TwoFactorAuthenticatable;
+
+    /**
+     * Send the email verification notification on the queue.
+     */
+    public function sendEmailVerificationNotification(): void
+    {
+        $this->notify(new QueuedVerifyEmail);
+    }
+
+    /**
+     * Send the password reset notification on the queue.
+     *
+     * @param  string  $token
+     */
+    public function sendPasswordResetNotification($token): void
+    {
+        $this->notify(new QueuedResetPassword($token));
+    }
 
     /**
      * @return HasOne<Setting, $this>

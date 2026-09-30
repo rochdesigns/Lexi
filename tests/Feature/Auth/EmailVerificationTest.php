@@ -1,8 +1,8 @@
 <?php
 
 use App\Models\User;
+use App\Notifications\QueuedVerifyEmail;
 use Illuminate\Auth\Events\Verified;
-use Illuminate\Auth\Notifications\VerifyEmail;
 use Illuminate\Contracts\Auth\MustVerifyEmail;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Notification;
@@ -120,7 +120,7 @@ test('registration sends a verification notification', function () {
 
     Notification::assertSentTo(
         User::where('email', 'fresh@example.com')->firstOrFail(),
-        VerifyEmail::class,
+        QueuedVerifyEmail::class,
     );
 });
 
