@@ -175,7 +175,11 @@ test('an expired verification link sends a fresh one instead of a dead end', fun
     expect($user->fresh()->hasVerifiedEmail())->toBeFalse();
 });
 
-test('a verification link with a tampered signature sends a fresh one', function () {
+test('a verification link with a tampered signature does not send a fresh one', function () {
+    // A signature that fails while the link is still inside its hour did not
+    // age out: it was altered, or the link was issued for a different origin
+    // than the one it arrived at. Sending another cannot help with either, and
+    // when the cause is systematic every click mints one more.
     Notification::fake();
 
     $user = User::factory()->unverified()->create();
@@ -188,9 +192,39 @@ test('a verification link with a tampered signature sends a fresh one', function
 
     $this->actingAs($user)->get($url.'tampered')
         ->assertRedirect(route('verification.notice', absolute: false))
-        ->assertSessionHas('status', 'verification-link-expired');
+        ->assertSessionHas('status', 'verification-link-invalid');
 
-    Notification::assertSentTo($user, QueuedVerifyEmail::class);
+    Notification::assertNothingSent();
+    expect($user->fresh()->hasVerifiedEmail())->toBeFalse();
+});
+
+test('a link signed for http is refused without resending when the click arrives over https', function () {
+    // The production failure this guards: queued mail is built on the command
+    // line, so the scheme comes only from APP_URL. With APP_URL on http, nginx
+    // redirected every click to https and the signature — which covers the
+    // scheme — no longer matched what arrived.
+    Notification::fake();
+
+    $user = User::factory()->unverified()->create();
+
+    URL::forceRootUrl('http://localhost');
+
+    $signedForHttp = URL::temporarySignedRoute(
+        'verification.verify',
+        now()->addMinutes(60),
+        ['id' => $user->id, 'hash' => sha1($user->email)],
+    );
+
+    URL::forceRootUrl(null);
+
+    expect($signedForHttp)->toStartWith('http://localhost/');
+
+    $this->actingAs($user)->get(str_replace('http://', 'https://', $signedForHttp))
+        ->assertRedirect(route('verification.notice', absolute: false))
+        ->assertSessionHas('status', 'verification-link-invalid');
+
+    Notification::assertNothingSent();
+    expect($user->fresh()->hasVerifiedEmail())->toBeFalse();
 });
 
 test('an expired verification link for an already verified address says so', function () {
