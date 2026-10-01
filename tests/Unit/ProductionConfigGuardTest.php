@@ -11,6 +11,9 @@ use Illuminate\Support\Env;
 function guardFor(array $overrides = []): ProductionConfigGuard
 {
     return new ProductionConfigGuard(new Repository(array_replace_recursive([
+        'app' => [
+            'url' => 'https://lexi-app.me',
+        ],
         'mail' => [
             'default' => 'smtp',
             'mailers' => ['smtp' => ['host' => 'smtp.example.com']],
@@ -57,6 +60,30 @@ test('a missing from address is rejected', function () {
         ->toThrow(RuntimeException::class, 'MAIL_FROM_ADDRESS is empty');
 });
 
+test('a plain http app url is rejected', function () {
+    // Queued mail is generated on the command line, where there is no request
+    // to take a scheme from, so APP_URL is the only thing deciding it. A signed
+    // link issued for http fails its own signature check once nginx redirects
+    // the click to https, and the holder is told the link expired.
+    expect(fn () => guardFor(['app' => ['url' => 'http://lexi-app.me']])->assert())
+        ->toThrow(RuntimeException::class, 'APP_URL is [http://lexi-app.me]');
+});
+
+test('an app url with no scheme is rejected', function () {
+    expect(fn () => guardFor(['app' => ['url' => 'lexi-app.me']])->assert())
+        ->toThrow(RuntimeException::class, 'APP_URL is [lexi-app.me]');
+});
+
+test('an empty app url is rejected', function () {
+    expect(fn () => guardFor(['app' => ['url' => null]])->assert())
+        ->toThrow(RuntimeException::class, 'APP_URL is empty');
+});
+
+test('an https app url is accepted whatever its case', function (string $url) {
+    expect(fn () => guardFor(['app' => ['url' => $url]])->assert())
+        ->not->toThrow(RuntimeException::class);
+})->with(['https://lexi-app.me', 'HTTPS://lexi-app.me', 'https://lexi-app.me/']);
+
 test('an insecure session cookie is rejected', function () {
     expect(fn () => guardFor(['session' => ['secure' => null]])->assert())
         ->toThrow(RuntimeException::class, 'SESSION_SECURE_COOKIE is not true');
@@ -92,10 +119,12 @@ test('a missing same site policy is rejected', function () {
 
 test('every failure is reported together', function () {
     expect(fn () => guardFor([
+        'app' => ['url' => 'http://lexi-app.me'],
         'mail' => ['default' => 'log'],
         'session' => ['secure' => false, 'encrypt' => false, 'same_site' => 'none'],
     ])->assert())->toThrow(function (RuntimeException $e) {
         expect($e->getMessage())
+            ->toContain('APP_URL')
             ->toContain('MAIL_MAILER is [log]')
             ->toContain('SESSION_SECURE_COOKIE')
             ->toContain('SESSION_ENCRYPT')

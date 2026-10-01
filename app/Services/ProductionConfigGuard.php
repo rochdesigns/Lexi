@@ -54,7 +54,7 @@ class ProductionConfigGuard
      */
     public function assert(): void
     {
-        $failures = [...$this->mailFailures(), ...$this->sessionFailures()];
+        $failures = [...$this->urlFailures(), ...$this->mailFailures(), ...$this->sessionFailures()];
 
         if ($failures !== []) {
             throw new RuntimeException(
@@ -62,6 +62,32 @@ class ProductionConfigGuard
                 .'  - '.implode(PHP_EOL.'  - ', $failures)
             );
         }
+    }
+
+    /**
+     * Get the reasons generated links would not survive being clicked.
+     *
+     * Queued mail is built in a worker, where there is no request to take a
+     * scheme from, so APP_URL alone decides it. A signed link issued for http
+     * is redirected to https on the way in, and because the signature covers
+     * the whole URL it no longer matches what arrived — the holder is told
+     * their link is bad, every time, and no amount of resending helps.
+     *
+     * @return array<int, string>
+     */
+    private function urlFailures(): array
+    {
+        $url = (string) $this->config->get('app.url');
+
+        if (blank($url)) {
+            return ['APP_URL is empty, so queued mail cannot build a link at all.'];
+        }
+
+        if (! str_starts_with(strtolower($url), 'https://')) {
+            return ["APP_URL is [{$url}]. Queued mail takes its scheme from APP_URL alone, so every signed verification and password reset link would be issued for plain HTTP and fail its own signature check once the click is redirected to HTTPS. Use an https:// URL."];
+        }
+
+        return [];
     }
 
     /**

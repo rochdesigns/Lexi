@@ -69,10 +69,23 @@ return Application::configure(basePath: dirname(__DIR__))
             if ($user->hasVerifiedEmail()) {
                 Inertia::flash('toast', [
                     'type' => 'info',
-                    'message' => __('That link has expired, but your email address is already verified.'),
+                    'message' => __('That link is no longer usable, but your email address is already verified.'),
                 ]);
 
                 return redirect()->route('today');
+            }
+
+            // `signed` raises the same exception for a link that aged out and
+            // one whose signature never matched, and only the first is worth
+            // answering with a fresh link. A signature that fails inside its
+            // own hour means the link was altered in transit, or was issued for
+            // an origin other than the one it arrived at -- a wrong APP_URL
+            // scheme does exactly that to every link at once. Resending cannot
+            // fix either, and each rejected click would mint one more mail.
+            $expires = $request->query('expires');
+
+            if (! is_numeric($expires) || (int) $expires >= now()->getTimestamp()) {
+                return redirect()->route('verification.notice')->with('status', 'verification-link-invalid');
             }
 
             RateLimiter::attempt(
