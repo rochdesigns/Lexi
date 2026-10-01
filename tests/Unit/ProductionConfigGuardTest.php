@@ -67,15 +67,33 @@ test('an unencrypted session is rejected', function () {
         ->toThrow(RuntimeException::class, 'SESSION_ENCRYPT is not true');
 });
 
-test('a lax same site policy is rejected', function () {
+test('a lax same site policy is accepted, because emailed links depend on it', function () {
+    // Strict withholds the session cookie on a cross-site top-level navigation,
+    // which is what clicking a link in a mail client is. The verify route sits
+    // behind auth, so the click arrives as a guest and silently fails to verify.
     expect(fn () => guardFor(['session' => ['same_site' => 'lax']])->assert())
-        ->toThrow(RuntimeException::class, 'SESSION_SAME_SITE is not [strict]');
+        ->not->toThrow(RuntimeException::class);
+});
+
+test('a strict same site policy is still accepted', function () {
+    expect(fn () => guardFor(['session' => ['same_site' => 'strict']])->assert())
+        ->not->toThrow(RuntimeException::class);
+});
+
+test('a same site policy of none is rejected', function () {
+    expect(fn () => guardFor(['session' => ['same_site' => 'none']])->assert())
+        ->toThrow(RuntimeException::class, 'SESSION_SAME_SITE is [none]');
+});
+
+test('a missing same site policy is rejected', function () {
+    expect(fn () => guardFor(['session' => ['same_site' => null]])->assert())
+        ->toThrow(RuntimeException::class, 'SESSION_SAME_SITE');
 });
 
 test('every failure is reported together', function () {
     expect(fn () => guardFor([
         'mail' => ['default' => 'log'],
-        'session' => ['secure' => false, 'encrypt' => false, 'same_site' => 'lax'],
+        'session' => ['secure' => false, 'encrypt' => false, 'same_site' => 'none'],
     ])->assert())->toThrow(function (RuntimeException $e) {
         expect($e->getMessage())
             ->toContain('MAIL_MAILER is [log]')
