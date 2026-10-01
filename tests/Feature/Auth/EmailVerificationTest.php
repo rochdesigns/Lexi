@@ -155,3 +155,76 @@ test('a verification link opened without a session does not verify the address',
 
     expect($user->fresh()->hasVerifiedEmail())->toBeFalse();
 });
+
+test('an expired verification link sends a fresh one instead of a dead end', function () {
+    Notification::fake();
+
+    $user = User::factory()->unverified()->create();
+
+    $expiredUrl = URL::temporarySignedRoute(
+        'verification.verify',
+        now()->subMinute(),
+        ['id' => $user->id, 'hash' => sha1($user->email)],
+    );
+
+    $this->actingAs($user)->get($expiredUrl)
+        ->assertRedirect(route('verification.notice', absolute: false))
+        ->assertSessionHas('status', 'verification-link-expired');
+
+    Notification::assertSentTo($user, QueuedVerifyEmail::class);
+    expect($user->fresh()->hasVerifiedEmail())->toBeFalse();
+});
+
+test('a verification link with a tampered signature sends a fresh one', function () {
+    Notification::fake();
+
+    $user = User::factory()->unverified()->create();
+
+    $url = URL::temporarySignedRoute(
+        'verification.verify',
+        now()->addMinutes(60),
+        ['id' => $user->id, 'hash' => sha1($user->email)],
+    );
+
+    $this->actingAs($user)->get($url.'tampered')
+        ->assertRedirect(route('verification.notice', absolute: false))
+        ->assertSessionHas('status', 'verification-link-expired');
+
+    Notification::assertSentTo($user, QueuedVerifyEmail::class);
+});
+
+test('an expired verification link for an already verified address says so', function () {
+    Notification::fake();
+
+    $user = User::factory()->create();
+
+    $expiredUrl = URL::temporarySignedRoute(
+        'verification.verify',
+        now()->subMinute(),
+        ['id' => $user->id, 'hash' => sha1($user->email)],
+    );
+
+    $this->actingAs($user)->get($expiredUrl)
+        ->assertRedirect(route('today', absolute: false))
+        ->assertSessionHas('inertia.flash_data');
+
+    Notification::assertNothingSent();
+});
+
+test('an expired verification link for another account is still refused', function () {
+    Notification::fake();
+
+    $user = User::factory()->unverified()->create();
+    $other = User::factory()->unverified()->create();
+
+    $expiredUrl = URL::temporarySignedRoute(
+        'verification.verify',
+        now()->subMinute(),
+        ['id' => $other->id, 'hash' => sha1($other->email)],
+    );
+
+    $this->actingAs($user)->get($expiredUrl)->assertForbidden();
+
+    Notification::assertNothingSent();
+    expect($user->fresh()->hasVerifiedEmail())->toBeFalse();
+});
