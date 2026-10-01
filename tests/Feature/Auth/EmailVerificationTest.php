@@ -136,3 +136,22 @@ test('a verified user can reach a verified route', function () {
 
     $this->actingAs($user)->get(route('today'))->assertOk();
 });
+
+test('a verification link opened without a session does not verify the address', function () {
+    // This is how SESSION_SAME_SITE=strict broke verification in production.
+    // Strict withholds the session cookie on a cross-site top-level navigation,
+    // and clicking a link in a mail client is exactly that. On the verify route
+    // auth:web runs ahead of signed, so the click arrives as a guest, redirects,
+    // and the signature is never even reached -- no 403, no log, nothing.
+    $user = User::factory()->unverified()->create();
+
+    $verificationUrl = URL::temporarySignedRoute(
+        'verification.verify',
+        now()->addMinutes(60),
+        ['id' => $user->id, 'hash' => sha1($user->email)],
+    );
+
+    $this->get($verificationUrl)->assertRedirect(route('login'));
+
+    expect($user->fresh()->hasVerifiedEmail())->toBeFalse();
+});

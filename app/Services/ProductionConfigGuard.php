@@ -109,8 +109,13 @@ class ProductionConfigGuard
             $failures[] = 'SESSION_ENCRYPT is not true.';
         }
 
-        if ($this->config->get('session.same_site') !== 'strict') {
-            $failures[] = 'SESSION_SAME_SITE is not [strict].';
+        $sameSite = $this->config->get('session.same_site');
+
+        if (! in_array($sameSite, ['lax', 'strict'], true)) {
+            $failures[] = sprintf(
+                'SESSION_SAME_SITE is [%s], which lets the session cookie travel with cross-site requests. Use [lax].',
+                $sameSite === null ? 'null' : $sameSite,
+            );
         }
 
         return $failures;
