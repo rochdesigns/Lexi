@@ -1,11 +1,14 @@
 <?php
 
-use App\Http\Controllers\BudgetController;
 use App\Http\Controllers\CalendarController;
 use App\Http\Controllers\EventController;
-use App\Http\Controllers\ForecastController;
-use App\Http\Controllers\LedgerController;
-use App\Http\Controllers\PayoffPlanController;
+use App\Http\Controllers\Money\CalendarController as MoneyCalendarController;
+use App\Http\Controllers\Money\DebtController;
+use App\Http\Controllers\Money\DebtPaymentController;
+use App\Http\Controllers\Money\OverviewController as MoneyOverviewController;
+use App\Http\Controllers\Money\PaymentPlanController;
+use App\Http\Controllers\Money\PlanController as MoneyPlanController;
+use App\Http\Controllers\Money\TransactionsController as MoneyTransactionsController;
 use App\Http\Controllers\TaskController;
 use App\Http\Controllers\TaskSectionController;
 use App\Http\Controllers\TodayController;
@@ -41,42 +44,23 @@ Route::middleware(['auth', 'verified'])->group(function (): void {
     Route::inertia('/meals', 'Stub')->name('meals');
     Route::inertia('/groceries', 'Stub')->name('groceries');
     Route::inertia('/pets', 'Stub')->name('pets');
-    Route::get('/ledger', [LedgerController::class, 'index'])->name('ledger.index');
-    Route::post('/ledger/accounts', [LedgerController::class, 'storeAccount'])->name('ledger.accounts.store');
-    Route::patch('/ledger/accounts/{account}', [LedgerController::class, 'updateAccount'])->name('ledger.accounts.update');
-    Route::delete('/ledger/accounts/{account}', [LedgerController::class, 'destroyAccount'])->name('ledger.accounts.destroy');
-    Route::post('/ledger/transactions', [LedgerController::class, 'storeTransaction'])->name('ledger.transactions.store');
-    Route::patch('/ledger/transactions/{transaction}', [LedgerController::class, 'updateTransaction'])->name('ledger.transactions.update');
-    Route::delete('/ledger/transactions/{transaction}', [LedgerController::class, 'destroyTransaction'])->name('ledger.transactions.destroy');
-    Route::post('/ledger/debt-payment/preview', [LedgerController::class, 'previewDebtPayment'])->name('ledger.debt-payment.preview');
-    Route::get('/payoff-plan', [PayoffPlanController::class, 'index'])->name('payoff-plan');
-    Route::post('/payoff-plan/debts', [PayoffPlanController::class, 'storeDebt'])->name('payoff-plan.debts.store');
-    Route::post('/payoff-plan/debts/preview', [PayoffPlanController::class, 'previewDebt'])->name('payoff-plan.debts.preview');
-    Route::patch('/payoff-plan/debts/{debt}', [PayoffPlanController::class, 'updateDebt'])->name('payoff-plan.debts.update');
-    Route::delete('/payoff-plan/debts/{debt}', [PayoffPlanController::class, 'destroyDebt'])->name('payoff-plan.debts.destroy');
-    Route::post('/payoff-plan/debts/{debt}/link', [PayoffPlanController::class, 'linkDebt'])->name('payoff-plan.debts.link');
-    Route::post('/payoff-plan/debts/{debt}/unlink', [PayoffPlanController::class, 'unlinkDebt'])->name('payoff-plan.debts.unlink');
-    Route::post('/payoff-plan/debts/{debt}/extra', [PayoffPlanController::class, 'sendExtra'])->name('payoff-plan.debts.extra');
-    Route::patch('/payoff-plan/settings', [PayoffPlanController::class, 'updateSettings'])->name('payoff-plan.settings.update');
-    Route::patch('/payoff-plan/priority', [PayoffPlanController::class, 'setPriorityDebt'])->name('payoff-plan.priority.update');
-    Route::get('/forecast', [ForecastController::class, 'index'])->name('forecast.index');
-    Route::patch('/forecast/income', [ForecastController::class, 'updateIncome'])->name('forecast.income.update');
-    Route::get('/budget', [BudgetController::class, 'index'])->name('budget.index');
-    Route::post('/budget/bills', [BudgetController::class, 'storeBill'])->name('budget.bills.store');
-    Route::patch('/budget/bills/{bill}', [BudgetController::class, 'updateBill'])->name('budget.bills.update');
-    Route::delete('/budget/bills/{bill}', [BudgetController::class, 'destroyBill'])->name('budget.bills.destroy');
-    Route::post('/budget/envelopes', [BudgetController::class, 'storeEnvelope'])->name('budget.envelopes.store');
-    Route::patch('/budget/envelopes/{envelope}', [BudgetController::class, 'updateEnvelope'])->name('budget.envelopes.update');
-    Route::delete('/budget/envelopes/{envelope}', [BudgetController::class, 'destroyEnvelope'])->name('budget.envelopes.destroy');
-    Route::post('/budget/bill-periods/{billPeriod}/pay', [BudgetController::class, 'markBillPaid'])->name('budget.bill-periods.pay');
-    Route::post('/budget/bill-periods/pay', [BudgetController::class, 'markBillsPaid'])->name('budget.bill-periods.pay-many');
-    Route::delete('/budget/bill-periods/{billPeriod}/pay', [BudgetController::class, 'unmarkBillPaid'])->name('budget.bill-periods.unpay');
-    Route::post('/budget/deal', [BudgetController::class, 'dealAcrossEnvelopes'])->name('budget.deal');
-    Route::post('/budget/envelope-periods/{envelopePeriod}/cover', [BudgetController::class, 'coverOverspend'])->name('budget.envelope-periods.cover');
-    Route::post('/budget/envelope-periods/{envelopePeriod}/sweep/confirm', [BudgetController::class, 'confirmSweep'])->name('budget.envelope-periods.sweep.confirm');
-    Route::post('/budget/envelope-periods/{envelopePeriod}/sweep/decline', [BudgetController::class, 'declineSweep'])->name('budget.envelope-periods.sweep.decline');
-    Route::post('/budget/extra-payment/confirm', [BudgetController::class, 'confirmExtraPayment'])->name('budget.extra-payment.confirm');
-    Route::post('/budget/debt-minimums/{debt}/pay', [BudgetController::class, 'payDebtMinimum'])->name('budget.debt-minimums.pay');
+    Route::prefix('money')->name('money.')->group(function (): void {
+        Route::get('/', MoneyOverviewController::class)->name('overview');
+        Route::get('/debts', [DebtController::class, 'index'])->name('debts.index');
+        Route::post('/debts', [DebtController::class, 'store'])->name('debts.store');
+        Route::get('/debts/{debt}', [DebtController::class, 'show'])->name('debts.show');
+        Route::patch('/debts/{debt}', [DebtController::class, 'update'])->name('debts.update');
+        Route::delete('/debts/{debt}', [DebtController::class, 'destroy'])->name('debts.destroy');
+        Route::post('/debts/{debt}/plans/preview', [PaymentPlanController::class, 'preview'])->name('plans.preview');
+        Route::post('/debts/{debt}/plans', [PaymentPlanController::class, 'store'])->name('plans.store');
+        Route::patch('/plans/{paymentPlan}', [PaymentPlanController::class, 'update'])->name('plans.update');
+        Route::delete('/plans/{paymentPlan}', [PaymentPlanController::class, 'destroy'])->name('plans.destroy');
+        Route::post('/debts/{debt}/payments', [DebtPaymentController::class, 'store'])->name('payments.store');
+        Route::delete('/payments/{debtPayment}', [DebtPaymentController::class, 'destroy'])->name('payments.destroy');
+        Route::get('/calendar', MoneyCalendarController::class)->name('calendar');
+        Route::get('/transactions', MoneyTransactionsController::class)->name('transactions');
+        Route::get('/plan', MoneyPlanController::class)->name('plan');
+    });
     Route::inertia('/photos', 'Stub')->name('photos');
 
     // Legacy redirect — keeps old dashboard links working

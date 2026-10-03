@@ -28,14 +28,6 @@ type TodayTask = {
     section_id: number;
     done: boolean;
 };
-type MoneySummary = { safeToSpend: number; budget: number; spent: number };
-type UpcomingBill = {
-    id: string;
-    name: string;
-    amount: number;
-    dueLabel: string;
-    daysUntil: number;
-};
 type Habit = {
     id: number;
     name: string;
@@ -58,8 +50,6 @@ const props = defineProps<{
     user: { name: string; firstName: string; theme: LexiTheme };
     todayEvents: TodayEvent[];
     todayTasks: TodayTask[];
-    moneySummary: MoneySummary;
-    upcomingBills: UpcomingBill[];
     habits: Habit[];
     healthMetrics: HealthMetric[];
     visionBoardItems: VisionBoardItem[];
@@ -140,36 +130,14 @@ const heroSubtitle = computed(() => {
     const tasks = undoneCount.value;
     const eventsText = `${events} ${events === 1 ? 'event' : 'events'}`;
     const tasksText = `${tasks} ${tasks === 1 ? 'task' : 'tasks'} to go`;
-    const budgetPct =
-        props.moneySummary.budget > 0
-            ? (props.moneySummary.spent / props.moneySummary.budget) * 100
-            : 0;
-    const budgetMood =
-        budgetPct < 60
-            ? "you're comfortably under budget"
-            : budgetPct < 85
-              ? "you're on track"
-              : budgetPct < 100
-                ? "you're getting close on budget"
-                : "you're over budget";
     const day = new Date().toLocaleDateString('en-US', {
         weekday: 'long',
         month: 'long',
         day: 'numeric',
     });
 
-    return `${day} — ${eventsText}, ${tasksText}, and ${budgetMood}.`;
+    return `${day} — ${eventsText}, ${tasksText}.`;
 });
-
-function formatPeso(amount: number): string {
-    return (
-        '₱' +
-        amount.toLocaleString('en-PH', {
-            minimumFractionDigits: 2,
-            maximumFractionDigits: 2,
-        })
-    );
-}
 
 // Tag pill color helper
 const tagColors: Record<string, { bg: string; text: string }> = {
@@ -603,7 +571,7 @@ watch(visionModalOpen, (open) => {
             <div class="flex flex-col gap-5">
                 <!-- Money snapshot -->
                 <Link
-                    href="/budget"
+                    href="/money"
                     class="block rounded-[22px] p-5 transition-opacity hover:opacity-90"
                     style="
                         background: var(--hab-card-bg);
@@ -625,55 +593,8 @@ watch(visionModalOpen, (open) => {
                         >
                     </div>
 
-                    <div
-                        v-if="upcomingBills.length === 0"
-                        class="mb-3 text-[13px]"
-                        style="color: var(--hab-muted)"
-                    >
-                        No bills due this week
-                    </div>
-                    <div v-else class="mb-3">
-                        <p
-                            class="mb-1 text-[12px]"
-                            style="color: var(--hab-muted)"
-                        >
-                            {{ upcomingBills.length }}
-                            {{ upcomingBills.length === 1 ? 'bill' : 'bills' }}
-                            due this week
-                        </p>
-                        <div
-                            v-for="bill in upcomingBills.slice(0, 3)"
-                            :key="bill.id"
-                            class="flex items-center justify-between py-1"
-                        >
-                            <span
-                                class="text-[13px] font-medium"
-                                style="color: var(--hab-ink)"
-                                >{{ bill.name }}</span
-                            >
-                            <span
-                                class="text-[12px]"
-                                style="color: var(--hab-muted)"
-                                >{{ bill.dueLabel }}</span
-                            >
-                        </div>
-                    </div>
-
-                    <div
-                        class="flex items-center justify-between border-t pt-3"
-                        style="border-color: var(--hab-hairline)"
-                    >
-                        <span
-                            class="text-[12px]"
-                            style="color: var(--hab-muted)"
-                            >Safe to spend</span
-                        >
-                        <span
-                            class="font-['Bricolage_Grotesque'] text-[16px] font-bold"
-                            style="color: var(--hab-ink)"
-                        >
-                            {{ formatPeso(moneySummary.safeToSpend) }}
-                        </span>
+                    <div class="text-[13px]" style="color: var(--hab-muted)">
+                        Coming soon
                     </div>
                 </Link>
 

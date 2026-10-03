@@ -23,17 +23,42 @@ const props = withDefaults(
          * row the hint would land beside the input instead of below it.
          */
         hint?: boolean;
+        /**
+         * Draw the unit inside the box: ₱ before the number, % after it, and
+         * peso amounts settle to two decimals. Opt-in, because it wraps the input.
+         */
+        adorn?: boolean;
+        /** Plain text shown after the number when `adorn` is on, such as "of the month". */
+        suffix?: string;
     }>(),
-    { unit: '₱', emptyValue: 0, hint: false },
+    { unit: '₱', emptyValue: 0, hint: false, adorn: false, suffix: '' },
 );
 
 const emit = defineEmits<{ 'update:modelValue': [number | null] }>();
 
 defineOptions({ inheritAttrs: false });
 
+const isPeso = computed(() => props.adorn && props.unit === '₱');
+const isPercent = computed(() => props.adorn && props.unit === '%');
+const suffixText = computed(() =>
+    isPercent.value ? '%' : props.adorn ? props.suffix : '',
+);
+
 function toDraft(value: number | null): string {
-    return value === null || Number.isNaN(value) ? '' : String(value);
+    if (value === null || Number.isNaN(value)) {
+        return '';
+    }
+
+    return isPeso.value ? value.toFixed(2) : String(value);
 }
+
+/** Room inside the box for the sign, so typed digits never run under it. */
+const adornStyle = computed(() => ({
+    ...(isPeso.value ? { paddingLeft: '1.75rem' } : {}),
+    ...(suffixText.value
+        ? { paddingRight: `${suffixText.value.length * 0.5 + 1.5}rem` }
+        : {}),
+}));
 
 const draft = ref(toDraft(props.modelValue));
 const focused = ref(false);
@@ -107,7 +132,7 @@ function settle(): void {
         return;
     }
 
-    draft.value = String(evaluated.value);
+    draft.value = toDraft(evaluated.value);
     emit('update:modelValue', evaluated.value);
 }
 </script>
@@ -119,7 +144,7 @@ function settle(): void {
         running total underneath.
     -->
     <input
-        v-if="!hint"
+        v-if="!hint && !adorn"
         v-bind="$attrs"
         :value="draft"
         type="text"
@@ -131,7 +156,36 @@ function settle(): void {
         @keydown.enter.prevent="settle"
     />
     <span v-else class="block">
+        <span v-if="adorn" class="relative block">
+            <span
+                v-if="isPeso"
+                class="pointer-events-none absolute inset-y-0 left-3 flex items-center text-[14px]"
+                style="color: var(--hab-muted)"
+                aria-hidden="true"
+                >₱</span
+            >
+            <input
+                v-bind="$attrs"
+                :value="draft"
+                :style="adornStyle"
+                type="text"
+                inputmode="text"
+                autocomplete="off"
+                @input="onInput"
+                @focus="focused = true"
+                @blur="settle"
+                @keydown.enter.prevent="settle"
+            />
+            <span
+                v-if="suffixText"
+                class="pointer-events-none absolute inset-y-0 right-3 flex items-center text-[13px]"
+                style="color: var(--hab-muted)"
+                aria-hidden="true"
+                >{{ suffixText }}</span
+            >
+        </span>
         <input
+            v-else
             v-bind="$attrs"
             :value="draft"
             type="text"
