@@ -36,6 +36,7 @@ class TransactionsController extends Controller
             ->orderByDesc('id')
             ->get();
         $latest = $user->transactions()->latest('id')->first();
+        $accounts = $user->accounts()->orderBy('name')->get();
 
         return Inertia::render('Money/Transactions', [
             'month' => $month,
@@ -58,7 +59,7 @@ class TransactionsController extends Controller
                 ->sortByDesc('total')
                 ->values(),
             'total' => $transactions->sum('amount'),
-            'accounts' => $user->accounts()->orderBy('name')->get()->map(fn (Account $account): array => [
+            'accounts' => $accounts->map(fn (Account $account): array => [
                 'id' => $account->id,
                 'name' => $account->name,
                 'balance' => $account->balance,
@@ -67,6 +68,7 @@ class TransactionsController extends Controller
             'cards' => $user->debts()->where('type', DebtType::CreditCard)->with('cardDetail')->orderBy('name')->get()->map(fn (Debt $card): array => [
                 'id' => $card->id,
                 'name' => $card->name,
+                'guard' => $this->projection->spendingGuard($card, $accounts),
             ])->values(),
             'lastPaidWith' => $latest === null ? null : ['accountId' => $latest->account_id, 'debtId' => $latest->debt_id],
         ]);

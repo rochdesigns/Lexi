@@ -12,6 +12,7 @@ use App\Models\Money\DebtType;
 use App\Models\Money\IncomeSource;
 use App\Models\Money\InterestType;
 use App\Models\Money\PaymentPlan;
+use App\Models\Money\Transaction;
 use Carbon\CarbonImmutable;
 use Carbon\CarbonInterface;
 use Illuminate\Support\Collection;
@@ -821,15 +822,55 @@ class Projection
     }
 
     /**
-     * Plans billed on the next statement plus the revolving balance.
-     * Transactions join this in a later phase.
+     * Plans billed on the next statement, the revolving balance, and what has
+     * been charged to the card since the last statement closed. Charges up to
+     * and including that closing day are already in the balance, and ones after
+     * the next closing day belong to the statement after. Needs the card's
+     * transactions loaded.
      */
     public function projectedNextStatement(Debt $debt, CarbonInterface $today): int
     {
         $statement = $this->nextStatement($debt, $today);
+        $lastClosed = $this->latestClosingDate($debt->cardDetail->statement_day, $today)->toDateString();
+        $closesOn = $statement['closes_on']->toDateString();
+
+        $charges = $debt->transactions
+            ->filter(fn (Transaction $transaction): bool => $transaction->date->toDateString() > $lastClosed && $transaction->date->toDateString() <= $closesOn)
+            ->sum('amount');
 
         return $debt->paymentPlans->sum(fn (PaymentPlan $plan): int => $this->paymentFor($plan, $statement['month']))
-            + $debt->cardDetail->revolving_balance;
+            + $debt->cardDetail->revolving_balance
+            + $charges;
+    }
+
+    /**
+     * Before spending on a card that already carries a balance: how much it
+     * carries, what it costs a month, and the spendable account with the most
+     * money to use instead. Null when the card carries nothing.
+     *
+     * @param  Collection<int, Account>  $accounts
+     * @return array{debtId: int, name: string, revolving: int, monthlyRate: float, suggestedAccount: array{id: int, name: string, balance: int}|null}|null
+     */
+    public function spendingGuard(Debt $card, Collection $accounts): ?array
+    {
+        $revolving = $card->cardDetail->revolving_balance ?? 0;
+
+        if ($revolving <= 0) {
+            return null;
+        }
+
+        $best = $accounts
+            ->filter(fn (Account $account): bool => $account->is_spendable && $account->balance > 0)
+            ->sortByDesc('balance')
+            ->first();
+
+        return [
+            'debtId' => $card->id,
+            'name' => $card->name,
+            'revolving' => $revolving,
+            'monthlyRate' => (float) ($card->monthly_interest_rate ?? 0),
+            'suggestedAccount' => $best === null ? null : ['id' => $best->id, 'name' => $best->name, 'balance' => $best->balance],
+        ];
     }
 
     /**

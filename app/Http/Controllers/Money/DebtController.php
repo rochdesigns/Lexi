@@ -25,7 +25,7 @@ class DebtController extends Controller
     {
         $today = Carbon::today();
         $debts = $request->user()->debts()
-            ->with(['cardDetail', 'paymentPlans.debt', 'payments'])
+            ->with(['cardDetail', 'paymentPlans.debt', 'payments', 'transactions'])
             ->orderBy('name')
             ->get();
 
@@ -41,7 +41,7 @@ class DebtController extends Controller
         abort_if($debt->user_id !== $request->user()->id, 403);
 
         $today = Carbon::today();
-        $debt->load(['cardDetail', 'paymentPlans.debt', 'payments']);
+        $debt->load(['cardDetail', 'paymentPlans.debt', 'payments', 'transactions']);
 
         $plans = $debt->paymentPlans
             ->sortBy([

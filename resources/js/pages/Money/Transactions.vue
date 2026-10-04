@@ -14,6 +14,14 @@ import {
     transactionCategories,
 } from '@/utils/money';
 
+type CardGuard = {
+    debtId: number;
+    name: string;
+    revolving: number;
+    monthlyRate: number;
+    suggestedAccount: { id: number; name: string; balance: number } | null;
+};
+
 const props = defineProps<{
     month: string;
     currentMonth: string;
@@ -27,7 +35,7 @@ const props = defineProps<{
         balance: number;
         isSpendable: boolean;
     }[];
-    cards: { id: number; name: string }[];
+    cards: { id: number; name: string; guard: CardGuard | null }[];
     lastPaidWith: { accountId: number | null; debtId: number | null } | null;
 }>();
 
@@ -57,6 +65,13 @@ const form = useForm({
 
 const hasMethods = computed(
     () => props.accounts.length > 0 || props.cards.length > 0,
+);
+
+/** Spending on a card that already carries a balance adds to what is charging interest. */
+const guard = computed(
+    () =>
+        props.cards.find((card) => `card:${card.id}` === form.paidWith)
+            ?.guard ?? null,
 );
 
 const amountBox = ref<HTMLElement | null>(null);
@@ -236,6 +251,37 @@ const errorClass = 'mt-1 text-[12px] text-red-600';
                             {{ form.errors.date }}
                         </p>
                     </div>
+                </div>
+
+                <div
+                    v-if="guard"
+                    class="mt-3 rounded-[12px] px-4 py-3 text-[13.5px]"
+                    style="
+                        background: #fff4e0;
+                        border: 1px solid #f2d9a6;
+                        color: #7a5200;
+                    "
+                    role="status"
+                >
+                    {{ guard.name }} already carries
+                    {{ formatPeso(guard.revolving) }}, which costs
+                    {{ guard.monthlyRate }}% a month. A new charge adds to what
+                    is charging interest.
+                    <template v-if="guard.suggestedAccount">
+                        <button
+                            type="button"
+                            class="ml-1 font-semibold underline"
+                            @click="
+                                form.paidWith = `account:${guard.suggestedAccount.id}`
+                            "
+                        >
+                            Use {{ guard.suggestedAccount.name }} instead
+                        </button>
+                        ({{
+                            formatPeso(guard.suggestedAccount.balance)
+                        }}
+                        available).
+                    </template>
                 </div>
 
                 <div

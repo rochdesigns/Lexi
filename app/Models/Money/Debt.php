@@ -78,6 +78,16 @@ class Debt extends Model
     }
 
     /**
+     * Expenses charged to this card.
+     *
+     * @return HasMany<Transaction, $this>
+     */
+    public function transactions(): HasMany
+    {
+        return $this->hasMany(Transaction::class);
+    }
+
+    /**
      * @return HasMany<DebtPayment, $this>
      */
     public function payments(): HasMany
