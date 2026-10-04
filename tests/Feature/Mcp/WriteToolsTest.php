@@ -12,6 +12,12 @@ use App\Models\User;
 use Illuminate\Testing\TestResponse;
 use Laravel\Passport\Passport;
 
+beforeEach(function (): void {
+    $keys = passportTestKeys();
+
+    config(['passport.private_key' => $keys['private'], 'passport.public_key' => $keys['public']]);
+});
+
 /**
  * @param  array<int, string>  $scopes
  */
