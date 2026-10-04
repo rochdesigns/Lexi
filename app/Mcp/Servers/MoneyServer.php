@@ -4,6 +4,7 @@ namespace App\Mcp\Servers;
 
 use App\Mcp\Tools\Money\ListAccounts;
 use App\Mcp\Tools\Money\ListBills;
+use App\Mcp\Tools\Money\ListDebts;
 use App\Mcp\Tools\Money\ListGoals;
 use App\Mcp\Tools\Money\ListIncomeSources;
 use Laravel\Mcp\Server;
@@ -20,6 +21,7 @@ class MoneyServer extends Server
         ListBills::class,
         ListIncomeSources::class,
         ListGoals::class,
+        ListDebts::class,
     ];
 
     protected string $name = 'Lexi Money';
