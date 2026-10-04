@@ -14,6 +14,39 @@ function rpc(string $method, array $params = []): array
     return ['jsonrpc' => '2.0', 'id' => 1, 'method' => $method, 'params' => (object) $params];
 }
 
+/**
+ * A throwaway RSA key pair for Passport's guard and authorization server.
+ *
+ * The real keys are gitignored, so a fresh checkout or a CI runner has none,
+ * and every request that reaches the guard would fail with "Invalid key
+ * supplied". Generating a pair here keeps these tests independent of the
+ * machine they run on.
+ *
+ * @return array{private: string, public: string}
+ */
+function passportTestKeys(): array
+{
+    static $keys = null;
+
+    if ($keys === null) {
+        $resource = openssl_pkey_new(['private_key_bits' => 2048, 'private_key_type' => OPENSSL_KEYTYPE_RSA]);
+
+        if ($resource === false || ! openssl_pkey_export($resource, $private) || ! is_array($details = openssl_pkey_get_details($resource))) {
+            throw new RuntimeException('Could not generate a test RSA key pair.');
+        }
+
+        $keys = ['private' => $private, 'public' => $details['key']];
+    }
+
+    return $keys;
+}
+
+beforeEach(function (): void {
+    $keys = passportTestKeys();
+
+    config(['passport.private_key' => $keys['private'], 'passport.public_key' => $keys['public']]);
+});
+
 test('an unauthenticated request is rejected', function (): void {
     $this->postJson('/mcp/money', rpc('tools/list'))->assertUnauthorized();
 });
