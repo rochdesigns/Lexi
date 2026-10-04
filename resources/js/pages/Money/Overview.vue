@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import { Head } from '@inertiajs/vue3';
 import { computed, ref } from 'vue';
+import AccountDialog from '@/components/AccountDialog.vue';
+import type { AccountRow } from '@/components/AccountDialog.vue';
 import BillDialog from '@/components/BillDialog.vue';
 import type { BillRow } from '@/components/BillDialog.vue';
 import IncomeSourceDialog from '@/components/IncomeSourceDialog.vue';
@@ -16,6 +18,14 @@ type Upcoming = {
     autopay: boolean;
 };
 
+type Shortfall = {
+    kind: 'debt' | 'bill';
+    name: string;
+    amount: number;
+    date: string;
+    short: number;
+};
+
 const props = defineProps<{
     numbers: {
         income: number;
@@ -26,15 +36,31 @@ const props = defineProps<{
         safeToSpend: number;
         perDay: number;
     };
+    cashAvailable: number;
+    shortfalls: Shortfall[];
+    accounts: AccountRow[];
     upcoming: Upcoming[];
     incomeSources: IncomeSourceRow[];
     bills: BillRow[];
 }>();
 
+const editingAccount = ref<AccountRow | null>(null);
+const accountOpen = ref(false);
 const editingIncome = ref<IncomeSourceRow | null>(null);
 const incomeOpen = ref(false);
 const editingBill = ref<BillRow | null>(null);
 const billOpen = ref(false);
+
+function openAccount(account: AccountRow | null): void {
+    editingAccount.value = account;
+    accountOpen.value = true;
+}
+
+const accountTypeLabel: Record<string, string> = {
+    cash: 'Cash',
+    bank: 'Bank',
+    ewallet: 'E-wallet',
+};
 
 function openIncome(source: IncomeSourceRow | null): void {
     editingIncome.value = source;
@@ -111,6 +137,34 @@ const cardStyle =
             month.
         </div>
 
+        <div
+            v-if="shortfalls.length > 0"
+            class="mb-6 rounded-[16px] px-5 py-4 text-[14px]"
+            style="
+                background: #fdecea;
+                border: 1px solid #f5c6c0;
+                color: #8f2a1f;
+            "
+            role="alert"
+        >
+            <p class="mb-1 font-semibold">
+                You may run short in the next 30 days
+            </p>
+            <ul class="flex flex-col gap-0.5">
+                <li
+                    v-for="item in shortfalls"
+                    :key="`${item.name}-${item.date}`"
+                >
+                    {{ formatPeso(item.short) }} short for {{ item.name }} due
+                    {{ formatDay(item.date) }}
+                </li>
+            </ul>
+            <p class="mt-2 text-[12.5px]">
+                This uses the balances of accounts you can spend and the paydays
+                you have entered.
+            </p>
+        </div>
+
         <div class="mb-6 rounded-[22px] p-6" :style="cardStyle">
             <p class="text-[12px]" style="color: var(--hab-muted)">
                 Safe to spend this month
@@ -124,6 +178,21 @@ const cardStyle =
             <p class="mt-1 text-[13px]" style="color: var(--hab-muted)">
                 About {{ formatPeso(numbers.perDay) }} a day for the rest of the
                 month
+            </p>
+        </div>
+
+        <div class="mb-6 rounded-[22px] p-5" :style="cardStyle">
+            <p class="text-[12px]" style="color: var(--hab-muted)">
+                On hand right now
+            </p>
+            <p
+                class="font-['Bricolage_Grotesque'] text-[26px] font-extrabold tabular-nums"
+                style="color: var(--hab-ink)"
+            >
+                {{ formatPeso(cashAvailable) }}
+            </p>
+            <p class="mt-1 text-[12px]" style="color: var(--hab-muted)">
+                Balances of the accounts you can spend, as you last updated them
             </p>
         </div>
 
@@ -144,6 +213,62 @@ const cardStyle =
                     {{ tile.sign }} {{ formatPeso(tile.value) }}
                 </p>
             </div>
+        </div>
+
+        <div class="mb-6 rounded-[22px] p-6" :style="cardStyle">
+            <div class="mb-3 flex items-center justify-between">
+                <h2
+                    class="font-['Bricolage_Grotesque'] text-[18px] font-bold"
+                    style="color: var(--hab-ink)"
+                >
+                    Accounts
+                </h2>
+                <Button variant="outline" size="sm" @click="openAccount(null)"
+                    >Add account</Button
+                >
+            </div>
+            <p
+                v-if="accounts.length === 0"
+                class="text-[14px]"
+                style="color: var(--hab-muted)"
+            >
+                Add where your money sits to see what is on hand.
+            </p>
+            <ul v-else>
+                <li v-for="account in accounts" :key="account.id">
+                    <button
+                        type="button"
+                        class="flex w-full items-center justify-between gap-3 rounded-[10px] py-2 text-left hover:bg-black/[0.03]"
+                        @click="openAccount(account)"
+                    >
+                        <span class="min-w-0">
+                            <span
+                                class="block truncate text-[14px] font-semibold"
+                                style="color: var(--hab-ink)"
+                                >{{ account.name }}</span
+                            >
+                            <span
+                                class="block text-[12px]"
+                                style="color: var(--hab-muted)"
+                            >
+                                {{ accountTypeLabel[account.type]
+                                }}<template v-if="!account.isSpendable">
+                                    · kept aside, not counted</template
+                                >
+                            </span>
+                        </span>
+                        <span
+                            class="shrink-0 text-[14px] tabular-nums"
+                            :style="{
+                                color: account.isSpendable
+                                    ? 'var(--hab-ink)'
+                                    : 'var(--hab-muted)',
+                            }"
+                            >{{ formatPeso(account.balance) }}</span
+                        >
+                    </button>
+                </li>
+            </ul>
         </div>
 
         <div class="mb-6 rounded-[22px] p-6" :style="cardStyle">
@@ -305,6 +430,7 @@ const cardStyle =
             </div>
         </div>
 
+        <AccountDialog v-model:open="accountOpen" :account="editingAccount" />
         <IncomeSourceDialog v-model:open="incomeOpen" :source="editingIncome" />
         <BillDialog v-model:open="billOpen" :bill="editingBill" />
     </div>

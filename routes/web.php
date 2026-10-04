@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\CalendarController;
 use App\Http\Controllers\EventController;
+use App\Http\Controllers\Money\AccountController;
 use App\Http\Controllers\Money\BillController;
 use App\Http\Controllers\Money\CalendarController as MoneyCalendarController;
 use App\Http\Controllers\Money\DebtController;
@@ -62,6 +63,9 @@ Route::middleware(['auth', 'verified'])->group(function (): void {
         Route::post('/income-sources', [IncomeSourceController::class, 'store'])->name('income-sources.store');
         Route::patch('/income-sources/{incomeSource}', [IncomeSourceController::class, 'update'])->name('income-sources.update');
         Route::delete('/income-sources/{incomeSource}', [IncomeSourceController::class, 'destroy'])->name('income-sources.destroy');
+        Route::post('/accounts', [AccountController::class, 'store'])->name('accounts.store');
+        Route::patch('/accounts/{account}', [AccountController::class, 'update'])->name('accounts.update');
+        Route::delete('/accounts/{account}', [AccountController::class, 'destroy'])->name('accounts.destroy');
         Route::post('/bills', [BillController::class, 'store'])->name('bills.store');
         Route::patch('/bills/{bill}', [BillController::class, 'update'])->name('bills.update');
         Route::delete('/bills/{bill}', [BillController::class, 'destroy'])->name('bills.destroy');

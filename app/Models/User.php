@@ -3,6 +3,7 @@
 namespace App\Models;
 
 // use Illuminate\Contracts\Auth\MustVerifyEmail;
+use App\Models\Money\Account;
 use App\Models\Money\Bill;
 use App\Models\Money\Debt;
 use App\Models\Money\IncomeSource;
@@ -101,6 +102,14 @@ class User extends Authenticatable implements PasskeyUser
     public function debts(): HasMany
     {
         return $this->hasMany(Debt::class);
+    }
+
+    /**
+     * @return HasMany<Account, $this>
+     */
+    public function accounts(): HasMany
+    {
+        return $this->hasMany(Account::class);
     }
 
     /**

@@ -2,6 +2,7 @@
 
 namespace App\Services\Money;
 
+use App\Models\Money\Account;
 use App\Models\Money\Bill;
 use App\Models\Money\BillFrequency;
 use App\Models\Money\Debt;
@@ -414,6 +415,19 @@ class Projection
         ];
     }
 
+    /**
+     * What is on hand: the balances of spendable accounts only. Savings kept
+     * aside are left out.
+     *
+     * @param  Collection<int, Account>  $accounts
+     */
+    public function cashAvailable(Collection $accounts): int
+    {
+        return $accounts
+            ->filter(fn (Account $account): bool => $account->is_spendable)
+            ->sum('balance');
+    }
+
     /** Safe to spend spread over the days left in the month, today included. Never negative. */
     public function dailyAllowance(int $safeToSpend, CarbonInterface $today): int
     {
@@ -449,8 +463,75 @@ class Projection
      */
     public function upcoming(Collection $debts, Collection $bills, Collection $sources, CarbonInterface $today, int $days = 14): array
     {
+        $items = $this->events($debts, $bills, $sources, $today, $days);
+
+        usort($items, fn (array $a, array $b): int => [$a['date'], $a['kind'], $a['name']] <=> [$b['date'], $b['kind'], $b['name']]);
+
+        return $items;
+    }
+
+    /**
+     * Where the money runs out. Starts from cash on hand and walks the next
+     * $days days: pay days add money, bills and debt dues take it away, and pay
+     * days count before dues on the same day. Each due that leaves the balance
+     * below zero is flagged with how much of it cannot be covered. Without any
+     * account there is no balance to check, so nothing is flagged.
+     *
+     * A debt is counted once, at its next due date, for what is due this month.
+     *
+     * @param  Collection<int, Debt>  $debts
+     * @param  Collection<int, Bill>  $bills
+     * @param  Collection<int, IncomeSource>  $sources
+     * @param  Collection<int, Account>  $accounts
+     * @return list<array{kind: string, name: string, amount: int, date: string, short: int}>
+     */
+    public function shortfalls(Collection $debts, Collection $bills, Collection $sources, Collection $accounts, CarbonInterface $today, int $days = 30): array
+    {
+        if ($accounts->isEmpty()) {
+            return [];
+        }
+
+        $events = $this->events($debts, $bills, $sources, $today, $days);
+
+        usort($events, fn (array $a, array $b): int => [$a['date'], $a['kind'] === 'income' ? 0 : 1, $a['name']] <=> [$b['date'], $b['kind'] === 'income' ? 0 : 1, $b['name']]);
+
+        $balance = $this->cashAvailable($accounts);
+        $flagged = [];
+
+        foreach ($events as $event) {
+            if ($event['kind'] === 'income') {
+                $balance += $event['amount'];
+
+                continue;
+            }
+
+            $balance -= $event['amount'];
+
+            if ($balance < 0) {
+                $flagged[] = [
+                    'kind' => $event['kind'],
+                    'name' => $event['name'],
+                    'amount' => $event['amount'],
+                    'date' => $event['date'],
+                    'short' => min($event['amount'], -$balance),
+                ];
+            }
+        }
+
+        return $flagged;
+    }
+
+    /**
+     * @param  Collection<int, Debt>  $debts
+     * @param  Collection<int, Bill>  $bills
+     * @param  Collection<int, IncomeSource>  $sources
+     * @return list<array{kind: string, name: string, amount: int, date: string, autopay: bool}>
+     */
+    private function events(Collection $debts, Collection $bills, Collection $sources, CarbonInterface $today, int $days): array
+    {
         $start = CarbonImmutable::instance($today)->startOfDay();
         $end = $start->addDays($days);
+        $months = (int) $start->startOfMonth()->diffInMonths($end->startOfMonth());
         $items = [];
 
         foreach ($debts as $debt) {
@@ -463,17 +544,23 @@ class Projection
         }
 
         foreach ($bills as $bill) {
-            $date = $this->nextBillDate($bill, $start);
+            $dates = [$this->nextBillDate($bill, $start)];
 
-            if ($date->lessThanOrEqualTo($end)) {
-                $items[] = ['kind' => 'bill', 'name' => $bill->name, 'amount' => $bill->amount, 'date' => $date->toDateString(), 'autopay' => $bill->autopay];
+            if ($bill->frequency === BillFrequency::Monthly) {
+                $dates = array_map(fn (int $offset): CarbonImmutable => $this->dayInMonth($start->startOfMonth()->addMonths($offset), $bill->due_day), range(0, $months));
+            }
+
+            foreach ($dates as $date) {
+                if ($date->greaterThanOrEqualTo($start) && $date->lessThanOrEqualTo($end)) {
+                    $items[] = ['kind' => 'bill', 'name' => $bill->name, 'amount' => $bill->amount, 'date' => $date->toDateString(), 'autopay' => $bill->autopay];
+                }
             }
         }
 
         foreach ($sources as $source) {
             foreach ($source->payDays() as $payDay) {
-                foreach ([$start, $start->addMonthNoOverflow()] as $month) {
-                    $date = $this->dayInMonth($month, $payDay);
+                foreach (range(0, $months) as $offset) {
+                    $date = $this->dayInMonth($start->startOfMonth()->addMonths($offset), $payDay);
 
                     if ($date->greaterThanOrEqualTo($start) && $date->lessThanOrEqualTo($end)) {
                         $items[] = ['kind' => 'income', 'name' => $source->name, 'amount' => $source->amount, 'date' => $date->toDateString(), 'autopay' => false];
@@ -481,8 +568,6 @@ class Projection
                 }
             }
         }
-
-        usort($items, fn (array $a, array $b): int => [$a['date'], $a['kind'], $a['name']] <=> [$b['date'], $b['kind'], $b['name']]);
 
         return $items;
     }
