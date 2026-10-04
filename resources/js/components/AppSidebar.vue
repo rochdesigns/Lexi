@@ -46,14 +46,19 @@ const navSections: LexiNavSection[] = [
     {
         label: 'Money',
         items: [
+            { title: 'Overview', href: '/money', icon: 'wallet' },
+            { title: 'Debts', href: '/money/debts', icon: 'credit_card' },
             {
-                title: 'Payoff Plan',
-                href: '/payoff-plan',
-                icon: 'trending_down',
+                title: 'Calendar',
+                href: '/money/calendar',
+                icon: 'event_upcoming',
             },
-            { title: 'Ledger', href: '/ledger', icon: 'receipt_long' },
-            { title: 'Budget', href: '/budget', icon: 'wallet' },
-            { title: 'Forecast', href: '/forecast', icon: 'insights' },
+            {
+                title: 'Transactions',
+                href: '/money/transactions',
+                icon: 'receipt_long',
+            },
+            { title: 'Plan', href: '/money/plan', icon: 'flag' },
         ],
     },
 ];

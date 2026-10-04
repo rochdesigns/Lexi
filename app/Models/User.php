@@ -2,11 +2,12 @@
 
 namespace App\Models;
 
-use App\Models\DebtFocus\Account as DebtFocusAccount;
-use App\Models\DebtFocus\Bill as DebtFocusBill;
-use App\Models\DebtFocus\Debt as DebtFocusDebt;
-use App\Models\DebtFocus\Envelope as DebtFocusEnvelope;
-use App\Models\DebtFocus\Settings as DebtFocusSettings;
+use App\Models\Money\Account;
+use App\Models\Money\Bill;
+use App\Models\Money\Debt;
+use App\Models\Money\Goal;
+use App\Models\Money\IncomeSource;
+use App\Models\Money\Transaction;
 use App\Notifications\QueuedResetPassword;
 use App\Notifications\QueuedVerifyEmail;
 use Database\Factories\UserFactory;
@@ -119,43 +120,51 @@ class User extends Authenticatable implements MustVerifyEmail, PasskeyUser
     }
 
     /**
-     * @return HasMany<DebtFocusDebt, $this>
+     * @return HasMany<Debt, $this>
      */
-    public function debtFocusDebts(): HasMany
+    public function debts(): HasMany
     {
-        return $this->hasMany(DebtFocusDebt::class);
+        return $this->hasMany(Debt::class);
     }
 
     /**
-     * @return HasOne<DebtFocusSettings, $this>
+     * @return HasMany<Account, $this>
      */
-    public function debtFocusSettings(): HasOne
+    public function accounts(): HasMany
     {
-        return $this->hasOne(DebtFocusSettings::class);
+        return $this->hasMany(Account::class);
     }
 
     /**
-     * @return HasMany<DebtFocusAccount, $this>
+     * @return HasMany<Goal, $this>
      */
-    public function debtFocusAccounts(): HasMany
+    public function goals(): HasMany
     {
-        return $this->hasMany(DebtFocusAccount::class);
+        return $this->hasMany(Goal::class);
     }
 
     /**
-     * @return HasMany<DebtFocusBill, $this>
+     * @return HasMany<Transaction, $this>
      */
-    public function debtFocusBills(): HasMany
+    public function transactions(): HasMany
     {
-        return $this->hasMany(DebtFocusBill::class);
+        return $this->hasMany(Transaction::class);
     }
 
     /**
-     * @return HasMany<DebtFocusEnvelope, $this>
+     * @return HasMany<IncomeSource, $this>
      */
-    public function debtFocusEnvelopes(): HasMany
+    public function incomeSources(): HasMany
     {
-        return $this->hasMany(DebtFocusEnvelope::class);
+        return $this->hasMany(IncomeSource::class);
+    }
+
+    /**
+     * @return HasMany<Bill, $this>
+     */
+    public function bills(): HasMany
+    {
+        return $this->hasMany(Bill::class);
     }
 
     /**

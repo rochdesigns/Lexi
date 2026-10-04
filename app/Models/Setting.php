@@ -15,6 +15,12 @@ class Setting extends Model
     protected $fillable = [
         'user_id',
         'theme',
+        'recovery_months',
+    ];
+
+    /** @var array<string, string> */
+    protected $casts = [
+        'recovery_months' => 'integer',
     ];
 
     /**

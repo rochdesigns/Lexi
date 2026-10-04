@@ -36,7 +36,7 @@ const sections: Section[] = [
     {
         icon: 'account_balance_wallet',
         label: 'Money',
-        paths: ['/payoff-plan', '/ledger', '/budget'],
+        paths: ['/money'],
     },
 ];
 
@@ -51,9 +51,13 @@ const pageLabels: Record<string, string> = {
     '/meals': 'Meals',
     '/groceries': 'Groceries',
     '/pets': 'Pets',
-    '/payoff-plan': 'Payoff Plan',
-    '/ledger': 'Ledger',
-    '/budget': 'Budget',
+    // Most specific first: the first prefix that matches wins, which also keeps
+    // detail pages such as /money/debts/1 labelled "Debts" rather than "1".
+    '/money/debts': 'Debts',
+    '/money/calendar': 'Calendar',
+    '/money/transactions': 'Transactions',
+    '/money/plan': 'Plan',
+    '/money': 'Overview',
     '/photos': 'Photos',
 };
 
@@ -158,9 +162,9 @@ const notificationCount = 1;
                 ></span>
             </button>
 
-            <!-- New entry — the entry sheet itself lives on the ledger -->
+            <!-- New entry: quick-add lands on Transactions in a later phase -->
             <Link
-                href="/ledger"
+                href="/money/transactions"
                 class="flex items-center gap-1.5 rounded-[11px] px-3 py-2 text-[13px] font-semibold sm:px-4"
                 style="
                     background: var(--hab-btn-dark-bg);

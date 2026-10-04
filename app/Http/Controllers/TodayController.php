@@ -2,7 +2,6 @@
 
 namespace App\Http\Controllers;
 
-use App\Models\DebtFocus\EnvelopePeriod;
 use App\Models\Event;
 use App\Models\Habit;
 use App\Models\HabitLog;
@@ -10,7 +9,7 @@ use App\Models\HealthMetric;
 use App\Models\Task;
 use App\Models\TaskSection;
 use App\Models\VisionBoardItem;
-use App\Services\DebtFocus\BudgetService;
+use App\Services\Money\Projection;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
 use Inertia\Inertia;
@@ -18,9 +17,7 @@ use Inertia\Response;
 
 class TodayController extends Controller
 {
-    public function __construct(private BudgetService $budget) {}
-
-    public function __invoke(Request $request): Response
+    public function __invoke(Request $request, Projection $projection): Response
     {
         $user = $request->user();
         $today = Carbon::today();
@@ -41,25 +38,6 @@ class TodayController extends Controller
                 ->orderBy('id')
                 ->get(['id', 'label', 'section_id', 'done'])
             : collect();
-
-        $envelopePeriods = EnvelopePeriod::query()
-            ->whereIn('envelope_id', $user->debtFocusEnvelopes()->where('active', true)->select('id'))
-            ->where('year', $today->year)
-            ->where('month', $today->month)
-            ->get();
-
-        $moneySummary = [
-            'safeToSpend' => $this->budget->safeToSpend(
-                $envelopePeriods,
-                $today->year,
-                $today->month,
-                $this->budget->cashAvailable($user, $this->budget->sealedTotalFor($user, $today->year, $today->month)),
-            )['unspent'],
-            'budget' => round((float) $envelopePeriods->sum('target'), 2),
-            'spent' => round((float) $envelopePeriods->sum(fn (EnvelopePeriod $period) => $this->budget->spentForPeriod($period)), 2),
-        ];
-
-        $upcomingBills = $this->budget->upcomingBills($user, $today);
 
         $habits = Habit::where('user_id', $user->id)->get();
 
@@ -111,6 +89,15 @@ class TodayController extends Controller
 
         $firstName = explode(' ', $user->name)[0];
 
+        $debts = $user->debts()->with(['cardDetail', 'paymentPlans.debt', 'payments'])->get();
+        $bills = $user->bills()->get();
+        $sources = $user->incomeSources()->get();
+        $contributions = $projection->goalContributions($user->goals()->with('account')->get(), $debts, $bills, $today);
+        $moneySummary = $sources->isEmpty() && $bills->isEmpty() ? null : [
+            'safeToSpend' => $projection->overview($debts, $bills, $sources, $today, $contributions['buffer'], $user->setting?->recovery_months, $contributions['sinking'])['safeToSpend'],
+            'dueSoonCount' => collect($projection->upcoming($debts, $bills, $sources, $today))->where('kind', '!=', 'income')->count(),
+        ];
+
         return Inertia::render('Today', [
             'user' => [
                 'name' => $user->name,
@@ -119,11 +106,10 @@ class TodayController extends Controller
             ],
             'todayEvents' => $todayEvents,
             'todayTasks' => $todayTasks,
-            'moneySummary' => $moneySummary,
-            'upcomingBills' => $upcomingBills,
             'habits' => $habits,
             'healthMetrics' => $healthMetrics,
             'visionBoardItems' => $visionBoardItems,
+            'moneySummary' => $moneySummary,
         ]);
     }
 }
