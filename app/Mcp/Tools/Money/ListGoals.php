@@ -3,6 +3,7 @@
 namespace App\Mcp\Tools\Money;
 
 use App\Services\Money\Projection;
+use Illuminate\Support\Arr;
 use Illuminate\Support\Carbon;
 use Laravel\Mcp\Request;
 use Laravel\Mcp\ResponseFactory;
@@ -25,12 +26,14 @@ class ListGoals extends MoneyTool
         $obligations = $projection->monthlyObligations($debts, $bills, $today);
 
         $rows = $goals->map(fn ($goal): array => [
-            ...$projection->goalProgress($goal, $projection->goalTarget($goal, $obligations), $today),
+            ...Arr::only(
+                $projection->goalProgress($goal, $projection->goalTarget($goal, $obligations), $today),
+                ['saved', 'target', 'remaining', 'percent', 'monthsToGo', 'finishMonth', 'suggestedContribution'],
+            ),
             'id' => $goal->id,
             'kind' => $goal->kind->value,
             'name' => $goal->name,
             'monthlyContribution' => $goal->monthly_contribution,
-            'saved' => $goal->saved,
             'accountName' => $goal->account?->name,
             'bufferMonths' => $goal->buffer_months,
             'targetAmount' => $goal->target_amount,

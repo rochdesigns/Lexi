@@ -18,6 +18,11 @@ test('it lists bills with their next due date', function (): void {
         ->assertSee(['Rent', 'Insurance'])
         ->assertStructuredContent(fn ($json) => $json
             ->has('bills', 2)
+            ->has('bills.0', fn ($bill) => $bill
+                ->where('name', 'Insurance')
+                ->where('dueMonth', 3)
+                ->where('nextDueDate', '2027-03-10')
+                ->etc())
             ->has('bills.1', fn ($bill) => $bill
                 ->where('name', 'Rent')
                 ->where('amount', 150_000)
