@@ -948,6 +948,19 @@ const errorClass = 'mt-1 text-[12px] text-red-600';
                     </div>
                 </template>
 
+                <p
+                    v-if="debt && !isInformal"
+                    class="text-[12.5px]"
+                    style="color: var(--hab-muted)"
+                >
+                    {{
+                        isCard
+                            ? 'Installments are managed on'
+                            : 'The amount borrowed, term, monthly amount and start month are set on'
+                    }}
+                    the payment plan. Edit them from this debt's page.
+                </p>
+
                 <div v-if="isInformal" class="grid grid-cols-2 gap-3">
                     <div>
                         <FieldLabel hint="How much you still have to pay back."

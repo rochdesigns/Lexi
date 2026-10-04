@@ -165,7 +165,7 @@ function utilizationColor(debt: DebtSummary): string {
                     "
                 >
                     <div class="mb-4 flex items-start justify-between gap-3">
-                        <div>
+                        <div class="min-w-0">
                             <h3
                                 class="font-['Bricolage_Grotesque'] text-[18px] font-bold"
                                 style="color: var(--hab-ink)"
@@ -201,7 +201,9 @@ function utilizationColor(debt: DebtSummary): string {
                         </div>
                     </div>
 
-                    <div class="flex gap-8">
+                    <div
+                        class="grid grid-cols-[repeat(auto-fit,minmax(9rem,1fr))] gap-x-6 gap-y-3"
+                    >
                         <div>
                             <p
                                 class="text-[12px]"
@@ -214,7 +216,7 @@ function utilizationColor(debt: DebtSummary): string {
                                 }}
                             </p>
                             <p
-                                class="font-['Bricolage_Grotesque'] text-[22px] font-extrabold tabular-nums"
+                                class="font-['Bricolage_Grotesque'] text-[22px] font-extrabold [overflow-wrap:anywhere] tabular-nums"
                                 style="color: var(--hab-ink)"
                             >
                                 {{
@@ -234,7 +236,7 @@ function utilizationColor(debt: DebtSummary): string {
                                 Minimum due
                             </p>
                             <p
-                                class="font-['Bricolage_Grotesque'] text-[22px] font-extrabold tabular-nums"
+                                class="font-['Bricolage_Grotesque'] text-[22px] font-extrabold [overflow-wrap:anywhere] tabular-nums"
                                 style="color: var(--hab-ink)"
                             >
                                 {{ formatPeso(debt.card.minimumDue) }}
@@ -248,7 +250,7 @@ function utilizationColor(debt: DebtSummary): string {
                                 Still owed
                             </p>
                             <p
-                                class="font-['Bricolage_Grotesque'] text-[22px] font-extrabold tabular-nums"
+                                class="font-['Bricolage_Grotesque'] text-[22px] font-extrabold [overflow-wrap:anywhere] tabular-nums"
                                 style="color: var(--hab-ink)"
                             >
                                 {{ formatPeso(debt.totalRemaining) }}
