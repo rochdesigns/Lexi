@@ -97,11 +97,12 @@ const tiles = computed(() => [
     { label: 'Income', value: props.numbers.income, sign: '+' },
     { label: 'Bills', value: props.numbers.expenses, sign: '−' },
     {
-        label: 'Set aside for yearly bills',
+        label: 'Set aside for yearly bills and goals',
         value: props.numbers.setAside,
         sign: '−',
     },
     { label: 'Debt payments', value: props.numbers.debtPayment, sign: '−' },
+    { label: 'Buffer', value: props.numbers.bufferContribution, sign: '−' },
 ]);
 
 const isShort = computed(() => props.numbers.safeToSpend < 0);
@@ -287,7 +288,7 @@ const cardStyle =
             </p>
         </div>
 
-        <div class="mb-6 grid grid-cols-2 gap-4 lg:grid-cols-4">
+        <div class="mb-6 grid grid-cols-2 gap-4 lg:grid-cols-5">
             <div
                 v-for="tile in tiles"
                 :key="tile.label"

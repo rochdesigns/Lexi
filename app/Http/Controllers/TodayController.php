@@ -93,8 +93,9 @@ class TodayController extends Controller
         $debts = $user->debts()->with(['cardDetail', 'paymentPlans.debt', 'payments'])->get();
         $bills = $user->bills()->get();
         $sources = $user->incomeSources()->get();
+        $contributions = $projection->goalContributions($user->goals()->with('account')->get(), $debts, $bills, $today);
         $moneySummary = $sources->isEmpty() && $bills->isEmpty() ? null : [
-            'safeToSpend' => $projection->overview($debts, $bills, $sources, $today, 0, $user->setting?->recovery_months)['safeToSpend'],
+            'safeToSpend' => $projection->overview($debts, $bills, $sources, $today, $contributions['buffer'], $user->setting?->recovery_months, $contributions['sinking'])['safeToSpend'],
             'dueSoonCount' => collect($projection->upcoming($debts, $bills, $sources, $today))->where('kind', '!=', 'income')->count(),
         ];
 

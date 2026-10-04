@@ -9,6 +9,8 @@ use App\Models\Money\Debt;
 use App\Models\Money\DebtPayment;
 use App\Models\Money\DebtStatus;
 use App\Models\Money\DebtType;
+use App\Models\Money\Goal;
+use App\Models\Money\GoalKind;
 use App\Models\Money\IncomeSource;
 use App\Models\Money\InterestType;
 use App\Models\Money\PaymentPlan;
@@ -387,7 +389,7 @@ class Projection
     }
 
     /**
-     * The five numbers for the month. Safe to spend is what is left of income
+     * The five numbers for the month. The set-aside is the yearly bills at a twelfth a month plus the contributions to sinking funds. Safe to spend is what is left of income
      * once bills, the annual set-aside, debt payments, the buffer contribution
      * and any recovery payment are covered, and can be negative. The buffer is zero until
      * goals exist.
@@ -397,11 +399,11 @@ class Projection
      * @param  Collection<int, IncomeSource>  $sources
      * @return array{income: int, expenses: int, setAside: int, debtPayment: int, bufferContribution: int, recoveryContribution: int, safeToSpend: int, perDay: int}
      */
-    public function overview(Collection $debts, Collection $bills, Collection $sources, CarbonInterface $today, int $bufferContribution = 0, ?int $recoveryMonths = null): array
+    public function overview(Collection $debts, Collection $bills, Collection $sources, CarbonInterface $today, int $bufferContribution = 0, ?int $recoveryMonths = null, int $sinkingContribution = 0): array
     {
         $income = $this->monthlyIncome($sources);
         $expenses = $this->monthlyBills($bills);
-        $setAside = $this->annualSetAside($bills);
+        $setAside = $this->annualSetAside($bills) + $sinkingContribution;
         $debtPayment = $this->totalMonthlyPayment($debts, $today);
         $recoveryContribution = $recoveryMonths === null ? 0 : $this->recoveryPlan($debts, $recoveryMonths, $today)['extra'];
         $safeToSpend = $income - $expenses - $setAside - $debtPayment - $bufferContribution - $recoveryContribution;
@@ -703,6 +705,97 @@ class Projection
         }
 
         return $items;
+    }
+
+    // ── Goals ────────────────────────────────────────────────────────────
+
+    /**
+     * What has to be paid every month: the monthly bills, the yearly bills set
+     * aside at a twelfth, and the debt payments due this month. A buffer is
+     * sized in months of this, so it shrinks as installments roll off.
+     *
+     * @param  Collection<int, Debt>  $debts
+     * @param  Collection<int, Bill>  $bills
+     */
+    public function monthlyObligations(Collection $debts, Collection $bills, CarbonInterface $today): int
+    {
+        return $this->monthlyBills($bills) + $this->annualSetAside($bills) + $this->totalMonthlyPayment($debts, $today);
+    }
+
+    public function goalTarget(Goal $goal, int $obligations): int
+    {
+        return $goal->kind === GoalKind::Buffer ? ($goal->buffer_months ?? 0) * $obligations : ($goal->target_amount ?? 0);
+    }
+
+    /** What has been saved: the linked account's balance, otherwise the typed amount. */
+    public function goalSaved(Goal $goal): int
+    {
+        return max(0, $goal->account?->balance ?? $goal->saved);
+    }
+
+    /**
+     * Where a goal stands against its target. Months to go counts the
+     * contributions still needed from this month, and is null when nothing is
+     * being put in. A sinking fund with a date suggests the monthly amount that
+     * finishes it on time, from this month up to the month before the date.
+     *
+     * @return array{saved: int, target: int, remaining: int, percent: int, monthsToGo: int|null, finishMonth: string|null, suggestedContribution: int|null}
+     */
+    public function goalProgress(Goal $goal, int $target, CarbonInterface $today): array
+    {
+        $saved = $this->goalSaved($goal);
+        $remaining = max(0, $target - $saved);
+        $monthsToGo = match (true) {
+            $remaining === 0 => 0,
+            $goal->monthly_contribution <= 0 => null,
+            default => (int) ceil($remaining / $goal->monthly_contribution),
+        };
+        $suggested = null;
+
+        if ($goal->kind === GoalKind::Sinking && $goal->target_date !== null && $remaining > 0) {
+            $months = max(1, (int) $this->firstOfMonth($today)->diffInMonths($this->firstOfMonth($goal->target_date), false));
+            $suggested = (int) ceil($remaining / $months);
+        }
+
+        return [
+            'saved' => $saved,
+            'target' => $target,
+            'remaining' => $remaining,
+            'percent' => $target > 0 ? min(100, intdiv($saved * 100, $target)) : 100,
+            'monthsToGo' => $monthsToGo,
+            'finishMonth' => $monthsToGo !== null && $monthsToGo > 0 ? $this->firstOfMonth($today)->addMonths($monthsToGo - 1)->format('Y-m') : null,
+            'suggestedContribution' => $suggested,
+        ];
+    }
+
+    /**
+     * What goes into goals each month, split into the buffer and the sinking
+     * funds. A goal that has reached its target stops contributing.
+     *
+     * @param  Collection<int, Goal>  $goals
+     * @param  Collection<int, Debt>  $debts
+     * @param  Collection<int, Bill>  $bills
+     * @return array{buffer: int, sinking: int}
+     */
+    public function goalContributions(Collection $goals, Collection $debts, Collection $bills, CarbonInterface $today): array
+    {
+        $totals = ['buffer' => 0, 'sinking' => 0];
+
+        if ($goals->isEmpty()) {
+            return $totals;
+        }
+
+        $obligations = $this->monthlyObligations($debts, $bills, $today);
+
+        foreach ($goals as $goal) {
+            if ($this->goalSaved($goal) >= $this->goalTarget($goal, $obligations)) {
+                continue;
+            }
+
+            $totals[$goal->kind === GoalKind::Buffer ? 'buffer' : 'sinking'] += $goal->monthly_contribution;
+        }
+
+        return $totals;
     }
 
     // ── Cards ────────────────────────────────────────────────────────────

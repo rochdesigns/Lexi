@@ -6,6 +6,7 @@ namespace App\Models;
 use App\Models\Money\Account;
 use App\Models\Money\Bill;
 use App\Models\Money\Debt;
+use App\Models\Money\Goal;
 use App\Models\Money\IncomeSource;
 use App\Models\Money\Transaction;
 use Database\Factories\UserFactory;
@@ -111,6 +112,14 @@ class User extends Authenticatable implements PasskeyUser
     public function accounts(): HasMany
     {
         return $this->hasMany(Account::class);
+    }
+
+    /**
+     * @return HasMany<Goal, $this>
+     */
+    public function goals(): HasMany
+    {
+        return $this->hasMany(Goal::class);
     }
 
     /**

@@ -7,6 +7,7 @@ use App\Http\Controllers\Money\BillController;
 use App\Http\Controllers\Money\CalendarController as MoneyCalendarController;
 use App\Http\Controllers\Money\DebtController;
 use App\Http\Controllers\Money\DebtPaymentController;
+use App\Http\Controllers\Money\GoalController;
 use App\Http\Controllers\Money\IncomeSourceController;
 use App\Http\Controllers\Money\OverviewController as MoneyOverviewController;
 use App\Http\Controllers\Money\PaymentAllocationController;
@@ -83,6 +84,9 @@ Route::middleware(['auth', 'verified'])->group(function (): void {
         Route::patch('/transactions/{transaction}', [MoneyTransactionsController::class, 'update'])->name('transactions.update');
         Route::delete('/transactions/{transaction}', [MoneyTransactionsController::class, 'destroy'])->name('transactions.destroy');
         Route::get('/plan', MoneyPlanController::class)->name('plan');
+        Route::post('/goals', [GoalController::class, 'store'])->name('goals.store');
+        Route::patch('/goals/{goal}', [GoalController::class, 'update'])->name('goals.update');
+        Route::delete('/goals/{goal}', [GoalController::class, 'destroy'])->name('goals.destroy');
     });
     Route::inertia('/photos', 'Stub')->name('photos');
 
