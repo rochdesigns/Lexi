@@ -7,12 +7,15 @@ use App\Http\Requests\Money\DebtPaymentRequest;
 use App\Models\Money\Debt;
 use App\Models\Money\DebtPayment;
 use App\Models\Money\DebtType;
+use App\Services\Money\Ledger;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 
 class DebtPaymentController extends Controller
 {
+    public function __construct(private Ledger $ledger) {}
+
     /**
      * Payments are history. The one exception is a debt with only a balance
      * (informal), where a payment brings that balance down.
@@ -21,13 +24,7 @@ class DebtPaymentController extends Controller
     {
         abort_if($debt->user_id !== $request->user()->id, 403);
 
-        DB::transaction(function () use ($request, $debt): void {
-            $payment = $debt->payments()->create($request->paymentAttributes());
-
-            if ($debt->type === DebtType::Informal && $debt->outstanding_balance !== null) {
-                $debt->update(['outstanding_balance' => max(0, $debt->outstanding_balance - $payment->amount)]);
-            }
-        });
+        $this->ledger->recordDebtPayment($debt, $request->paymentAttributes());
 
         return back();
     }

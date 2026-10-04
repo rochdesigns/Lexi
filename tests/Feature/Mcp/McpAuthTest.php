@@ -72,9 +72,10 @@ test('an unverified user is rejected', function (): void {
 test('the oauth discovery documents are served', function (): void {
     $this->getJson('/.well-known/oauth-authorization-server')
         ->assertOk()
-        ->assertJsonPath('scopes_supported', ['mcp:use']);
+        ->assertJsonPath('scopes_supported', ['mcp:use', 'mcp:write']);
 
-    $this->getJson('/.well-known/oauth-protected-resource')->assertOk();
+    $this->getJson('/.well-known/oauth-protected-resource')->assertOk()->assertJsonPath('scopes_supported', ['mcp:use', 'mcp:write']);
+    $this->getJson('/.well-known/oauth-protected-resource/mcp/money')->assertOk()->assertJsonPath('resource', url('/mcp/money'));
 });
 
 test('a client can register itself', function (): void {
@@ -125,6 +126,22 @@ test('the consent screen says what the connection can see', function (string $re
     'claude.ai' => ['https://claude.ai/api/mcp/auth_callback', 'claude.ai'],
     'loopback' => ['http://localhost:6274/callback', 'localhost'],
 ]);
+
+test('the consent screen only offers recording when the write scope is requested', function (): void {
+    $client = app(ClientRepository::class)->createAuthorizationCodeGrantClient('Claude', ['https://claude.ai/api/mcp/auth_callback'], confidential: false);
+    $authorize = fn (string $scope) => $this->actingAs(User::factory()->create())->get('/oauth/authorize?'.http_build_query([
+        'client_id' => $client->getKey(),
+        'redirect_uri' => 'https://claude.ai/api/mcp/auth_callback',
+        'response_type' => 'code',
+        'scope' => $scope,
+        'code_challenge' => str_repeat('a', 43),
+        'code_challenge_method' => 'S256',
+        'state' => 'xyz',
+    ]));
+
+    $authorize('mcp:use mcp:write')->assertOk()->assertSee('record')->assertDontSee('read-only');
+    $authorize('mcp:use')->assertOk()->assertSee('read-only');
+});
 
 test('requests past the limit are throttled', function (): void {
     Passport::actingAs(User::factory()->create(), ['mcp:use'], 'api');

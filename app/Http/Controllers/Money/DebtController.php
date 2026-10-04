@@ -8,6 +8,7 @@ use App\Models\Money\Debt;
 use App\Models\Money\DebtPayment;
 use App\Models\Money\PaymentPlan;
 use App\Services\Money\Centavos;
+use App\Services\Money\Ledger;
 use App\Services\Money\Projection;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
@@ -19,7 +20,7 @@ use Inertia\Response;
 
 class DebtController extends Controller
 {
-    public function __construct(private Projection $projection) {}
+    public function __construct(private Projection $projection, private Ledger $ledger) {}
 
     public function index(Request $request): Response
     {
@@ -88,21 +89,7 @@ class DebtController extends Controller
 
     public function store(DebtRequest $request): RedirectResponse
     {
-        DB::transaction(function () use ($request): void {
-            $debt = $request->user()->debts()->create($request->debtAttributes());
-
-            if ($request->isCard()) {
-                $debt->cardDetail()->create($request->cardAttributes());
-
-                foreach ($request->installmentAttributes() as $installment) {
-                    $debt->paymentPlans()->create($installment);
-                }
-            }
-
-            if ($request->wantsFirstPlan()) {
-                $debt->paymentPlans()->create($request->planAttributes($this->projection));
-            }
-        });
+        $this->ledger->createDebt($request->user(), $request);
 
         return redirect()->route('money.debts.index');
     }

@@ -117,6 +117,11 @@ class AppServiceProvider extends ServiceProvider
      */
     protected function configureMcp(): void
     {
+        Passport::tokensCan([
+            'mcp:use' => 'Read your Money data',
+            'mcp:write' => 'Record expenses, income and debt payments',
+        ]);
+
         Passport::authorizationView(fn (array $parameters): Response => response()->view('mcp.authorize', $parameters));
 
         // Explicit intervals: a DateTime would be stored as a calendar diff
