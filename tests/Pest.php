@@ -1,5 +1,13 @@
 <?php
 
+use App\Models\Money\Account;
+use App\Models\Money\Bill;
+use App\Models\Money\Debt;
+use App\Models\Money\DebtPayment;
+use App\Models\Money\Goal;
+use App\Models\Money\IncomeSource;
+use App\Models\Money\PaymentPlan;
+use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
@@ -47,7 +55,18 @@ expect()->extend('toBeOne', function () {
 |
 */
 
-function something()
+/**
+ * One of every money record for the user, each named with the marker, so a
+ * test can tell whose data a response contains.
+ */
+function seedMarkedMoney(User $user, string $marker): void
 {
-    // ..
+    Account::factory()->for($user)->create(['name' => "{$marker} account"]);
+    Bill::factory()->for($user)->create(['name' => "{$marker} bill", 'due_day' => now()->addDays(2)->day]);
+    IncomeSource::factory()->for($user)->create(['name' => "{$marker} income"]);
+    Goal::factory()->for($user)->create(['name' => "{$marker} goal"]);
+
+    $debt = Debt::factory()->for($user)->create(['name' => "{$marker} debt", 'lender' => "{$marker} lender"]);
+    PaymentPlan::factory()->for($debt)->create(['description' => "{$marker} plan"]);
+    DebtPayment::factory()->for($debt)->create();
 }
