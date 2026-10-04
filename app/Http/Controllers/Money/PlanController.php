@@ -65,6 +65,12 @@ class PlanController extends Controller
                 'isSpendable' => $account->is_spendable,
             ])->values(),
             'bufferMonthOptions' => GoalRequest::BUFFER_MONTHS,
+            'cards' => $debts->filter(fn ($debt): bool => $debt->cardDetail !== null)->map(fn ($debt): array => [
+                'id' => $debt->id,
+                'name' => $debt->name,
+                'revolvingBalance' => $debt->cardDetail->revolving_balance,
+            ])->sortBy('name')->values(),
+            'hasPlans' => $debts->contains(fn ($debt): bool => $debt->paymentPlans->isNotEmpty()),
         ]);
     }
 }

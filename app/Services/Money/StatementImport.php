@@ -31,13 +31,13 @@ final class StatementImport
     {
         $parsed = $this->parser->parse($csv);
         $rows = $this->classify($card, $parsed['rows']);
-        $counts = ['new' => 0, 'matches' => 0, 'imported' => 0];
+        $count = fn (string $status): int => count(array_filter($rows, fn (array $row): bool => $row['status'] === $status));
 
-        foreach ($rows as $row) {
-            $counts[$row['status']]++;
-        }
-
-        return ['rows' => $rows, 'skipped' => $parsed['skipped'], 'counts' => $counts];
+        return [
+            'rows' => $rows,
+            'skipped' => $parsed['skipped'],
+            'counts' => ['new' => $count('new'), 'matches' => $count('matches'), 'imported' => $count('imported')],
+        ];
     }
 
     /**

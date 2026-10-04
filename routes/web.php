@@ -16,6 +16,7 @@ use App\Http\Controllers\Money\PlanController as MoneyPlanController;
 use App\Http\Controllers\Money\RecoveryController;
 use App\Http\Controllers\Money\StatementImportController;
 use App\Http\Controllers\Money\TransactionsController as MoneyTransactionsController;
+use App\Http\Controllers\Money\WhatIfController;
 use App\Http\Controllers\TaskController;
 use App\Http\Controllers\TaskSectionController;
 use App\Http\Controllers\TodayController;
@@ -84,6 +85,9 @@ Route::middleware(['auth', 'verified'])->group(function (): void {
         Route::patch('/transactions/{transaction}', [MoneyTransactionsController::class, 'update'])->name('transactions.update');
         Route::delete('/transactions/{transaction}', [MoneyTransactionsController::class, 'destroy'])->name('transactions.destroy');
         Route::get('/plan', MoneyPlanController::class)->name('plan');
+        Route::post('/plan/what-if/afford', [WhatIfController::class, 'afford'])->name('what-if.afford');
+        Route::post('/plan/what-if/extra-cash', [WhatIfController::class, 'extraCash'])->name('what-if.extra-cash');
+        Route::post('/plan/what-if/conversion', [WhatIfController::class, 'conversion'])->name('what-if.conversion');
         Route::post('/goals', [GoalController::class, 'store'])->name('goals.store');
         Route::patch('/goals/{goal}', [GoalController::class, 'update'])->name('goals.update');
         Route::delete('/goals/{goal}', [GoalController::class, 'destroy'])->name('goals.destroy');

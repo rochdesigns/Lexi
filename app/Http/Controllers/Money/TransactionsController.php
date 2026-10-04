@@ -54,7 +54,7 @@ class TransactionsController extends Controller
                 'onStatement' => $transaction->statementRow !== null,
                 'accountId' => $transaction->account_id,
                 'debtId' => $transaction->debt_id,
-                'paidWith' => $transaction->account?->name ?? $transaction->debt?->name,
+                'paidWith' => data_get($transaction, 'account.name') ?? data_get($transaction, 'debt.name'),
             ])->values(),
             'categoryTotals' => $transactions
                 ->groupBy(fn (Transaction $transaction): string => $transaction->category->value)

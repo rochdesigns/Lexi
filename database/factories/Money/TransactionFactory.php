@@ -40,7 +40,7 @@ class TransactionFactory extends Factory
     {
         return $this->state(fn (array $attributes): array => [
             'account_id' => null,
-            'debt_id' => $card?->id ?? Debt::factory()->state(['type' => DebtType::CreditCard, 'user_id' => $attributes['user_id']]),
+            'debt_id' => $card === null ? Debt::factory()->state(['type' => DebtType::CreditCard, 'user_id' => $attributes['user_id']]) : $card->id,
         ]);
     }
 }

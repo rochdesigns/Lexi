@@ -5,6 +5,7 @@ import { update } from '@/actions/App/Http/Controllers/Money/GoalController';
 import GoalDialog from '@/components/GoalDialog.vue';
 import type { GoalRow } from '@/components/GoalDialog.vue';
 import { Button } from '@/components/ui/button';
+import WhatIfSimulator from '@/components/WhatIfSimulator.vue';
 import { overview } from '@/routes/money';
 import {
     formatDay,
@@ -27,6 +28,8 @@ defineProps<{
     }[];
     accounts: { id: number; name: string; isSpendable: boolean }[];
     bufferMonthOptions: number[];
+    cards: { id: number; name: string; revolvingBalance: number }[];
+    hasPlans: boolean;
 }>();
 
 const dialogOpen = ref(false);
@@ -321,6 +324,8 @@ const cardStyle =
                 </li>
             </ul>
         </section>
+
+        <WhatIfSimulator :cards="cards" :has-plans="hasPlans" />
 
         <GoalDialog
             v-model:open="dialogOpen"

@@ -135,7 +135,13 @@ final class StatementParser
             return null;
         }
 
-        return ['date' => $columns['date'], 'description' => $columns['description'] ?? ($columns['date'] === 0 ? 1 : 0), ...array_diff_key($columns, ['date' => 0, 'description' => 0])];
+        return [
+            'date' => $columns['date'],
+            'description' => $columns['description'] ?? ($columns['date'] === 0 ? 1 : 0),
+            'amount' => $columns['amount'],
+            'debit' => $columns['debit'],
+            'credit' => $columns['credit'],
+        ];
     }
 
     /**
@@ -189,7 +195,7 @@ final class StatementParser
                 continue;
             }
 
-            if ($date !== false && strtolower($date->format($format)) === strtolower($value) && $date->year >= 2000 && $date->year <= 2100) {
+            if ($date instanceof CarbonImmutable && strtolower($date->format($format)) === strtolower($value) && $date->year >= 2000 && $date->year <= 2100) {
                 return $date->toDateString();
             }
         }

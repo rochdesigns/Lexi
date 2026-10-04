@@ -730,7 +730,7 @@ class Projection
     /** What has been saved: the linked account's balance, otherwise the typed amount. */
     public function goalSaved(Goal $goal): int
     {
-        return max(0, $goal->account?->balance ?? $goal->saved);
+        return max(0, data_get($goal, 'account.balance') ?? $goal->saved);
     }
 
     /**
@@ -796,6 +796,182 @@ class Projection
         }
 
         return $totals;
+    }
+
+    // ── What if ──────────────────────────────────────────────────────────
+
+    /**
+     * Safe to spend for each of the next months, the way the Overview works it
+     * out for this one. This month uses the real debt payments, with a card's
+     * minimum. Later months only know what plans bill, so a card's minimum on
+     * a balance carried over is not in them. $extraByMonth ("Y-m" => centavos)
+     * takes more out of a month, for trying a change without saving it.
+     *
+     * @param  Collection<int, Debt>  $debts
+     * @param  Collection<int, Bill>  $bills
+     * @param  Collection<int, IncomeSource>  $sources
+     * @param  array{buffer: int, sinking: int}  $contributions
+     * @param  array<string, int>  $extraByMonth
+     * @return list<array{month: string, safeToSpend: int}>
+     */
+    public function safeToSpendByMonth(Collection $debts, Collection $bills, Collection $sources, CarbonInterface $today, array $contributions, ?int $recoveryMonths, array $extraByMonth = [], int $months = 12): array
+    {
+        $fixed = $this->monthlyIncome($sources)
+            - $this->monthlyBills($bills)
+            - $this->annualSetAside($bills)
+            - $contributions['sinking']
+            - $contributions['buffer']
+            - ($recoveryMonths === null ? 0 : $this->recoveryPlan($debts, $recoveryMonths, $today)['extra']);
+        $start = $this->firstOfMonth($today);
+        $series = [];
+
+        for ($i = 0; $i < $months; $i++) {
+            $month = $start->addMonths($i);
+            $debtPayment = $i === 0 ? $this->totalMonthlyPayment($debts, $today) : $debts->sum(fn (Debt $debt): int => $this->billedIn($debt, $month, $today));
+
+            $series[] = ['month' => $month->format('Y-m'), 'safeToSpend' => $fixed - $debtPayment - ($extraByMonth[$month->format('Y-m')] ?? 0)];
+        }
+
+        return $series;
+    }
+
+    /**
+     * What a new 0% installment would do to safe to spend in each of the next
+     * months. On a card it starts with the next statement, so the first payment
+     * falls in the month that statement is due. Without a card it starts in the
+     * month given. Any month that ends up below zero is flagged short.
+     *
+     * @param  Collection<int, Debt>  $debts
+     * @param  Collection<int, Bill>  $bills
+     * @param  Collection<int, IncomeSource>  $sources
+     * @param  array{buffer: int, sinking: int}  $contributions
+     * @return array{monthlyAmount: int, firstMonth: string, lastMonth: string, rows: list<array{month: string, before: int, after: int, short: bool, newlyShort: bool}>, shortMonths: list<string>}
+     */
+    public function affordability(Collection $debts, Collection $bills, Collection $sources, CarbonInterface $today, array $contributions, ?int $recoveryMonths, int $price, int $months, ?Debt $card, ?CarbonInterface $startMonth): array
+    {
+        $first = $card !== null && $card->cardDetail !== null
+            ? $this->firstOfMonth($this->nextStatement($card, $today)['due_on'])
+            : $this->firstOfMonth($startMonth ?? $today);
+        $monthly = (int) ceil($price / $months);
+        $extra = [];
+
+        for ($i = 0; $i < $months; $i++) {
+            $extra[$first->addMonths($i)->format('Y-m')] = $i === $months - 1 ? $price - $monthly * ($months - 1) : $monthly;
+        }
+
+        $before = $this->safeToSpendByMonth($debts, $bills, $sources, $today, $contributions, $recoveryMonths);
+        $after = $this->safeToSpendByMonth($debts, $bills, $sources, $today, $contributions, $recoveryMonths, $extra);
+
+        $rows = array_map(fn (array $was, array $now): array => [
+            'month' => $now['month'],
+            'before' => $was['safeToSpend'],
+            'after' => $now['safeToSpend'],
+            'short' => $now['safeToSpend'] < 0,
+            'newlyShort' => $now['safeToSpend'] < 0 && $was['safeToSpend'] >= 0,
+        ], $before, $after);
+
+        return [
+            'monthlyAmount' => $monthly,
+            'firstMonth' => $first->format('Y-m'),
+            'lastMonth' => $first->addMonths($months - 1)->format('Y-m'),
+            'rows' => $rows,
+            'shortMonths' => array_column(array_filter($rows, fn (array $row): bool => $row['short']), 'month'),
+        ];
+    }
+
+    /**
+     * Where spare cash does the most good: plans ranked by remaining balance
+     * divided by the monthly payment, the fastest to finish first. Walks the
+     * ranking and pays off each plan the money still covers in full, which
+     * frees its monthly payment. A plan with add-on interest is flagged, since
+     * paying it early does not save interest.
+     *
+     * @param  Collection<int, Debt>  $debts
+     * @return array{amount: int, spent: int, leftover: int, freedMonthly: int, plans: list<array{planId: int, description: string, debtName: string, remaining: int, monthlyAmount: int, monthsLeft: int, paysOff: bool, interestType: string, savesInterest: bool}>}
+     */
+    public function extraCashPlan(Collection $debts, int $amount, CarbonInterface $today): array
+    {
+        $plans = $debts
+            ->flatMap(fn (Debt $debt) => $debt->paymentPlans->map(fn (PaymentPlan $plan): array => [
+                'plan' => $plan,
+                'debtName' => $debt->name,
+                'remaining' => $this->remainingBalance($plan, $today),
+            ]))
+            ->filter(fn (array $row): bool => $row['remaining'] > 0 && $row['plan']->monthly_amount > 0)
+            ->sort(fn (array $a, array $b): int => [$a['remaining'] / $a['plan']->monthly_amount, $a['remaining'], $a['plan']->id] <=> [$b['remaining'] / $b['plan']->monthly_amount, $b['remaining'], $b['plan']->id])
+            ->values();
+
+        $money = max(0, $amount);
+        $freed = 0;
+        $rows = [];
+
+        foreach ($plans as $row) {
+            $plan = $row['plan'];
+            $paysOff = $row['remaining'] <= $money;
+
+            if ($paysOff) {
+                $money -= $row['remaining'];
+                $freed += $plan->monthly_amount;
+            }
+
+            $rows[] = [
+                'planId' => $plan->id,
+                'description' => $plan->description,
+                'debtName' => $row['debtName'],
+                'remaining' => $row['remaining'],
+                'monthlyAmount' => $plan->monthly_amount,
+                'monthsLeft' => $this->monthsLeft($plan, $today),
+                'paysOff' => $paysOff,
+                'interestType' => $this->interestTypeOf($plan)->value,
+                'savesInterest' => $this->earlyPayoffSavesInterest($plan),
+            ];
+        }
+
+        return [
+            'amount' => max(0, $amount),
+            'spent' => max(0, $amount) - $money,
+            'leftover' => $money,
+            'freedMonthly' => $freed,
+            'plans' => $rows,
+        ];
+    }
+
+    /**
+     * A card's carried balance cleared two ways with the same monthly payment:
+     * converted to a fixed-rate installment (interest is a flat share of the
+     * balance every month), or left revolving at the card's own rate.
+     *
+     * @return array{balance: int, monthlyPayment: int, conversion: array{months: int, totalInterest: int, totalPaid: int}, revolving: array{months: int, totalInterest: int, totalPaid: int, neverClears: bool}, cheaper: string, interestSaved: int}|null
+     */
+    public function conversionComparison(Debt $card, int $months, float $addOnRatePercent, CarbonInterface $today): ?array
+    {
+        $balance = $card->cardDetail->revolving_balance ?? 0;
+
+        if ($balance <= 0) {
+            return null;
+        }
+
+        $monthlyInterest = (int) ceil($balance * $addOnRatePercent / 100);
+        $monthly = (int) ceil($balance / $months) + $monthlyInterest;
+        $conversionInterest = $monthlyInterest * $months;
+        $revolving = $this->clearingSchedule($card, $monthly, $today);
+        $revolvingInterest = $revolving['neverClears'] ? 0 : $revolving['totalInterest'];
+
+        $cheaper = match (true) {
+            $revolving['neverClears'] => 'conversion',
+            $revolvingInterest === $conversionInterest => 'same',
+            $revolvingInterest < $conversionInterest => 'revolving',
+            default => 'conversion',
+        };
+
+        return [
+            'balance' => $balance,
+            'monthlyPayment' => $monthly,
+            'conversion' => ['months' => $months, 'totalInterest' => $conversionInterest, 'totalPaid' => $balance + $conversionInterest],
+            'revolving' => ['months' => $revolving['months'], 'totalInterest' => $revolvingInterest, 'totalPaid' => $revolving['totalPaid'], 'neverClears' => $revolving['neverClears']],
+            'cheaper' => $cheaper,
+            'interestSaved' => $revolving['neverClears'] ? 0 : abs($revolvingInterest - $conversionInterest),
+        ];
     }
 
     // ── Cards ────────────────────────────────────────────────────────────
@@ -1036,7 +1212,7 @@ class Projection
             $cards[$index]['extra'] = $extra;
         }
 
-        $rows = array_map(function (array $card): array {
+        $rows = array_values(array_map(function (array $card): array {
             $after = $card['revolvingLeft'] - $card['extra'];
 
             return [
@@ -1052,7 +1228,7 @@ class Projection
                 'revolvingAfter' => $after,
                 'interest' => (int) ceil($after * $card['rate'] / 100),
             ];
-        }, $cards);
+        }, $cards));
 
         $totalMinimums = array_sum(array_column($rows, 'minimum'));
 
@@ -1153,7 +1329,7 @@ class Projection
             'months' => $months,
             'carryover' => array_sum(array_column($cards, 'balance')),
             'extra' => array_sum(array_column($cards, 'extra')),
-            'cards' => $cards,
+            'cards' => array_values($cards),
         ];
     }
 
