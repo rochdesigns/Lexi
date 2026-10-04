@@ -2,6 +2,7 @@
 
 namespace App\Mcp\Servers;
 
+use App\Mcp\Tools\Money\GetMoneyOverview;
 use App\Mcp\Tools\Money\ListAccounts;
 use App\Mcp\Tools\Money\ListBills;
 use App\Mcp\Tools\Money\ListDebts;
@@ -17,6 +18,7 @@ class MoneyServer extends Server
      * @var list<class-string<Server\Tool>>
      */
     public const TOOLS = [
+        GetMoneyOverview::class,
         ListAccounts::class,
         ListBills::class,
         ListIncomeSources::class,
