@@ -109,3 +109,18 @@ export const monthNames = [
     'November',
     'December',
 ];
+
+export const transactionCategories = [
+    { value: 'food', label: 'Food' },
+    { value: 'groceries', label: 'Groceries' },
+    { value: 'transport', label: 'Transport' },
+    { value: 'shopping', label: 'Shopping' },
+    { value: 'health', label: 'Health' },
+    { value: 'fun', label: 'Fun' },
+    { value: 'home', label: 'Home' },
+    { value: 'other', label: 'Other' },
+] as const;
+
+export function categoryLabel(value: string): string {
+    return transactionCategories.find((c) => c.value === value)?.label ?? value;
+}

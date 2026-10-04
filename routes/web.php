@@ -75,7 +75,10 @@ Route::middleware(['auth', 'verified'])->group(function (): void {
         Route::patch('/bills/{bill}', [BillController::class, 'update'])->name('bills.update');
         Route::delete('/bills/{bill}', [BillController::class, 'destroy'])->name('bills.destroy');
         Route::get('/calendar', MoneyCalendarController::class)->name('calendar');
-        Route::get('/transactions', MoneyTransactionsController::class)->name('transactions');
+        Route::get('/transactions', [MoneyTransactionsController::class, 'index'])->name('transactions');
+        Route::post('/transactions', [MoneyTransactionsController::class, 'store'])->name('transactions.store');
+        Route::patch('/transactions/{transaction}', [MoneyTransactionsController::class, 'update'])->name('transactions.update');
+        Route::delete('/transactions/{transaction}', [MoneyTransactionsController::class, 'destroy'])->name('transactions.destroy');
         Route::get('/plan', MoneyPlanController::class)->name('plan');
     });
     Route::inertia('/photos', 'Stub')->name('photos');

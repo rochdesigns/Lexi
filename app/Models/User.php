@@ -7,6 +7,7 @@ use App\Models\Money\Account;
 use App\Models\Money\Bill;
 use App\Models\Money\Debt;
 use App\Models\Money\IncomeSource;
+use App\Models\Money\Transaction;
 use Database\Factories\UserFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Attributes\Hidden;
@@ -110,6 +111,14 @@ class User extends Authenticatable implements PasskeyUser
     public function accounts(): HasMany
     {
         return $this->hasMany(Account::class);
+    }
+
+    /**
+     * @return HasMany<Transaction, $this>
+     */
+    public function transactions(): HasMany
+    {
+        return $this->hasMany(Transaction::class);
     }
 
     /**
