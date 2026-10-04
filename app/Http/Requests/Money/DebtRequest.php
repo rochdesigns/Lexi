@@ -184,11 +184,17 @@ class DebtRequest extends FormRequest
             ->latestClosingDate((int) $this->input('statement_day', 1), now())
             ->format('Y-m');
 
-        return (int) collect($this->input('installments', []))
-            ->filter(fn (mixed $row): bool => is_array($row)
+        $total = 0;
+
+        foreach ((array) $this->input('installments', []) as $row) {
+            if (is_array($row)
                 && ($row['start_month'] ?? '9999-99') <= $month
-                && ($row['end_month'] ?? '0000-00') >= $month)
-            ->sum(fn (array $row): int => $this->installmentMonthly($row));
+                && ($row['end_month'] ?? '0000-00') >= $month) {
+                $total += $this->installmentMonthly($row);
+            }
+        }
+
+        return $total;
     }
 
     /**
@@ -234,25 +240,31 @@ class DebtRequest extends FormRequest
      */
     public function installmentAttributes(): array
     {
-        return collect($this->validated('installments') ?? [])
-            ->map(function (array $row): array {
-                $months = $this->installmentMonths($row);
-                $monthly = $this->installmentMonthly($row);
-                $repaid = $this->installmentRepaid($row, $months);
-                $borrowed = isset($row['principal']) ? Centavos::fromPesos($row['principal']) : null;
-                $hasInterest = $borrowed !== null && $borrowed < $repaid;
+        $installments = [];
 
-                return [
-                    'description' => $row['description'],
-                    'monthly_amount' => $monthly,
-                    'principal' => $hasInterest ? $borrowed : $repaid,
-                    'interest_type' => $hasInterest ? InterestType::AddOn->value : null,
-                    'total_months' => $months,
-                    'start_month' => $row['start_month'].'-01',
-                    'in_minimum' => (bool) ($row['in_minimum'] ?? false),
-                ];
-            })
-            ->all();
+        foreach ((array) ($this->validated('installments') ?? []) as $row) {
+            if (! is_array($row)) {
+                continue;
+            }
+
+            $months = $this->installmentMonths($row);
+            $monthly = $this->installmentMonthly($row);
+            $repaid = $this->installmentRepaid($row, $months);
+            $borrowed = isset($row['principal']) ? Centavos::fromPesos($row['principal']) : null;
+            $hasInterest = $borrowed !== null && $borrowed < $repaid;
+
+            $installments[] = [
+                'description' => $row['description'],
+                'monthly_amount' => $monthly,
+                'principal' => $hasInterest ? $borrowed : $repaid,
+                'interest_type' => $hasInterest ? InterestType::AddOn->value : null,
+                'total_months' => $months,
+                'start_month' => $row['start_month'].'-01',
+                'in_minimum' => (bool) ($row['in_minimum'] ?? false),
+            ];
+        }
+
+        return $installments;
     }
 
     /**
