@@ -22,6 +22,7 @@ export type TransactionRow = {
     category: string;
     note: string | null;
     source: string;
+    onStatement: boolean;
     accountId: number | null;
     debtId: number | null;
     paidWith: string | null;

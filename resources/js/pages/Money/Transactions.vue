@@ -3,6 +3,7 @@ import { Head, router, useForm } from '@inertiajs/vue3';
 import { computed, onMounted, ref } from 'vue';
 import { store } from '@/actions/App/Http/Controllers/Money/TransactionsController';
 import MoneyInput from '@/components/MoneyInput.vue';
+import StatementImportDialog from '@/components/StatementImportDialog.vue';
 import TransactionDialog from '@/components/TransactionDialog.vue';
 import type { TransactionRow } from '@/components/TransactionDialog.vue';
 import { Button } from '@/components/ui/button';
@@ -138,6 +139,7 @@ const days = computed(() => {
     return [...groups.entries()].map(([date, items]) => ({ date, items }));
 });
 
+const importOpen = ref(false);
 const editing = ref<TransactionRow | null>(null);
 const editOpen = ref(false);
 
@@ -277,9 +279,7 @@ const errorClass = 'mt-1 text-[12px] text-red-600';
                         >
                             Use {{ guard.suggestedAccount.name }} instead
                         </button>
-                        ({{
-                            formatPeso(guard.suggestedAccount.balance)
-                        }}
+                        ({{ formatPeso(guard.suggestedAccount.balance) }}
                         available).
                     </template>
                 </div>
@@ -355,14 +355,23 @@ const errorClass = 'mt-1 text-[12px] text-red-600';
                     >This month</Button
                 >
             </div>
-            <p class="text-[14px]" style="color: var(--hab-muted)">
-                Spent
-                <span
-                    class="font-semibold tabular-nums"
-                    style="color: var(--hab-ink)"
-                    >{{ formatPeso(total) }}</span
+            <div class="flex items-center gap-3">
+                <p class="text-[14px]" style="color: var(--hab-muted)">
+                    Spent
+                    <span
+                        class="font-semibold tabular-nums"
+                        style="color: var(--hab-ink)"
+                        >{{ formatPeso(total) }}</span
+                    >
+                </p>
+                <Button
+                    v-if="cards.length > 0"
+                    variant="outline"
+                    size="sm"
+                    @click="importOpen = true"
+                    >Import statement</Button
                 >
-            </p>
+            </div>
         </div>
 
         <div v-if="categoryTotals.length > 0" class="mb-4 flex flex-wrap gap-2">
@@ -427,7 +436,10 @@ const errorClass = 'mt-1 text-[12px] text-red-600';
                                     style="color: var(--hab-muted)"
                                 >
                                     {{ categoryLabel(item.category) }} ·
-                                    {{ item.paidWith }}
+                                    {{ item.paidWith
+                                    }}<template v-if="item.onStatement">
+                                        · on statement</template
+                                    >
                                 </span>
                             </span>
                             <span
@@ -441,6 +453,7 @@ const errorClass = 'mt-1 text-[12px] text-red-600';
             </section>
         </div>
 
+        <StatementImportDialog v-model:open="importOpen" :cards="cards" />
         <TransactionDialog
             v-model:open="editOpen"
             :transaction="editing"

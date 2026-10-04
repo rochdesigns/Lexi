@@ -13,6 +13,7 @@ use App\Http\Controllers\Money\PaymentAllocationController;
 use App\Http\Controllers\Money\PaymentPlanController;
 use App\Http\Controllers\Money\PlanController as MoneyPlanController;
 use App\Http\Controllers\Money\RecoveryController;
+use App\Http\Controllers\Money\StatementImportController;
 use App\Http\Controllers\Money\TransactionsController as MoneyTransactionsController;
 use App\Http\Controllers\TaskController;
 use App\Http\Controllers\TaskSectionController;
@@ -77,6 +78,8 @@ Route::middleware(['auth', 'verified'])->group(function (): void {
         Route::get('/calendar', MoneyCalendarController::class)->name('calendar');
         Route::get('/transactions', [MoneyTransactionsController::class, 'index'])->name('transactions');
         Route::post('/transactions', [MoneyTransactionsController::class, 'store'])->name('transactions.store');
+        Route::post('/transactions/import/preview', [StatementImportController::class, 'preview'])->name('transactions.import.preview');
+        Route::post('/transactions/import', [StatementImportController::class, 'store'])->name('transactions.import.store');
         Route::patch('/transactions/{transaction}', [MoneyTransactionsController::class, 'update'])->name('transactions.update');
         Route::delete('/transactions/{transaction}', [MoneyTransactionsController::class, 'destroy'])->name('transactions.destroy');
         Route::get('/plan', MoneyPlanController::class)->name('plan');

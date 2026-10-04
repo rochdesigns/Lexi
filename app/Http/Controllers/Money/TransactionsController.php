@@ -8,6 +8,7 @@ use App\Models\Money\Account;
 use App\Models\Money\Debt;
 use App\Models\Money\DebtType;
 use App\Models\Money\Transaction;
+use App\Models\Money\TransactionSource;
 use App\Services\Money\Projection;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -29,13 +30,14 @@ class TransactionsController extends Controller
         $first = Carbon::createFromFormat('Y-m-d', $month.'-01')->startOfDay();
 
         $transactions = $user->transactions()
-            ->with(['account', 'debt'])
+            ->counted()
+            ->with(['account', 'debt', 'statementRow'])
             ->where('date', '>=', $first->toDateString())
             ->where('date', '<', $first->copy()->addMonth()->toDateString())
             ->orderByDesc('date')
             ->orderByDesc('id')
             ->get();
-        $latest = $user->transactions()->latest('id')->first();
+        $latest = $user->transactions()->counted()->where('source', TransactionSource::Manual)->latest('id')->first();
         $accounts = $user->accounts()->orderBy('name')->get();
 
         return Inertia::render('Money/Transactions', [
@@ -49,6 +51,7 @@ class TransactionsController extends Controller
                 'category' => $transaction->category->value,
                 'note' => $transaction->note,
                 'source' => $transaction->source->value,
+                'onStatement' => $transaction->statementRow !== null,
                 'accountId' => $transaction->account_id,
                 'debtId' => $transaction->debt_id,
                 'paidWith' => $transaction->account?->name ?? $transaction->debt?->name,

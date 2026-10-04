@@ -835,7 +835,7 @@ class Projection
         $closesOn = $statement['closes_on']->toDateString();
 
         $charges = $debt->transactions
-            ->filter(fn (Transaction $transaction): bool => $transaction->date->toDateString() > $lastClosed && $transaction->date->toDateString() <= $closesOn)
+            ->filter(fn (Transaction $transaction): bool => $transaction->matched_transaction_id === null && $transaction->date->toDateString() > $lastClosed && $transaction->date->toDateString() <= $closesOn)
             ->sum('amount');
 
         return $debt->paymentPlans->sum(fn (PaymentPlan $plan): int => $this->paymentFor($plan, $statement['month']))
