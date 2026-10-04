@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { Head, router } from '@inertiajs/vue3';
+import { Head, Link, router } from '@inertiajs/vue3';
 import { computed, ref } from 'vue';
 import { update as updateRecovery } from '@/actions/App/Http/Controllers/Money/RecoveryController';
 import AccountDialog from '@/components/AccountDialog.vue';
@@ -8,7 +8,9 @@ import BillDialog from '@/components/BillDialog.vue';
 import type { BillRow } from '@/components/BillDialog.vue';
 import IncomeSourceDialog from '@/components/IncomeSourceDialog.vue';
 import type { IncomeSourceRow } from '@/components/IncomeSourceDialog.vue';
+import InfoNote from '@/components/InfoNote.vue';
 import { Button } from '@/components/ui/button';
+import { transactions } from '@/routes/money';
 import { formatDay, formatPeso, monthNames } from '@/utils/money';
 
 type Upcoming = {
@@ -17,6 +19,8 @@ type Upcoming = {
     amount: number;
     date: string;
     autopay: boolean;
+    sourceId: number | null;
+    received: boolean;
 };
 
 type Shortfall = {
@@ -223,6 +227,12 @@ const cardStyle =
                 About {{ formatPeso(numbers.perDay) }} a day for the rest of the
                 month
             </p>
+            <InfoNote id="overview-safe">
+                Your forecast income, less bills, the yearly set-aside, debt
+                payments, goals and any recovery payment. It looks at what is
+                planned for the month, not at your account balances. On hand,
+                below, shows those.
+            </InfoNote>
         </div>
 
         <div v-if="recovery" class="mb-6 rounded-[22px] p-6" :style="cardStyle">
@@ -319,6 +329,12 @@ const cardStyle =
                     >Add account</Button
                 >
             </div>
+            <InfoNote id="overview-accounts">
+                On hand is the total of the accounts you can spend. It is the
+                starting point for the shortfall warnings and the calendar's
+                gaps. Only spending and income you log on Transactions change
+                these balances, or you editing them here.
+            </InfoNote>
             <p
                 v-if="accounts.length === 0"
                 class="text-[14px]"
@@ -370,6 +386,11 @@ const cardStyle =
             >
                 Coming up in the next 14 days
             </h2>
+            <InfoNote id="overview-upcoming">
+                Paydays, bills and debt dues from your income, bills and debts.
+                A pay day you mark as received stops counting in the forecast,
+                since the money is already in your balance.
+            </InfoNote>
             <p
                 v-if="upcoming.length === 0"
                 class="text-[14px]"
@@ -403,18 +424,47 @@ const cardStyle =
                             >
                         </p>
                     </div>
-                    <p
-                        class="shrink-0 text-[14px] font-semibold tabular-nums"
-                        :style="{
-                            color:
-                                item.kind === 'income'
-                                    ? 'var(--hab-accent)'
-                                    : 'var(--hab-ink)',
-                        }"
-                    >
-                        {{ item.kind === 'income' ? '+' : ''
-                        }}{{ formatPeso(item.amount) }}
-                    </p>
+                    <div class="flex shrink-0 items-center gap-3">
+                        <span
+                            v-if="item.kind === 'income' && item.received"
+                            class="rounded-full px-2.5 py-0.5 text-[11.5px] font-semibold"
+                            style="
+                                background: color-mix(
+                                    in srgb,
+                                    var(--hab-accent) 16%,
+                                    transparent
+                                );
+                                color: var(--hab-accent);
+                            "
+                            >Received</span
+                        >
+                        <Link
+                            v-else-if="item.kind === 'income' && item.sourceId"
+                            :href="
+                                transactions({
+                                    query: {
+                                        income: item.sourceId,
+                                        date: item.date,
+                                    },
+                                }).url
+                            "
+                            class="rounded-full px-2.5 py-0.5 text-[11.5px] font-semibold underline"
+                            style="color: var(--hab-ink)"
+                            >Received?</Link
+                        >
+                        <p
+                            class="text-[14px] font-semibold tabular-nums"
+                            :style="{
+                                color:
+                                    item.kind === 'income'
+                                        ? 'var(--hab-accent)'
+                                        : 'var(--hab-ink)',
+                            }"
+                        >
+                            {{ item.kind === 'income' ? '+' : ''
+                            }}{{ formatPeso(item.amount) }}
+                        </p>
+                    </div>
                 </li>
             </ul>
         </div>
@@ -435,6 +485,12 @@ const cardStyle =
                         >Add income</Button
                     >
                 </div>
+                <InfoNote id="overview-income" title="Forecast only.">
+                    These amounts feed safe to spend, the calendar's paydays and
+                    the shortfall warnings. They do not change any account
+                    balance. When pay arrives, press Received on its pay day
+                    under Coming up, or log it on Transactions.
+                </InfoNote>
                 <p
                     v-if="incomeSources.length === 0"
                     class="text-[14px]"
@@ -484,6 +540,12 @@ const cardStyle =
                         >Add bill</Button
                     >
                 </div>
+                <InfoNote id="overview-bills">
+                    Used for the Bills number in safe to spend, and for due
+                    dates on the calendar and in the shortfall warnings. Yearly
+                    bills are set aside at a twelfth each month. Paying one does
+                    not change a balance until you log it as an expense.
+                </InfoNote>
                 <p
                     v-if="bills.length === 0"
                     class="text-[14px]"

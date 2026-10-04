@@ -5,6 +5,7 @@ import { show } from '@/actions/App/Http/Controllers/Money/DebtController';
 import AllocationPlanner from '@/components/AllocationPlanner.vue';
 import DebtFormDialog from '@/components/DebtFormDialog.vue';
 import type { DebtFormDebt } from '@/components/DebtFormDialog.vue';
+import InfoNote from '@/components/InfoNote.vue';
 import RolloffChart from '@/components/RolloffChart.vue';
 import { Button } from '@/components/ui/button';
 import { debtTypes, formatDay, formatPeso, interestLabel } from '@/utils/money';
@@ -86,6 +87,12 @@ function utilizationColor(debt: DebtSummary): string {
             </div>
             <Button @click="adding = true">Add debt</Button>
         </div>
+
+        <InfoNote id="debts-feeds">
+            What is due this month is the Debt payments number on the Overview,
+            and each due date shows on the calendar and in the shortfall
+            warnings. Card figures come from the statement you last entered.
+        </InfoNote>
 
         <div class="mb-6 grid grid-cols-1 gap-4 sm:grid-cols-2">
             <div

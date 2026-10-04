@@ -7,6 +7,7 @@ use App\Models\Money\Debt;
 use App\Models\Money\DebtType;
 use App\Models\Money\Transaction;
 use App\Models\Money\TransactionCategory;
+use App\Models\Money\TransactionKind;
 use App\Models\Money\TransactionSource;
 use App\Models\User;
 use Illuminate\Database\Eloquent\Factories\Factory;
@@ -25,6 +26,7 @@ class TransactionFactory extends Factory
     {
         return [
             'user_id' => User::factory(),
+            'kind' => TransactionKind::Expense,
             'date' => now()->toDateString(),
             'amount' => 25_000,
             'category' => TransactionCategory::Food,
@@ -34,6 +36,18 @@ class TransactionFactory extends Factory
             'account_id' => Account::factory(),
             'matched_transaction_id' => null,
         ];
+    }
+
+    /**
+     * Money received into an account.
+     */
+    public function income(): static
+    {
+        return $this->state([
+            'kind' => TransactionKind::Income,
+            'category' => TransactionCategory::Income,
+            'debt_id' => null,
+        ]);
     }
 
     public function onCard(?Debt $card = null): static

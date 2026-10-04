@@ -464,7 +464,7 @@ class Projection
      * @param  Collection<int, Debt>  $debts
      * @param  Collection<int, Bill>  $bills
      * @param  Collection<int, IncomeSource>  $sources
-     * @return list<array{kind: string, name: string, amount: int, date: string, autopay: bool}>
+     * @return list<array{kind: string, name: string, amount: int, date: string, autopay: bool, sourceId: int|null, received: bool}>
      */
     public function upcoming(Collection $debts, Collection $bills, Collection $sources, CarbonInterface $today, int $days = 14): array
     {
@@ -521,7 +521,7 @@ class Projection
      * @param  Collection<int, Bill>  $bills
      * @param  Collection<int, IncomeSource>  $sources
      * @param  Collection<int, Account>  $accounts
-     * @return array{days: list<array{date: string, items: list<array{kind: string, name: string, amount: int, autopay: bool, short: int}>}>, gaps: list<array{kind: string, name: string, amount: int, date: string, short: int, nextPayday: string|null}>}
+     * @return array{days: list<array{date: string, items: list<array{kind: string, name: string, amount: int, autopay: bool, sourceId: int|null, received: bool, short: int}>}>, gaps: list<array{kind: string, name: string, amount: int, date: string, short: int, nextPayday: string|null}>}
      */
     public function calendar(Collection $debts, Collection $bills, Collection $sources, Collection $accounts, CarbonInterface $today, string $month): array
     {
@@ -541,6 +541,8 @@ class Projection
                 'name' => $event['name'],
                 'amount' => $event['amount'],
                 'autopay' => $event['autopay'],
+                'sourceId' => $event['sourceId'],
+                'received' => $event['received'],
                 'short' => $event['short'],
             ];
 
@@ -593,8 +595,8 @@ class Projection
      * works out how much of each due the running balance cannot cover. With a
      * null starting balance there is nothing to check, so nothing is short.
      *
-     * @param  list<array{kind: string, name: string, amount: int, date: string, autopay: bool}>  $events
-     * @return list<array{kind: string, name: string, amount: int, date: string, autopay: bool, short: int}>
+     * @param  list<array{kind: string, name: string, amount: int, date: string, autopay: bool, sourceId: int|null, received: bool}>  $events
+     * @return list<array{kind: string, name: string, amount: int, date: string, autopay: bool, sourceId: int|null, received: bool, short: int}>
      */
     private function settle(array $events, ?int $cash): array
     {
@@ -607,7 +609,7 @@ class Projection
             $short = 0;
 
             if ($event['kind'] === 'income') {
-                $balance += $event['amount'];
+                $balance += $event['received'] ? 0 : $event['amount'];
             } else {
                 $balance -= $event['amount'];
                 $short = $cash === null ? 0 : max(0, min($event['amount'], -$balance));
@@ -617,6 +619,23 @@ class Projection
         }
 
         return $settled;
+    }
+
+    /**
+     * Whether a pay day has already landed. Income logged for that pay day
+     * counts, and so does income logged without one within three days of it,
+     * as pay often arrives a little early or late. A received pay day is not
+     * added to the forecast again, since the money is already in the balance.
+     */
+    private function isReceived(IncomeSource $source, CarbonImmutable $payday): bool
+    {
+        return $source->receipts->contains(function (Transaction $receipt) use ($payday): bool {
+            if ($receipt->pay_date !== null) {
+                return $receipt->pay_date->toDateString() === $payday->toDateString();
+            }
+
+            return abs($receipt->date->diffInDays($payday, false)) <= 3;
+        });
     }
 
     /**
@@ -663,7 +682,7 @@ class Projection
      * @param  Collection<int, Debt>  $debts
      * @param  Collection<int, Bill>  $bills
      * @param  Collection<int, IncomeSource>  $sources
-     * @return list<array{kind: string, name: string, amount: int, date: string, autopay: bool}>
+     * @return list<array{kind: string, name: string, amount: int, date: string, autopay: bool, sourceId: int|null, received: bool}>
      */
     private function events(Collection $debts, Collection $bills, Collection $sources, CarbonInterface $today, int $days): array
     {
@@ -674,7 +693,7 @@ class Projection
 
         foreach ($debts as $debt) {
             foreach ($this->debtDues($debt, $start, $end) as $due) {
-                $items[] = ['kind' => 'debt', 'name' => $debt->name, 'amount' => $due['amount'], 'date' => $due['date'], 'autopay' => false];
+                $items[] = ['kind' => 'debt', 'name' => $debt->name, 'amount' => $due['amount'], 'date' => $due['date'], 'autopay' => false, 'sourceId' => null, 'received' => false];
             }
         }
 
@@ -687,7 +706,7 @@ class Projection
 
             foreach ($dates as $date) {
                 if ($date->greaterThanOrEqualTo($start) && $date->lessThanOrEqualTo($end)) {
-                    $items[] = ['kind' => 'bill', 'name' => $bill->name, 'amount' => $bill->amount, 'date' => $date->toDateString(), 'autopay' => $bill->autopay];
+                    $items[] = ['kind' => 'bill', 'name' => $bill->name, 'amount' => $bill->amount, 'date' => $date->toDateString(), 'autopay' => $bill->autopay, 'sourceId' => null, 'received' => false];
                 }
             }
         }
@@ -698,7 +717,7 @@ class Projection
                     $date = $this->dayInMonth($start->startOfMonth()->addMonths($offset), $payDay);
 
                     if ($date->greaterThanOrEqualTo($start) && $date->lessThanOrEqualTo($end)) {
-                        $items[] = ['kind' => 'income', 'name' => $source->name, 'amount' => $source->amount, 'date' => $date->toDateString(), 'autopay' => false];
+                        $items[] = ['kind' => 'income', 'name' => $source->name, 'amount' => $source->amount, 'date' => $date->toDateString(), 'autopay' => false, 'sourceId' => $source->id, 'received' => $this->isReceived($source, $date)];
                     }
                 }
             }

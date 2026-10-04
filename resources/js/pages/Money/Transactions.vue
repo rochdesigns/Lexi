@@ -2,6 +2,7 @@
 import { Head, router, useForm } from '@inertiajs/vue3';
 import { computed, onMounted, ref } from 'vue';
 import { store } from '@/actions/App/Http/Controllers/Money/TransactionsController';
+import InfoNote from '@/components/InfoNote.vue';
 import MoneyInput from '@/components/MoneyInput.vue';
 import StatementImportDialog from '@/components/StatementImportDialog.vue';
 import TransactionDialog from '@/components/TransactionDialog.vue';
@@ -12,6 +13,7 @@ import {
     categoryLabel,
     formatDay,
     formatPeso,
+    toPesos,
     transactionCategories,
 } from '@/utils/money';
 
@@ -30,6 +32,14 @@ const props = defineProps<{
     transactions: TransactionRow[];
     categoryTotals: { category: string; total: number }[];
     total: number;
+    received: number;
+    incomeSources: { id: number; name: string; amount: number }[];
+    prefill: {
+        incomeSourceId: number;
+        name: string;
+        amount: number;
+        date: string;
+    } | null;
     accounts: {
         id: number;
         name: string;
@@ -39,6 +49,11 @@ const props = defineProps<{
     cards: { id: number; name: string; guard: CardGuard | null }[];
     lastPaidWith: { accountId: number | null; debtId: number | null } | null;
 }>();
+
+/** An entry is spending or money received. Income goes into an account. */
+const kind = ref<'expense' | 'income'>(props.prefill ? 'income' : 'expense');
+const incomeSourceId = ref<number | ''>(props.prefill?.incomeSourceId ?? '');
+const payDate = ref<string | null>(props.prefill?.date ?? null);
 
 function defaultPaidWith(): string {
     if (props.lastPaidWith?.accountId) {
@@ -57,22 +72,53 @@ function defaultPaidWith(): string {
 }
 
 const form = useForm({
-    amount: null as number | null,
+    amount: (props.prefill ? toPesos(props.prefill.amount) : null) as
+        number | null,
     category: '',
     paidWith: defaultPaidWith(),
-    date: props.today,
-    note: '',
+    date: props.prefill?.date ?? props.today,
+    note: props.prefill?.name ?? '',
 });
 
-const hasMethods = computed(
-    () => props.accounts.length > 0 || props.cards.length > 0,
+function chooseKind(next: 'expense' | 'income'): void {
+    kind.value = next;
+
+    if (
+        next === 'income' &&
+        !form.paidWith.startsWith('account:') &&
+        props.accounts[0]
+    ) {
+        form.paidWith = `account:${props.accounts[0].id}`;
+    }
+}
+
+/** Picking an income source fills in what it usually pays, unless something is typed already. */
+function chooseSource(): void {
+    const source = props.incomeSources.find(
+        (item) => item.id === incomeSourceId.value,
+    );
+
+    payDate.value = null;
+
+    if (source) {
+        form.amount ??= toPesos(source.amount);
+        form.note ||= source.name;
+    }
+}
+
+const hasMethods = computed(() =>
+    kind.value === 'income'
+        ? props.accounts.length > 0
+        : props.accounts.length > 0 || props.cards.length > 0,
 );
 
 /** Spending on a card that already carries a balance adds to what is charging interest. */
 const guard = computed(
     () =>
-        props.cards.find((card) => `card:${card.id}` === form.paidWith)
-            ?.guard ?? null,
+        (kind.value === 'expense' &&
+            props.cards.find((card) => `card:${card.id}` === form.paidWith)
+                ?.guard) ??
+        null,
 );
 
 const amountBox = ref<HTMLElement | null>(null);
@@ -84,19 +130,37 @@ function focusAmount(): void {
 onMounted(focusAmount);
 
 function submit(): void {
-    form.transform(({ paidWith, ...data }) => ({
-        ...data,
-        note: data.note || null,
-        account_id: paidWith.startsWith('account:')
+    form.transform(({ paidWith, category, ...data }) => {
+        const account = paidWith.startsWith('account:')
             ? Number(paidWith.slice(8))
-            : null,
-        debt_id: paidWith.startsWith('card:')
-            ? Number(paidWith.slice(5))
-            : null,
-    })).post(store().url, {
+            : null;
+
+        if (kind.value === 'income') {
+            return {
+                ...data,
+                kind: 'income',
+                note: data.note || null,
+                account_id: account,
+                income_source_id: incomeSourceId.value || null,
+                pay_date: payDate.value,
+            };
+        }
+
+        return {
+            ...data,
+            category,
+            note: data.note || null,
+            account_id: account,
+            debt_id: paidWith.startsWith('card:')
+                ? Number(paidWith.slice(5))
+                : null,
+        };
+    }).post(store().url, {
         preserveScroll: true,
         onSuccess: () => {
             form.reset('amount', 'note', 'category');
+            incomeSourceId.value = '';
+            payDate.value = null;
             focusAmount();
         },
     });
@@ -176,7 +240,8 @@ const errorClass = 'mt-1 text-[12px] text-red-600';
                 Transactions
             </h1>
             <p class="mt-1 text-[14px]" style="color: var(--hab-muted)">
-                Log what you spend. Everything else works without it.
+                Log what you spend and what you receive. Everything else works
+                without it.
             </p>
         </div>
 
@@ -185,13 +250,49 @@ const errorClass = 'mt-1 text-[12px] text-red-600';
             :style="cardStyle"
             @submit.prevent="submit"
         >
+            <InfoNote
+                id="transactions-income"
+                title="Income here is what actually arrived."
+            >
+                It goes into the account you pick and adds to its balance. The
+                income you set up on the Overview is the forecast, and a pay day
+                you mark as received here is not counted in it again.
+            </InfoNote>
+
+            <div
+                class="mb-3 inline-flex rounded-full p-0.5"
+                style="background: var(--hab-hairline)"
+                role="radiogroup"
+                aria-label="Entry type"
+            >
+                <button
+                    v-for="option in ['expense', 'income'] as const"
+                    :key="option"
+                    type="button"
+                    role="radio"
+                    :aria-checked="kind === option"
+                    class="rounded-full px-4 py-1 text-[13px] font-semibold"
+                    :style="
+                        kind === option
+                            ? 'background: var(--hab-card-bg); color: var(--hab-ink)'
+                            : 'background: transparent; color: var(--hab-muted)'
+                    "
+                    @click="chooseKind(option)"
+                >
+                    {{ option === 'expense' ? 'Expense' : 'Income' }}
+                </button>
+            </div>
+
             <p
                 v-if="!hasMethods"
                 class="text-[14px]"
                 style="color: var(--hab-muted)"
             >
-                Add an account on the Overview, or a card on Debts, to log what
-                you spend.
+                {{
+                    kind === 'income'
+                        ? 'Add an account on the Overview to record income.'
+                        : 'Add an account on the Overview, or a card on Debts, to log what you spend.'
+                }}
             </p>
             <template v-else>
                 <div class="grid grid-cols-1 gap-3 sm:grid-cols-[1fr_1fr_1fr]">
@@ -213,7 +314,9 @@ const errorClass = 'mt-1 text-[12px] text-red-600';
                     <div>
                         <label
                             class="mb-1 block text-[12.5px] font-semibold text-[var(--hab-ink-secondary)]"
-                            >Paid with</label
+                            >{{
+                                kind === 'income' ? 'Paid into' : 'Paid with'
+                            }}</label
                         >
                         <select v-model="form.paidWith" :class="fieldClass">
                             <optgroup v-if="accounts.length" label="Accounts">
@@ -225,7 +328,10 @@ const errorClass = 'mt-1 text-[12px] text-red-600';
                                     {{ account.name }}
                                 </option>
                             </optgroup>
-                            <optgroup v-if="cards.length" label="Cards">
+                            <optgroup
+                                v-if="kind === 'expense' && cards.length"
+                                label="Cards"
+                            >
                                 <option
                                     v-for="card in cards"
                                     :key="`c${card.id}`"
@@ -253,6 +359,30 @@ const errorClass = 'mt-1 text-[12px] text-red-600';
                             {{ form.errors.date }}
                         </p>
                     </div>
+                </div>
+
+                <div
+                    v-if="kind === 'income' && incomeSources.length"
+                    class="mt-3"
+                >
+                    <label
+                        class="mb-1 block text-[12.5px] font-semibold text-[var(--hab-ink-secondary)]"
+                        >From</label
+                    >
+                    <select
+                        v-model="incomeSourceId"
+                        :class="fieldClass"
+                        @change="chooseSource"
+                    >
+                        <option value="">Something else</option>
+                        <option
+                            v-for="source in incomeSources"
+                            :key="source.id"
+                            :value="source.id"
+                        >
+                            {{ source.name }}
+                        </option>
+                    </select>
                 </div>
 
                 <div
@@ -285,6 +415,7 @@ const errorClass = 'mt-1 text-[12px] text-red-600';
                 </div>
 
                 <div
+                    v-if="kind === 'expense'"
                     class="mt-3 flex flex-wrap gap-2"
                     role="radiogroup"
                     aria-label="Category"
@@ -306,7 +437,10 @@ const errorClass = 'mt-1 text-[12px] text-red-600';
                         {{ category.label }}
                     </button>
                 </div>
-                <p v-if="form.errors.category" :class="errorClass">
+                <p
+                    v-if="kind === 'expense' && form.errors.category"
+                    :class="errorClass"
+                >
                     {{ form.errors.category }}
                 </p>
 
@@ -318,9 +452,9 @@ const errorClass = 'mt-1 text-[12px] text-red-600';
                         placeholder="Note (optional)"
                         :class="fieldClass"
                     />
-                    <Button type="submit" :disabled="form.processing"
-                        >Add expense</Button
-                    >
+                    <Button type="submit" :disabled="form.processing">{{
+                        kind === 'income' ? 'Add income' : 'Add expense'
+                    }}</Button>
                 </div>
             </template>
         </form>
@@ -362,6 +496,18 @@ const errorClass = 'mt-1 text-[12px] text-red-600';
                         class="font-semibold tabular-nums"
                         style="color: var(--hab-ink)"
                         >{{ formatPeso(total) }}</span
+                    >
+                </p>
+                <p
+                    v-if="received > 0"
+                    class="text-[14px]"
+                    style="color: var(--hab-muted)"
+                >
+                    Received
+                    <span
+                        class="font-semibold tabular-nums"
+                        style="color: var(--hab-accent)"
+                        >{{ formatPeso(received) }}</span
                     >
                 </p>
                 <Button
@@ -428,14 +574,21 @@ const errorClass = 'mt-1 text-[12px] text-red-600';
                                 >
                                     {{
                                         item.note ||
-                                        categoryLabel(item.category)
+                                        (item.kind === 'income'
+                                            ? 'Income'
+                                            : categoryLabel(item.category))
                                     }}
                                 </span>
                                 <span
                                     class="block text-[12px]"
                                     style="color: var(--hab-muted)"
                                 >
-                                    {{ categoryLabel(item.category) }} ·
+                                    {{
+                                        item.kind === 'income'
+                                            ? 'Income'
+                                            : categoryLabel(item.category)
+                                    }}
+                                    ·
                                     {{ item.paidWith
                                     }}<template v-if="item.onStatement">
                                         · on statement</template
@@ -444,8 +597,14 @@ const errorClass = 'mt-1 text-[12px] text-red-600';
                             </span>
                             <span
                                 class="shrink-0 text-[14px] font-semibold tabular-nums"
-                                style="color: var(--hab-ink)"
-                                >{{ formatPeso(item.amount) }}</span
+                                :style="{
+                                    color:
+                                        item.kind === 'income'
+                                            ? 'var(--hab-accent)'
+                                            : 'var(--hab-ink)',
+                                }"
+                                >{{ item.kind === 'income' ? '+' : ''
+                                }}{{ formatPeso(item.amount) }}</span
                             >
                         </button>
                     </li>

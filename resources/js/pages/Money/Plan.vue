@@ -4,6 +4,7 @@ import { ref } from 'vue';
 import { update } from '@/actions/App/Http/Controllers/Money/GoalController';
 import GoalDialog from '@/components/GoalDialog.vue';
 import type { GoalRow } from '@/components/GoalDialog.vue';
+import InfoNote from '@/components/InfoNote.vue';
 import { Button } from '@/components/ui/button';
 import WhatIfSimulator from '@/components/WhatIfSimulator.vue';
 import { overview } from '@/routes/money';
@@ -113,6 +114,11 @@ const cardStyle =
                 >
             </div>
 
+            <InfoNote id="plan-buffer">
+                What you put in each month comes off safe to spend on the
+                Overview until the buffer is full. The target follows your
+                obligations, so it shrinks as installments end.
+            </InfoNote>
             <p
                 v-if="!buffer"
                 class="text-[14px]"
@@ -177,6 +183,10 @@ const cardStyle =
                     >Add goal</Button
                 >
             </div>
+            <InfoNote id="plan-goals">
+                The monthly amounts are part of the set-aside on the Overview. A
+                goal that is full stops taking money from safe to spend.
+            </InfoNote>
             <p
                 v-if="goals.length === 0"
                 class="text-[14px]"
