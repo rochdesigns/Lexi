@@ -7,6 +7,7 @@ import {
 } from '@/actions/App/Http/Controllers/Money/DebtController';
 import { destroy as destroyPayment } from '@/actions/App/Http/Controllers/Money/DebtPaymentController';
 import { destroy as destroyPlan } from '@/actions/App/Http/Controllers/Money/PaymentPlanController';
+import ClearingEstimate from '@/components/ClearingEstimate.vue';
 import DebtFormDialog from '@/components/DebtFormDialog.vue';
 import type { DebtFormDebt } from '@/components/DebtFormDialog.vue';
 import PaymentFormDialog from '@/components/PaymentFormDialog.vue';
@@ -65,6 +66,7 @@ const props = defineProps<{
     plans: Plan[];
     payments: Payment[];
     rollOff: { month: string; total: number }[];
+    clearingDefault: number | null;
 }>();
 
 const editingDebt = ref(false);
@@ -251,6 +253,14 @@ const stats = computed(() => {
             </h2>
             <RolloffChart :series="rollOff" />
         </div>
+
+        <ClearingEstimate
+            v-if="card && card.revolvingBalance > 0 && clearingDefault !== null"
+            :debt-id="debt.id"
+            :default-payment="clearingDefault"
+            :revolving-balance="card.revolvingBalance"
+            :monthly-rate="debt.monthlyInterestRate"
+        />
 
         <div
             v-if="hasPlans"

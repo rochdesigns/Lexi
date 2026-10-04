@@ -54,6 +54,7 @@ Route::middleware(['auth', 'verified'])->group(function (): void {
         Route::post('/debts', [DebtController::class, 'store'])->name('debts.store');
         Route::post('/debts/allocate', PaymentAllocationController::class)->name('debts.allocate');
         Route::get('/debts/{debt}', [DebtController::class, 'show'])->name('debts.show');
+        Route::post('/debts/{debt}/clearing', [DebtController::class, 'clearing'])->name('debts.clearing');
         Route::patch('/debts/{debt}', [DebtController::class, 'update'])->name('debts.update');
         Route::delete('/debts/{debt}', [DebtController::class, 'destroy'])->name('debts.destroy');
         Route::post('/debts/{debt}/plans/preview', [PaymentPlanController::class, 'preview'])->name('plans.preview');

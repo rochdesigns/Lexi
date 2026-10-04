@@ -746,7 +746,7 @@ class Projection
                     'debt' => $debt,
                     'rate' => (float) ($debt->monthly_interest_rate ?? 0),
                     'minimum' => $minimum,
-                    'fixedPart' => min($minimum, $this->installmentsInMinimum($debt, $today) + $debt->cardDetail->charges_due_in_full),
+                    'fixedPart' => $minimum - $this->minimumTowardsBalance($debt, $today),
                     'revolving' => $debt->cardDetail->revolving_balance,
                 ];
             })
@@ -797,6 +797,60 @@ class Projection
             'leftover' => $remaining,
             'totalInterest' => array_sum(array_column($rows, 'interest')),
             'cards' => $rows,
+        ];
+    }
+
+    /**
+     * The part of the minimum that pays down the revolving balance. Installments
+     * and charges in the minimum do not.
+     */
+    public function minimumTowardsBalance(Debt $debt, CarbonInterface $today): int
+    {
+        $minimum = $this->minimumDue($debt, $today) ?? 0;
+
+        return max(0, $minimum - $this->installmentsInMinimum($debt, $today) - $debt->cardDetail->charges_due_in_full);
+    }
+
+    /**
+     * When a card's revolving balance clears if the same amount is paid towards
+     * it every month. The first payment is the one due next. After each payment
+     * the rest of the balance is charged a month of interest, and the last
+     * payment is whatever is left. It never clears when the payment does not
+     * outrun that interest.
+     *
+     * @return array{months: int, clearedBy: string|null, totalPaid: int, totalInterest: int, neverClears: bool}
+     */
+    public function clearingSchedule(Debt $debt, int $monthlyPayment, CarbonInterface $today): array
+    {
+        $balance = $debt->cardDetail->revolving_balance;
+        $rate = (float) ($debt->monthly_interest_rate ?? 0);
+        $months = 0;
+        $paid = 0;
+        $interest = 0;
+
+        while ($balance > 0) {
+            $payment = min($balance, max(0, $monthlyPayment));
+            $remaining = $balance - $payment;
+            $charge = $remaining > 0 ? (int) ceil($remaining * $rate / 100) : 0;
+
+            if ($months >= 600 || $payment === 0 || $remaining + $charge >= $balance) {
+                return ['months' => 0, 'clearedBy' => null, 'totalPaid' => 0, 'totalInterest' => 0, 'neverClears' => true];
+            }
+
+            $months++;
+            $paid += $payment;
+            $interest += $charge;
+            $balance = $remaining + $charge;
+        }
+
+        $first = $this->firstOfMonth($this->nextDueDate($debt, $today) ?? $today);
+
+        return [
+            'months' => $months,
+            'clearedBy' => $months > 0 ? $first->addMonths($months - 1)->format('Y-m') : null,
+            'totalPaid' => $paid,
+            'totalInterest' => $interest,
+            'neverClears' => false,
         ];
     }
 

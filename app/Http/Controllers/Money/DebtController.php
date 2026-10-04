@@ -7,7 +7,9 @@ use App\Http\Requests\Money\DebtRequest;
 use App\Models\Money\Debt;
 use App\Models\Money\DebtPayment;
 use App\Models\Money\PaymentPlan;
+use App\Services\Money\Centavos;
 use App\Services\Money\Projection;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
@@ -65,7 +67,23 @@ class DebtController extends Controller
             'plans' => $plans,
             'payments' => $payments,
             'rollOff' => $this->projection->rollOff(collect([$debt]), $today),
+            'clearingDefault' => $debt->cardDetail ? $this->projection->minimumTowardsBalance($debt, $today) : null,
         ]);
+    }
+
+    /**
+     * When a card's revolving balance clears at a fixed monthly payment. Saves nothing.
+     */
+    public function clearing(Request $request, Debt $debt): JsonResponse
+    {
+        abort_if($debt->user_id !== $request->user()->id, 403);
+        abort_if($debt->cardDetail === null, 404);
+
+        $data = $request->validate([
+            'amount' => ['nullable', 'numeric', 'min:0', 'max:1000000000'],
+        ]);
+
+        return response()->json($this->projection->clearingSchedule($debt, Centavos::fromPesos($data['amount'] ?? 0), Carbon::today()));
     }
 
     public function store(DebtRequest $request): RedirectResponse
