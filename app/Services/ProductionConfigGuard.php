@@ -5,6 +5,7 @@ namespace App\Services;
 use Illuminate\Contracts\Config\Repository;
 use Illuminate\Foundation\Application;
 use Illuminate\Support\Env;
+use Laravel\Passport\Passport;
 use RuntimeException;
 
 /**
@@ -21,7 +22,7 @@ class ProductionConfigGuard
     /** Mailers that discard mail instead of delivering it. */
     private const NON_DELIVERING_MAILERS = ['log', 'array', 'null'];
 
-    public function __construct(private Repository $config) {}
+    public function __construct(private Repository $config, private ?string $keyDirectory = null) {}
 
     /**
      * Determine whether these invariants apply to the given application.
@@ -54,7 +55,7 @@ class ProductionConfigGuard
      */
     public function assert(): void
     {
-        $failures = [...$this->urlFailures(), ...$this->mailFailures(), ...$this->sessionFailures()];
+        $failures = [...$this->urlFailures(), ...$this->mailFailures(), ...$this->sessionFailures(), ...$this->oauthKeyFailures()];
 
         if ($failures !== []) {
             throw new RuntimeException(
@@ -142,6 +143,33 @@ class ProductionConfigGuard
                 'SESSION_SAME_SITE is [%s], which lets the session cookie travel with cross-site requests. Use [lax].',
                 $sameSite === null ? 'null' : $sameSite,
             );
+        }
+
+        return $failures;
+    }
+
+    /**
+     * Get the reasons the MCP server could not sign or verify OAuth tokens.
+     *
+     * Passport reads its keys from the environment or from files in its key
+     * directory (storage unless Passport::loadKeysFrom() says otherwise).
+     * Without either, every connection attempt fails at runtime, so refuse
+     * to boot instead.
+     *
+     * @return array<int, string>
+     */
+    private function oauthKeyFailures(): array
+    {
+        $failures = [];
+
+        foreach (['private' => 'oauth-private.key', 'public' => 'oauth-public.key'] as $kind => $file) {
+            $path = $this->keyDirectory === null
+                ? Passport::keyPath($file)
+                : $this->keyDirectory.DIRECTORY_SEPARATOR.$file;
+
+            if (blank($this->config->get("passport.{$kind}_key")) && ! file_exists($path)) {
+                $failures[] = 'The Passport '.$kind.' key is missing. Set PASSPORT_'.strtoupper($kind).'_KEY or run `php artisan passport:keys`, otherwise the MCP connector cannot authenticate anyone.';
+            }
         }
 
         return $failures;

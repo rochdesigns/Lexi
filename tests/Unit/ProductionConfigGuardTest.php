@@ -8,7 +8,7 @@ use Illuminate\Support\Env;
 /**
  * @param  array<string, mixed>  $overrides
  */
-function guardFor(array $overrides = []): ProductionConfigGuard
+function guardFor(array $overrides = [], ?string $keyDirectory = null): ProductionConfigGuard
 {
     return new ProductionConfigGuard(new Repository(array_replace_recursive([
         'app' => [
@@ -27,7 +27,11 @@ function guardFor(array $overrides = []): ProductionConfigGuard
         'services' => [
             'resend' => ['key' => 're_a_key'],
         ],
-    ], $overrides)));
+        'passport' => [
+            'private_key' => 'a-private-key',
+            'public_key' => 'a-public-key',
+        ],
+    ], $overrides)), $keyDirectory);
 }
 
 test('a correctly configured production environment passes', function () {
@@ -116,6 +120,32 @@ test('a missing same site policy is rejected', function () {
     expect(fn () => guardFor(['session' => ['same_site' => null]])->assert())
         ->toThrow(RuntimeException::class, 'SESSION_SAME_SITE');
 });
+
+test('missing passport keys are rejected', function (?string $value) {
+    $empty = sys_get_temp_dir().'/lexi-no-keys-'.uniqid();
+    mkdir($empty);
+
+    expect(fn () => guardFor(['passport' => ['private_key' => $value, 'public_key' => $value]], $empty)->assert())
+        ->toThrow(RuntimeException::class, 'Passport');
+
+    rmdir($empty);
+})->with([
+    'unset' => [null],
+    'empty placeholder from .env.example' => [''],
+]);
+
+test('passport keys supplied as key files pass', function () {
+    $dir = sys_get_temp_dir().'/lexi-keys-'.uniqid();
+    mkdir($dir);
+    touch($dir.'/oauth-private.key');
+    touch($dir.'/oauth-public.key');
+
+    guardFor(['passport' => ['private_key' => null, 'public_key' => null]], $dir)->assert();
+
+    unlink($dir.'/oauth-private.key');
+    unlink($dir.'/oauth-public.key');
+    rmdir($dir);
+})->throwsNoExceptions();
 
 test('every failure is reported together', function () {
     expect(fn () => guardFor([

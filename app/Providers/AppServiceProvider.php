@@ -4,12 +4,18 @@ namespace App\Providers;
 
 use App\Services\ProductionConfigGuard;
 use Carbon\CarbonImmutable;
+use DateInterval;
+use Illuminate\Cache\RateLimiting\Limit;
+use Illuminate\Http\Request;
+use Illuminate\Http\Response;
 use Illuminate\Support\Facades\Date;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\ServiceProvider;
 use Illuminate\Validation\Rules\Password;
 use Inertia\ExceptionResponse;
 use Inertia\Inertia;
+use Laravel\Passport\Passport;
 
 class AppServiceProvider extends ServiceProvider
 {
@@ -25,7 +31,10 @@ class AppServiceProvider extends ServiceProvider
      */
     public function register(): void
     {
-        //
+        // Passport registers its routes while booting, so the flag has to be
+        // flipped before then. Only the authorization code and refresh grants
+        // are used, and every extra grant is extra attack surface.
+        Passport::$deviceCodeGrantEnabled = false;
     }
 
     /**
@@ -36,6 +45,7 @@ class AppServiceProvider extends ServiceProvider
         $this->configureDefaults();
         $this->assertProductionConfiguration();
         $this->configureErrorPages();
+        $this->configureMcp();
     }
 
     /**
@@ -98,5 +108,28 @@ class AppServiceProvider extends ServiceProvider
                 ->uncompromised()
             : null,
         );
+    }
+
+    /**
+     * Wire up the MCP server's OAuth consent screen, token lifetimes and rate limit.
+     *
+     * The limit is per user, so one noisy connection cannot starve another.
+     */
+    protected function configureMcp(): void
+    {
+        Passport::authorizationView(fn (array $parameters): Response => response()->view('mcp.authorize', $parameters));
+
+        // Explicit intervals: a DateTime would be stored as a calendar diff
+        // from now, which re-applied later can come out as 30 to 33 days.
+        Passport::tokensExpireIn(new DateInterval('PT1H'));
+        Passport::refreshTokensExpireIn(new DateInterval('P30D'));
+
+        RateLimiter::for('mcp-register', fn (Request $request): Limit => $request->isMethod('POST')
+            ? Limit::perMinute(10)->by((string) $request->ip())
+            : Limit::none());
+
+        RateLimiter::for('mcp', fn (Request $request): Limit => Limit::perMinute(60)->by(
+            (string) ($request->user()?->getAuthIdentifier() ?? $request->ip()),
+        ));
     }
 }
