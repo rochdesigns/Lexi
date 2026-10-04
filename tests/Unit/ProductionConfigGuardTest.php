@@ -121,15 +121,18 @@ test('a missing same site policy is rejected', function () {
         ->toThrow(RuntimeException::class, 'SESSION_SAME_SITE');
 });
 
-test('missing passport keys are rejected', function () {
+test('missing passport keys are rejected', function (?string $value) {
     $empty = sys_get_temp_dir().'/lexi-no-keys-'.uniqid();
     mkdir($empty);
 
-    expect(fn () => guardFor(['passport' => ['private_key' => null, 'public_key' => null]], $empty)->assert())
+    expect(fn () => guardFor(['passport' => ['private_key' => $value, 'public_key' => $value]], $empty)->assert())
         ->toThrow(RuntimeException::class, 'Passport');
 
     rmdir($empty);
-});
+})->with([
+    'unset' => [null],
+    'empty placeholder from .env.example' => [''],
+]);
 
 test('passport keys supplied as key files pass', function () {
     $dir = sys_get_temp_dir().'/lexi-keys-'.uniqid();

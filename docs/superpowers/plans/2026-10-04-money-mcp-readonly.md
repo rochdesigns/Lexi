@@ -1354,7 +1354,7 @@ Expected: `POST mcp/money` with middleware `auth:api`, the scope check, `verifie
 
 State these as outstanding, owner-run items. None can be done from the repo:
 1. `APP_URL` must be `https://lexi-app.me` first (OAuth discovery and redirect URLs depend on it).
-2. Set `PASSPORT_PRIVATE_KEY` and `PASSPORT_PUBLIC_KEY` on Forge (or run `php artisan passport:keys` once on the server) **before** deploying this release. `ProductionConfigGuard` now fails the boot without them, so the old release keeps serving if they are missing.
+2. Create the Passport keys **before** deploying this release. `ProductionConfigGuard` aborts every production boot (including composer's `package:discover` and `optimize`), so the new release cannot generate its own keys, and the old release keeps serving if they are missing. Either (a) run `php artisan passport:keys` locally and paste the two PEM contents into Forge env vars `PASSPORT_PRIVATE_KEY` and `PASSPORT_PUBLIC_KEY`, or (b) on the server, in the site's shared storage directory, run `APP_ENV=local php artisan passport:keys` (a real non-production `APP_ENV` makes `ProductionConfigGuard::appliesTo()` return false; a real environment variable overrides `.env`), then `chmod 600` the two key files.
 3. Run the migrations on deploy (Passport's tables).
 4. Manual smoke test against the deployed URL: add the connector in claude.ai, complete the consent screen, confirm tools list, ask a Money question and compare with the Overview page, confirm a second test account sees only its own data, then revoke the connection and confirm the token stops working.
 
