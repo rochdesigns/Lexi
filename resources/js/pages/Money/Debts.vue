@@ -2,6 +2,7 @@
 import { Head, Link } from '@inertiajs/vue3';
 import { computed, ref } from 'vue';
 import { show } from '@/actions/App/Http/Controllers/Money/DebtController';
+import AllocationPlanner from '@/components/AllocationPlanner.vue';
 import DebtFormDialog from '@/components/DebtFormDialog.vue';
 import type { DebtFormDebt } from '@/components/DebtFormDialog.vue';
 import RolloffChart from '@/components/RolloffChart.vue';
@@ -38,6 +39,16 @@ const groups = computed(() =>
             debts: props.debts.filter((debt) => debt.type === type.value),
         }))
         .filter((group) => group.debts.length > 0),
+);
+
+const cardMinimumsTotal = computed(() =>
+    props.debts
+        .filter((debt) => debt.status !== 'paid_off')
+        .reduce((sum, debt) => sum + (debt.card?.minimumDue ?? 0), 0),
+);
+
+const hasCards = computed(() =>
+    props.debts.some((debt) => debt.card && debt.status !== 'paid_off'),
 );
 
 const totalRemaining = computed(() =>
@@ -129,6 +140,11 @@ function utilizationColor(debt: DebtSummary): string {
             </h2>
             <RolloffChart :series="rollOff" />
         </div>
+
+        <AllocationPlanner
+            v-if="hasCards"
+            :minimums-total="cardMinimumsTotal"
+        />
 
         <div
             v-if="debts.length === 0"

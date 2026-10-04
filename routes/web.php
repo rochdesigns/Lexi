@@ -9,6 +9,7 @@ use App\Http\Controllers\Money\DebtController;
 use App\Http\Controllers\Money\DebtPaymentController;
 use App\Http\Controllers\Money\IncomeSourceController;
 use App\Http\Controllers\Money\OverviewController as MoneyOverviewController;
+use App\Http\Controllers\Money\PaymentAllocationController;
 use App\Http\Controllers\Money\PaymentPlanController;
 use App\Http\Controllers\Money\PlanController as MoneyPlanController;
 use App\Http\Controllers\Money\TransactionsController as MoneyTransactionsController;
@@ -51,6 +52,7 @@ Route::middleware(['auth', 'verified'])->group(function (): void {
         Route::get('/', MoneyOverviewController::class)->name('overview');
         Route::get('/debts', [DebtController::class, 'index'])->name('debts.index');
         Route::post('/debts', [DebtController::class, 'store'])->name('debts.store');
+        Route::post('/debts/allocate', PaymentAllocationController::class)->name('debts.allocate');
         Route::get('/debts/{debt}', [DebtController::class, 'show'])->name('debts.show');
         Route::patch('/debts/{debt}', [DebtController::class, 'update'])->name('debts.update');
         Route::delete('/debts/{debt}', [DebtController::class, 'destroy'])->name('debts.destroy');

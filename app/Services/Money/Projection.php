@@ -712,13 +712,7 @@ class Projection
     public function minimumDue(Debt $debt, CarbonInterface $today): ?int
     {
         $card = $debt->cardDetail;
-        $statement = $this->pendingStatement($debt, CarbonImmutable::instance($today)->startOfDay()) ?? $this->nextStatement($debt, $today);
-        $month = $statement['month'];
-
-        $installments = $debt->paymentPlans
-            ->filter(fn (PaymentPlan $plan): bool => $plan->in_minimum)
-            ->sum(fn (PaymentPlan $plan): int => $this->paymentFor($plan, $month));
-        $fixed = $installments + $card->charges_due_in_full;
+        $fixed = $this->installmentsInMinimum($debt, $today) + $card->charges_due_in_full;
 
         if ($card->min_payment_percent === null && $card->min_payment_floor === null) {
             return $fixed > 0 ? $fixed : null;
@@ -728,6 +722,92 @@ class Projection
         $sum = $share + $fixed;
 
         return $card->revolving_balance === 0 && $fixed === 0 ? 0 : max($card->min_payment_floor ?? 0, $sum);
+    }
+
+    /**
+     * Splits what the user can pay this cycle across their cards. Minimums come
+     * first, highest rate first, so if the money runs out the unpaid minimum
+     * lands on the lowest-rate card. What is left goes to the revolving balance
+     * of the highest-rate card, then the next. Installments and charges in the
+     * minimum do not reduce the revolving balance, so only the rest of a
+     * minimum does. Interest is one month on what is still revolving.
+     *
+     * @param  Collection<int, Debt>  $debts
+     * @return array{available: int, totalMinimums: int, shortBy: int, leftover: int, totalInterest: int, cards: list<array{debtId: int, name: string, rate: float, minimum: int, minimumPaid: int, missedMinimum: int, extra: int, paid: int, revolvingBefore: int, revolvingAfter: int, interest: int}>}
+     */
+    public function allocatePayment(Collection $debts, int $available, CarbonInterface $today): array
+    {
+        $cards = $debts
+            ->filter(fn (Debt $debt): bool => $debt->cardDetail !== null && $debt->status !== DebtStatus::PaidOff)
+            ->map(function (Debt $debt) use ($today): array {
+                $minimum = $this->minimumDue($debt, $today) ?? 0;
+
+                return [
+                    'debt' => $debt,
+                    'rate' => (float) ($debt->monthly_interest_rate ?? 0),
+                    'minimum' => $minimum,
+                    'fixedPart' => min($minimum, $this->installmentsInMinimum($debt, $today) + $debt->cardDetail->charges_due_in_full),
+                    'revolving' => $debt->cardDetail->revolving_balance,
+                ];
+            })
+            ->filter(fn (array $card): bool => $card['minimum'] > 0 || $card['revolving'] > 0)
+            ->sort(fn (array $a, array $b): int => [$b['rate'], $a['debt']->name] <=> [$a['rate'], $b['debt']->name])
+            ->values()
+            ->all();
+
+        $remaining = max(0, $available);
+
+        foreach ($cards as $index => $card) {
+            $paid = min($card['minimum'], $remaining);
+            $remaining -= $paid;
+            $cards[$index]['minimumPaid'] = $paid;
+            $cards[$index]['revolvingLeft'] = max(0, $card['revolving'] - max(0, $paid - $card['fixedPart']));
+        }
+
+        foreach ($cards as $index => $card) {
+            $extra = min($remaining, $card['revolvingLeft']);
+            $remaining -= $extra;
+            $cards[$index]['extra'] = $extra;
+        }
+
+        $rows = array_map(function (array $card): array {
+            $after = $card['revolvingLeft'] - $card['extra'];
+
+            return [
+                'debtId' => $card['debt']->id,
+                'name' => $card['debt']->name,
+                'rate' => $card['rate'],
+                'minimum' => $card['minimum'],
+                'minimumPaid' => $card['minimumPaid'],
+                'missedMinimum' => $card['minimum'] - $card['minimumPaid'],
+                'extra' => $card['extra'],
+                'paid' => $card['minimumPaid'] + $card['extra'],
+                'revolvingBefore' => $card['revolving'],
+                'revolvingAfter' => $after,
+                'interest' => (int) ceil($after * $card['rate'] / 100),
+            ];
+        }, $cards);
+
+        $totalMinimums = array_sum(array_column($rows, 'minimum'));
+
+        return [
+            'available' => max(0, $available),
+            'totalMinimums' => $totalMinimums,
+            'shortBy' => max(0, $totalMinimums - max(0, $available)),
+            'leftover' => $remaining,
+            'totalInterest' => array_sum(array_column($rows, 'interest')),
+            'cards' => $rows,
+        ];
+    }
+
+    /** Installments flagged as part of the minimum, for the statement being paid. */
+    private function installmentsInMinimum(Debt $debt, CarbonInterface $today): int
+    {
+        $statement = $this->pendingStatement($debt, CarbonImmutable::instance($today)->startOfDay()) ?? $this->nextStatement($debt, $today);
+
+        return $debt->paymentPlans
+            ->filter(fn (PaymentPlan $plan): bool => $plan->in_minimum)
+            ->sum(fn (PaymentPlan $plan): int => $this->paymentFor($plan, $statement['month']));
     }
 
     private function firstOfMonth(CarbonInterface $date): CarbonImmutable
