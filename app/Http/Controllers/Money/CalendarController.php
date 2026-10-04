@@ -37,7 +37,7 @@ class CalendarController extends Controller
             'maxMonth' => $max,
             'today' => $today->toDateString(),
             'hasAccounts' => $accounts->isNotEmpty(),
-            ...$this->projection->calendar($debts, $user->bills()->get(), $user->incomeSources()->get(), $accounts, $today, $month),
+            ...$this->projection->calendar($debts, $user->bills()->get(), $user->incomeSources()->with('receipts')->get(), $accounts, $today, $month),
         ]);
     }
 }

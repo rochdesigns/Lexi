@@ -19,10 +19,13 @@ export type TransactionRow = {
     id: number;
     date: string;
     amount: number;
+    kind: 'expense' | 'income';
     category: string;
     note: string | null;
     source: string;
     onStatement: boolean;
+    incomeSourceId: number | null;
+    payDate: string | null;
     accountId: number | null;
     debtId: number | null;
     paidWith: string | null;
@@ -71,16 +74,35 @@ function submit(): void {
         return;
     }
 
-    form.transform(({ paidWith, ...data }) => ({
-        ...data,
-        note: data.note || null,
-        account_id: paidWith.startsWith('account:')
+    const transaction = props.transaction;
+
+    form.transform(({ paidWith, category, ...data }) => {
+        const account = paidWith.startsWith('account:')
             ? Number(paidWith.slice(8))
-            : null,
-        debt_id: paidWith.startsWith('card:')
-            ? Number(paidWith.slice(5))
-            : null,
-    })).patch(update(props.transaction.id).url, {
+            : null;
+
+        // Income keeps the source and pay day it was logged for, so the forecast still knows it landed.
+        if (transaction.kind === 'income') {
+            return {
+                ...data,
+                kind: 'income',
+                note: data.note || null,
+                account_id: account,
+                income_source_id: transaction.incomeSourceId,
+                pay_date: transaction.payDate,
+            };
+        }
+
+        return {
+            ...data,
+            category,
+            note: data.note || null,
+            account_id: account,
+            debt_id: paidWith.startsWith('card:')
+                ? Number(paidWith.slice(5))
+                : null,
+        };
+    }).patch(update(transaction.id).url, {
         preserveScroll: true,
         onSuccess: () => emit('update:open', false),
     });
@@ -115,7 +137,11 @@ const errorClass = 'mt-1 text-[12px] text-red-600';
     <Dialog :open="open" @update:open="emit('update:open', $event)">
         <DialogContent style="max-width: 440px">
             <DialogHeader>
-                <DialogTitle>Edit expense</DialogTitle>
+                <DialogTitle>{{
+                    transaction?.kind === 'income'
+                        ? 'Edit income'
+                        : 'Edit expense'
+                }}</DialogTitle>
             </DialogHeader>
 
             <form class="flex flex-col gap-3.5 pt-1" @submit.prevent="submit">
@@ -146,7 +172,7 @@ const errorClass = 'mt-1 text-[12px] text-red-600';
                 </div>
 
                 <div class="grid grid-cols-2 gap-3">
-                    <div>
+                    <div v-if="transaction?.kind !== 'income'">
                         <label :class="labelClass">Category</label>
                         <select v-model="form.category" :class="fieldClass">
                             <option
@@ -162,7 +188,11 @@ const errorClass = 'mt-1 text-[12px] text-red-600';
                         </p>
                     </div>
                     <div>
-                        <label :class="labelClass">Paid with</label>
+                        <label :class="labelClass">{{
+                            transaction?.kind === 'income'
+                                ? 'Paid into'
+                                : 'Paid with'
+                        }}</label>
                         <select v-model="form.paidWith" :class="fieldClass">
                             <optgroup v-if="accounts.length" label="Accounts">
                                 <option
@@ -173,7 +203,13 @@ const errorClass = 'mt-1 text-[12px] text-red-600';
                                     {{ account.name }}
                                 </option>
                             </optgroup>
-                            <optgroup v-if="cards.length" label="Cards">
+                            <optgroup
+                                v-if="
+                                    transaction?.kind !== 'income' &&
+                                    cards.length
+                                "
+                                label="Cards"
+                            >
                                 <option
                                     v-for="card in cards"
                                     :key="`c${card.id}`"

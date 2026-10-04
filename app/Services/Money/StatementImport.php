@@ -5,6 +5,7 @@ namespace App\Services\Money;
 use App\Models\Money\Debt;
 use App\Models\Money\Transaction;
 use App\Models\Money\TransactionCategory;
+use App\Models\Money\TransactionKind;
 use App\Models\Money\TransactionSource;
 use App\Models\User;
 use Carbon\CarbonImmutable;
@@ -54,6 +55,7 @@ final class StatementImport
                 }
 
                 $user->transactions()->create([
+                    'kind' => TransactionKind::Expense,
                     'date' => $row['date'],
                     'amount' => $row['amount'],
                     'category' => $row['matched']['category'] ?? TransactionCategory::Other->value,

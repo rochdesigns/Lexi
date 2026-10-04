@@ -7,6 +7,7 @@ use Database\Factories\Money\IncomeSourceFactory;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 
 /**
  * amount is integer centavos received on each pay day. A semi-monthly source
@@ -33,6 +34,19 @@ class IncomeSource extends Model
     public function user(): BelongsTo
     {
         return $this->belongsTo(User::class);
+    }
+
+    /**
+     * Income received lately or logged ahead of time, enough to tell whether an
+     * upcoming pay day has already landed.
+     *
+     * @return HasMany<Transaction, $this>
+     */
+    public function receipts(): HasMany
+    {
+        return $this->hasMany(Transaction::class)
+            ->where('kind', TransactionKind::Income->value)
+            ->where('date', '>=', now()->subDays(7)->toDateString());
     }
 
     /**

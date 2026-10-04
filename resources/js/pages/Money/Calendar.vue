@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { Head, router } from '@inertiajs/vue3';
 import { computed, ref, watch } from 'vue';
+import InfoNote from '@/components/InfoNote.vue';
 import { Button } from '@/components/ui/button';
 import { calendar } from '@/routes/money';
 import { formatDay, formatPeso, formatPesoShort } from '@/utils/money';
@@ -10,6 +11,8 @@ type Item = {
     name: string;
     amount: number;
     autopay: boolean;
+    sourceId: number | null;
+    received: boolean;
     short: number;
 };
 
@@ -173,6 +176,12 @@ const cardStyle =
             </div>
         </div>
 
+        <InfoNote id="calendar-paydays">
+            Paydays come from your income forecast and bills from your bills. A
+            pay day you mark as received shows a tick and is not counted again,
+            because the money is already in your balance.
+        </InfoNote>
+
         <p
             v-if="!hasAccounts"
             class="mb-4 text-[13px]"
@@ -245,7 +254,7 @@ const cardStyle =
                         :key="`${item.kind}-${item.name}`"
                         class="hidden truncate rounded-[5px] px-1 py-px text-[10.5px] sm:block"
                         :style="chipStyle(item)"
-                        >{{ item.name }}
+                        >{{ item.received ? '✓ ' : '' }}{{ item.name }}
                         {{ formatPesoShort(item.amount) }}</span
                     >
                     <span
@@ -318,7 +327,9 @@ const cardStyle =
                             }"
                         >
                             {{ kindLabel[item.kind]
-                            }}<template v-if="item.autopay">
+                            }}<template v-if="item.received">
+                                · received</template
+                            ><template v-if="item.autopay">
                                 · automatic</template
                             ><template v-if="item.short > 0">
                                 · {{ formatPeso(item.short) }} short</template

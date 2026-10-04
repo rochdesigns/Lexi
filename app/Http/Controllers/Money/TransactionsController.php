@@ -8,6 +8,7 @@ use App\Models\Money\Account;
 use App\Models\Money\Debt;
 use App\Models\Money\DebtType;
 use App\Models\Money\Transaction;
+use App\Models\Money\TransactionKind;
 use App\Models\Money\TransactionSource;
 use App\Services\Money\Projection;
 use Illuminate\Http\RedirectResponse;
@@ -37,7 +38,7 @@ class TransactionsController extends Controller
             ->orderByDesc('date')
             ->orderByDesc('id')
             ->get();
-        $latest = $user->transactions()->counted()->where('source', TransactionSource::Manual)->latest('id')->first();
+        $latest = $user->transactions()->counted()->where('source', TransactionSource::Manual)->where('kind', TransactionKind::Expense)->latest('id')->first();
         $accounts = $user->accounts()->orderBy('name')->get();
 
         return Inertia::render('Money/Transactions', [
@@ -50,18 +51,29 @@ class TransactionsController extends Controller
                 'amount' => $transaction->amount,
                 'category' => $transaction->category->value,
                 'note' => $transaction->note,
+                'kind' => $transaction->kind->value,
                 'source' => $transaction->source->value,
+                'incomeSourceId' => $transaction->income_source_id,
+                'payDate' => $transaction->pay_date?->toDateString(),
                 'onStatement' => $transaction->statementRow !== null,
                 'accountId' => $transaction->account_id,
                 'debtId' => $transaction->debt_id,
                 'paidWith' => data_get($transaction, 'account.name') ?? data_get($transaction, 'debt.name'),
             ])->values(),
             'categoryTotals' => $transactions
+                ->where('kind', TransactionKind::Expense)
                 ->groupBy(fn (Transaction $transaction): string => $transaction->category->value)
                 ->map(fn ($group, string $category): array => ['category' => $category, 'total' => $group->sum('amount')])
                 ->sortByDesc('total')
                 ->values(),
-            'total' => $transactions->sum('amount'),
+            'total' => $transactions->where('kind', TransactionKind::Expense)->sum('amount'),
+            'received' => $transactions->where('kind', TransactionKind::Income)->sum('amount'),
+            'incomeSources' => $user->incomeSources()->orderBy('name')->get()->map(fn ($source): array => [
+                'id' => $source->id,
+                'name' => $source->name,
+                'amount' => $source->amount,
+            ])->values(),
+            'prefill' => $this->prefill($request),
             'accounts' => $accounts->map(fn (Account $account): array => [
                 'id' => $account->id,
                 'name' => $account->name,
@@ -78,14 +90,15 @@ class TransactionsController extends Controller
     }
 
     /**
-     * Paying from an account takes the money out of its balance straight away.
+     * Money received lands in the account straight away, and spending from an
+     * account comes out of it.
      */
     public function store(TransactionRequest $request): RedirectResponse
     {
         DB::transaction(function () use ($request): void {
             $transaction = $request->user()->transactions()->create($request->transactionAttributes());
 
-            $this->take($transaction);
+            $this->move($transaction, 1);
         });
 
         return back();
@@ -96,9 +109,9 @@ class TransactionsController extends Controller
         abort_if($transaction->user_id !== $request->user()->id, 403);
 
         DB::transaction(function () use ($request, $transaction): void {
-            $this->giveBack($transaction);
+            $this->move($transaction, -1);
             $transaction->update($request->transactionAttributes());
-            $this->take($transaction);
+            $this->move($transaction, 1);
         });
 
         return back();
@@ -109,24 +122,49 @@ class TransactionsController extends Controller
         abort_if($transaction->user_id !== $request->user()->id, 403);
 
         DB::transaction(function () use ($transaction): void {
-            $this->giveBack($transaction);
+            $this->move($transaction, -1);
             $transaction->delete();
         });
 
         return back();
     }
 
-    private function take(Transaction $transaction): void
+    /**
+     * Applies (1) or undoes (-1) what an entry did to its account: income adds
+     * to the balance, an expense takes from it.
+     */
+    private function move(Transaction $transaction, int $direction): void
     {
-        if ($transaction->account_id !== null) {
-            Account::whereKey($transaction->account_id)->decrement('balance', $transaction->amount);
+        if ($transaction->account_id === null) {
+            return;
         }
+
+        $change = $direction * ($transaction->kind === TransactionKind::Income ? 1 : -1) * $transaction->amount;
+
+        Account::whereKey($transaction->account_id)->increment('balance', $change);
     }
 
-    private function giveBack(Transaction $transaction): void
+    /**
+     * Opens the form ready to record a pay day as received, from the
+     * "Received" link on the Overview.
+     *
+     * @return array{incomeSourceId: int, name: string, amount: int, date: string}|null
+     */
+    private function prefill(Request $request): ?array
     {
-        if ($transaction->account_id !== null) {
-            Account::whereKey($transaction->account_id)->increment('balance', $transaction->amount);
+        $source = $request->filled('income') ? $request->user()->incomeSources()->find($request->integer('income')) : null;
+
+        if ($source === null) {
+            return null;
         }
+
+        $date = (string) $request->query('date', '');
+
+        return [
+            'incomeSourceId' => $source->id,
+            'name' => $source->name,
+            'amount' => $source->amount,
+            'date' => preg_match('/^\d{4}-\d{2}-\d{2}$/', $date) === 1 ? $date : Carbon::today()->toDateString(),
+        ];
     }
 }

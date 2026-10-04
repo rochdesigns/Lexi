@@ -25,7 +25,7 @@ class OverviewController extends Controller
         $user = $request->user();
         $debts = $user->debts()->with(['cardDetail', 'paymentPlans.debt', 'payments', 'balanceSnapshots'])->get();
         $bills = $user->bills()->orderBy('name')->get();
-        $sources = $user->incomeSources()->orderBy('name')->get();
+        $sources = $user->incomeSources()->with('receipts')->orderBy('name')->get();
         $accounts = $user->accounts()->orderBy('name')->get();
         $recoveryMonths = $user->setting?->recovery_months;
         $contributions = $this->projection->goalContributions($user->goals()->with('account')->get(), $debts, $bills, $today);
