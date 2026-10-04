@@ -23,7 +23,7 @@ class OverviewController extends Controller
     {
         $today = Carbon::today();
         $user = $request->user();
-        $debts = $user->debts()->with(['cardDetail', 'paymentPlans.debt', 'payments'])->get();
+        $debts = $user->debts()->with(['cardDetail', 'paymentPlans.debt', 'payments', 'balanceSnapshots'])->get();
         $bills = $user->bills()->orderBy('name')->get();
         $sources = $user->incomeSources()->orderBy('name')->get();
         $accounts = $user->accounts()->orderBy('name')->get();
@@ -31,6 +31,7 @@ class OverviewController extends Controller
 
         return Inertia::render('Money/Overview', [
             'numbers' => $this->projection->overview($debts, $bills, $sources, $today, 0, $recoveryMonths),
+            'carryAlerts' => $this->projection->carriedBalanceAlerts($debts, $today),
             'recovery' => $this->recovery($debts, $recoveryMonths, $today),
             'cashAvailable' => $this->projection->cashAvailable($accounts),
             'shortfalls' => $this->projection->shortfalls($debts, $bills, $sources, $accounts, $today),

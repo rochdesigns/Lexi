@@ -27,6 +27,13 @@ type Shortfall = {
     short: number;
 };
 
+type CarryAlert = {
+    debtId: number;
+    name: string;
+    monthsCarried: number;
+    balance: number;
+};
+
 type Recovery = {
     carryover: number;
     months: number | null;
@@ -44,6 +51,7 @@ const props = defineProps<{
         safeToSpend: number;
         perDay: number;
     };
+    carryAlerts: CarryAlert[];
     recovery: Recovery | null;
     cashAvailable: number;
     shortfalls: Shortfall[];
@@ -175,6 +183,28 @@ const cardStyle =
             <p class="mt-2 text-[12.5px]">
                 This uses the balances of accounts you can spend and the paydays
                 you have entered.
+            </p>
+        </div>
+
+        <div
+            v-for="alert in carryAlerts"
+            :key="alert.debtId"
+            class="mb-6 rounded-[16px] px-5 py-4 text-[14px]"
+            style="
+                background: #fff4e0;
+                border: 1px solid #f2d9a6;
+                color: #7a5200;
+            "
+            role="alert"
+        >
+            <p class="mb-1 font-semibold">
+                {{ alert.name }} has carried a balance for
+                {{ alert.monthsCarried }} of the last 3 months
+            </p>
+            <p>
+                {{ formatPeso(alert.balance) }} is still charging interest.
+                Consider calling the bank to ask about a balance conversion or
+                restructuring it into fixed installments.
             </p>
         </div>
 

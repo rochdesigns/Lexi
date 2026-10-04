@@ -893,6 +893,45 @@ class Projection
         ];
     }
 
+    /**
+     * Cards that have carried a balance over in at least 2 of the last 3
+     * months, counting this one, and still carry one now. Worth a call to the
+     * bank about a balance conversion or restructuring. A month without a
+     * saved balance keeps the last one saved. It needs a balance saved at least
+     * two months ago, or there is not enough history to say.
+     *
+     * @param  Collection<int, Debt>  $debts
+     * @return list<array{debtId: int, name: string, monthsCarried: int, balance: int}>
+     */
+    public function carriedBalanceAlerts(Collection $debts, CarbonInterface $today): array
+    {
+        $months = array_map(fn (int $ago): string => $this->firstOfMonth($today)->subMonthsNoOverflow($ago)->format('Y-m'), [2, 1, 0]);
+        $alerts = [];
+
+        foreach ($debts as $debt) {
+            if ($debt->cardDetail === null || $debt->status === DebtStatus::PaidOff) {
+                continue;
+            }
+
+            $snapshots = $debt->balanceSnapshots->sortBy('month');
+
+            if ($snapshots->isEmpty() || $snapshots->first()->month > $months[0]) {
+                continue;
+            }
+
+            $carried = collect($months)
+                ->map(fn (string $month): int => $snapshots->filter(fn ($snapshot): bool => $snapshot->month <= $month)->last()->revolving_balance)
+                ->filter(fn (int $balance): bool => $balance > 0);
+            $current = $snapshots->last()->revolving_balance;
+
+            if ($carried->count() >= 2 && $current > 0) {
+                $alerts[] = ['debtId' => $debt->id, 'name' => $debt->name, 'monthsCarried' => $carried->count(), 'balance' => $current];
+            }
+        }
+
+        return $alerts;
+    }
+
     /** Installments flagged as part of the minimum, for the statement being paid. */
     private function installmentsInMinimum(Debt $debt, CarbonInterface $today): int
     {

@@ -70,6 +70,14 @@ class Debt extends Model
     }
 
     /**
+     * @return HasMany<CardBalanceSnapshot, $this>
+     */
+    public function balanceSnapshots(): HasMany
+    {
+        return $this->hasMany(CardBalanceSnapshot::class);
+    }
+
+    /**
      * @return HasMany<DebtPayment, $this>
      */
     public function payments(): HasMany

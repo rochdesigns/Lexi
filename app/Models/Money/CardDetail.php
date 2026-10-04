@@ -39,6 +39,22 @@ class CardDetail extends Model
     ];
 
     /**
+     * Keeps the balance each month so a carried-over balance can be spotted.
+     * Saving more than once a month updates that month's row.
+     */
+    protected static function booted(): void
+    {
+        static::saved(function (CardDetail $card): void {
+            if ($card->wasRecentlyCreated || $card->wasChanged('revolving_balance')) {
+                CardBalanceSnapshot::updateOrCreate(
+                    ['debt_id' => $card->debt_id, 'month' => now()->format('Y-m')],
+                    ['revolving_balance' => $card->revolving_balance],
+                );
+            }
+        });
+    }
+
+    /**
      * @return BelongsTo<Debt, $this>
      */
     public function debt(): BelongsTo
