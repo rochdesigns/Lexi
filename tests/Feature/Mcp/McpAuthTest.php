@@ -1,6 +1,7 @@
 <?php
 
 use App\Models\User;
+use Illuminate\Support\Facades\Route;
 use Laravel\Passport\ClientRepository;
 use Laravel\Passport\Passport;
 
@@ -66,17 +67,17 @@ test('a loopback redirect is allowed to register', function (): void {
     ])->assertSuccessful();
 });
 
-test('the consent screen says what the connection can see', function (): void {
+test('the consent screen says what the connection can see', function (string $redirectUri, string $host): void {
     $client = app(ClientRepository::class)->createAuthorizationCodeGrantClient(
         'Claude',
-        ['https://claude.ai/api/mcp/auth_callback'],
+        [$redirectUri],
         confidential: false,
     );
 
     $this->actingAs(User::factory()->create())
         ->get('/oauth/authorize?'.http_build_query([
             'client_id' => $client->getKey(),
-            'redirect_uri' => 'https://claude.ai/api/mcp/auth_callback',
+            'redirect_uri' => $redirectUri,
             'response_type' => 'code',
             'scope' => 'mcp:use',
             'code_challenge' => str_repeat('a', 43),
@@ -85,8 +86,12 @@ test('the consent screen says what the connection can see', function (): void {
         ]))
         ->assertOk()
         ->assertSee('Your Money data')
-        ->assertSee('read-only');
-});
+        ->assertSee('read-only')
+        ->assertSee('Claude will be sent back to <strong>'.$host.'</strong>', false);
+})->with([
+    'claude.ai' => ['https://claude.ai/api/mcp/auth_callback', 'claude.ai'],
+    'loopback' => ['http://localhost:6274/callback', 'localhost'],
+]);
 
 test('requests past the limit are throttled', function (): void {
     Passport::actingAs(User::factory()->create(), ['mcp:use'], 'api');
@@ -112,12 +117,48 @@ test('the throttle is per user, not per address', function (): void {
     $this->postJson('/mcp/money', rpc('tools/list'))->assertOk();
 });
 
-test('access tokens expire in about an hour and refresh tokens in thirty days', function (): void {
-    $now = new DateTimeImmutable;
-    $lifetime = fn (DateInterval $interval): int => $now->add($interval)->getTimestamp() - $now->getTimestamp();
+test('access tokens expire in exactly an hour and refresh tokens in exactly thirty days', function (): void {
+    $access = Passport::tokensExpireIn();
+    $refresh = Passport::refreshTokensExpireIn();
 
-    expect($lifetime(Passport::tokensExpireIn()))->toBeBetween(3500, 3600)
-        ->and($lifetime(Passport::refreshTokensExpireIn()))->toBeBetween(30 * 86400 - 100, 30 * 86400 + 100);
+    expect([$access->y, $access->m, $access->d, $access->h, $access->i, $access->s])->toBe([0, 0, 0, 1, 0, 0])
+        ->and([$refresh->y, $refresh->m, $refresh->d, $refresh->h, $refresh->i, $refresh->s])->toBe([0, 0, 30, 0, 0, 0]);
+});
+
+test('the eleventh registration from one address within a minute is throttled', function (): void {
+    $register = fn () => $this->postJson('/oauth/register', [
+        'client_name' => 'Claude',
+        'redirect_uris' => ['https://claude.ai/api/mcp/auth_callback'],
+    ]);
+
+    foreach (range(1, 10) as $_) {
+        $register()->assertSuccessful();
+    }
+
+    $register()->assertStatus(429);
+});
+
+test('discovery documents stay available after registrations are throttled', function (): void {
+    foreach (range(1, 11) as $_) {
+        $this->postJson('/oauth/register', [
+            'client_name' => 'Claude',
+            'redirect_uris' => ['https://claude.ai/api/mcp/auth_callback'],
+        ]);
+    }
+
+    foreach (range(1, 15) as $_) {
+        $this->getJson('/.well-known/oauth-authorization-server')->assertOk();
+        $this->getJson('/.well-known/oauth-protected-resource')->assertOk();
+    }
+});
+
+test('the device code grant is not offered', function (): void {
+    expect(Route::has('passport.device.code'))->toBeFalse();
+
+    $this->postJson('/oauth/device/code', ['client_id' => 'x', 'scope' => 'mcp:use'])->assertNotFound();
+
+    $this->getJson('/.well-known/oauth-authorization-server')
+        ->assertJsonPath('grant_types_supported', ['authorization_code', 'refresh_token']);
 });
 
 test('registration is refused for lookalike and userinfo redirect hosts', function (string $uri): void {

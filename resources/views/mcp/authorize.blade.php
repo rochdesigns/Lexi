@@ -82,6 +82,9 @@
     </style>
 </head>
 <body>
+@php
+    $redirectHost = parse_url((string) request()->query('redirect_uri'), PHP_URL_HOST);
+@endphp
 <main class="card">
     <h1>Connect {{ $client->name }} to Lexi</h1>
 
@@ -89,6 +92,10 @@
         This lets {{ $client->name }} read <strong>Your Money data</strong> (debts, accounts, bills, income and goals).
         It is read-only: {{ $client->name }} cannot add, change or delete anything.
     </p>
+
+    @if (is_string($redirectHost) && $redirectHost !== '')
+        <p>When you authorize, {{ $client->name }} will be sent back to <strong>{{ $redirectHost }}</strong>.</p>
+    @endif
 
     <div class="account">
         <p>Signed in as <strong>{{ $user->email }}</strong></p>

@@ -6,7 +6,7 @@ use Illuminate\Support\Facades\Route;
 use Laravel\Mcp\Facades\Mcp;
 use Laravel\Passport\Http\Middleware\CheckToken;
 
-Route::middleware(RestrictMcpRedirectHosts::class)->group(function (): void {
+Route::middleware([RestrictMcpRedirectHosts::class, 'throttle:mcp-register'])->group(function (): void {
     Mcp::oauthRoutes();
 });
 
