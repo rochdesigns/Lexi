@@ -479,7 +479,7 @@ class Projection
      * below zero is flagged with how much of it cannot be covered. Without any
      * account there is no balance to check, so nothing is flagged.
      *
-     * A debt is counted once, at its next due date, for what is due this month.
+     * A debt is checked on every due date in the window.
      *
      * @param  Collection<int, Debt>  $debts
      * @param  Collection<int, Bill>  $bills
@@ -493,34 +493,167 @@ class Projection
             return [];
         }
 
-        $events = $this->events($debts, $bills, $sources, $today, $days);
+        $flagged = array_filter(
+            $this->settle($this->events($debts, $bills, $sources, $today, $days), $this->cashAvailable($accounts)),
+            fn (array $event): bool => $event['short'] > 0,
+        );
 
-        usort($events, fn (array $a, array $b): int => [$a['date'], $a['kind'] === 'income' ? 0 : 1, $a['name']] <=> [$b['date'], $b['kind'] === 'income' ? 0 : 1, $b['name']]);
+        return array_values(array_map(fn (array $event): array => [
+            'kind' => $event['kind'],
+            'name' => $event['name'],
+            'amount' => $event['amount'],
+            'date' => $event['date'],
+            'short' => $event['short'],
+        ], $flagged));
+    }
 
-        $balance = $this->cashAvailable($accounts);
-        $flagged = [];
+    /**
+     * One month of the cash flow calendar, from the balance on hand today. The
+     * walk starts today and carries on through every month up to the one asked
+     * for, so a gap in an earlier month shows in the later ones too. Days
+     * before today have nothing, as they are already past. Each due that the
+     * cash cannot cover is flagged short, with the next payday after it.
+     *
+     * @param  Collection<int, Debt>  $debts
+     * @param  Collection<int, Bill>  $bills
+     * @param  Collection<int, IncomeSource>  $sources
+     * @param  Collection<int, Account>  $accounts
+     * @return array{days: list<array{date: string, items: list<array{kind: string, name: string, amount: int, autopay: bool, short: int}>}>, gaps: list<array{kind: string, name: string, amount: int, date: string, short: int, nextPayday: string|null}>}
+     */
+    public function calendar(Collection $debts, Collection $bills, Collection $sources, Collection $accounts, CarbonInterface $today, string $month): array
+    {
+        $start = CarbonImmutable::instance($today)->startOfDay();
+        $first = CarbonImmutable::createFromFormat('Y-m-d', $month.'-01')->startOfDay();
+        $last = $first->endOfMonth()->startOfDay();
+        $events = $this->events($debts, $bills, $sources, $start, max(0, (int) $start->diffInDays($last)));
+        $settled = $this->settle($events, $accounts->isEmpty() ? null : $this->cashAvailable($accounts));
+        $inMonth = array_filter($settled, fn (array $event): bool => $event['date'] >= $first->toDateString() && $event['date'] <= $last->toDateString());
 
-        foreach ($events as $event) {
-            if ($event['kind'] === 'income') {
-                $balance += $event['amount'];
+        $days = [];
+        $gaps = [];
 
-                continue;
-            }
+        foreach ($inMonth as $event) {
+            $days[$event['date']][] = [
+                'kind' => $event['kind'],
+                'name' => $event['name'],
+                'amount' => $event['amount'],
+                'autopay' => $event['autopay'],
+                'short' => $event['short'],
+            ];
 
-            $balance -= $event['amount'];
-
-            if ($balance < 0) {
-                $flagged[] = [
+            if ($event['short'] > 0) {
+                $gaps[] = [
                     'kind' => $event['kind'],
                     'name' => $event['name'],
                     'amount' => $event['amount'],
                     'date' => $event['date'],
-                    'short' => min($event['amount'], -$balance),
+                    'short' => $event['short'],
+                    'nextPayday' => $this->nextPayday($sources, CarbonImmutable::parse($event['date']))?->toDateString(),
                 ];
             }
         }
 
-        return $flagged;
+        ksort($days);
+
+        return [
+            'days' => array_map(fn (string $date): array => ['date' => $date, 'items' => $days[$date]], array_keys($days)),
+            'gaps' => $gaps,
+        ];
+    }
+
+    /**
+     * The first pay day after the given date, or null without any income.
+     *
+     * @param  Collection<int, IncomeSource>  $sources
+     */
+    public function nextPayday(Collection $sources, CarbonImmutable $after): ?CarbonImmutable
+    {
+        $dates = [];
+
+        foreach ($sources as $source) {
+            foreach ($source->payDays() as $payDay) {
+                foreach ([0, 1] as $offset) {
+                    $date = $this->dayInMonth($after->startOfMonth()->addMonths($offset), $payDay);
+
+                    if ($date->greaterThan($after)) {
+                        $dates[] = $date;
+                    }
+                }
+            }
+        }
+
+        return $dates === [] ? null : collect($dates)->sort()->first();
+    }
+
+    /**
+     * Walks the events in date order, pay days before dues on the same day, and
+     * works out how much of each due the running balance cannot cover. With a
+     * null starting balance there is nothing to check, so nothing is short.
+     *
+     * @param  list<array{kind: string, name: string, amount: int, date: string, autopay: bool}>  $events
+     * @return list<array{kind: string, name: string, amount: int, date: string, autopay: bool, short: int}>
+     */
+    private function settle(array $events, ?int $cash): array
+    {
+        usort($events, fn (array $a, array $b): int => [$a['date'], $a['kind'] === 'income' ? 0 : 1, $a['name']] <=> [$b['date'], $b['kind'] === 'income' ? 0 : 1, $b['name']]);
+
+        $balance = $cash ?? 0;
+        $settled = [];
+
+        foreach ($events as $event) {
+            $short = 0;
+
+            if ($event['kind'] === 'income') {
+                $balance += $event['amount'];
+            } else {
+                $balance -= $event['amount'];
+                $short = $cash === null ? 0 : max(0, min($event['amount'], -$balance));
+            }
+
+            $settled[] = [...$event, 'short' => $short];
+        }
+
+        return $settled;
+    }
+
+    /**
+     * Every due date of a debt from today through $end, with what is due.
+     * The first is the next due date: a card's real minimum, a loan's payment
+     * for that month. Later ones use only what the plans bill that month, since
+     * a card's minimum on a statement that has not closed yet is not known.
+     *
+     * @return list<array{date: string, amount: int}>
+     */
+    private function debtDues(Debt $debt, CarbonImmutable $start, CarbonImmutable $end): array
+    {
+        $date = $this->nextDueDate($debt, $start);
+
+        if ($date === null) {
+            return [];
+        }
+
+        $isCard = $debt->cardDetail !== null;
+        $amount = $isCard ? $this->dueThisMonth($debt, $start) : $this->billedIn($debt, $date, $start);
+        $closes = $isCard ? ($this->pendingStatement($debt, $start) ?? $this->nextStatement($debt, $start))['closes_on'] : null;
+        $dues = [];
+
+        for ($i = 0; $i < 60 && $date->lessThanOrEqualTo($end); $i++) {
+            if ($amount > 0) {
+                $dues[] = ['date' => $date->toDateString(), 'amount' => $amount];
+            }
+
+            if ($isCard) {
+                $closes = $this->dayInMonth($closes->addMonthNoOverflow(), $debt->cardDetail->statement_day);
+                $statement = $this->statementClosingOn($debt, $closes);
+                $date = $statement['due_on'];
+                $amount = $this->billedIn($debt, $statement['month'], $start);
+            } else {
+                $date = $this->dayInMonth($date->startOfMonth()->addMonthNoOverflow(), $debt->due_day);
+                $amount = $this->billedIn($debt, $date, $start);
+            }
+        }
+
+        return $dues;
     }
 
     /**
@@ -537,11 +670,8 @@ class Projection
         $items = [];
 
         foreach ($debts as $debt) {
-            $date = $this->nextDueDate($debt, $start);
-            $amount = $this->dueThisMonth($debt, $start);
-
-            if ($date !== null && $amount > 0 && $date->lessThanOrEqualTo($end)) {
-                $items[] = ['kind' => 'debt', 'name' => $debt->name, 'amount' => $amount, 'date' => $date->toDateString(), 'autopay' => false];
+            foreach ($this->debtDues($debt, $start, $end) as $due) {
+                $items[] = ['kind' => 'debt', 'name' => $debt->name, 'amount' => $due['amount'], 'date' => $due['date'], 'autopay' => false];
             }
         }
 
