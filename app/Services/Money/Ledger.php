@@ -2,6 +2,7 @@
 
 namespace App\Services\Money;
 
+use App\Http\Requests\Money\DebtRequest;
 use App\Models\Money\Account;
 use App\Models\Money\Debt;
 use App\Models\Money\DebtPayment;
@@ -18,6 +19,8 @@ use Illuminate\Support\Facades\DB;
  */
 class Ledger
 {
+    public function __construct(private Projection $projection) {}
+
     /**
      * Money received lands in the account straight away, and spending from an
      * account comes out of it.
@@ -32,6 +35,32 @@ class Ledger
             $this->move($transaction, 1);
 
             return $transaction;
+        });
+    }
+
+    /**
+     * A new debt with what comes with it: a card's details and installments,
+     * or a loan's or BNPL's first payment plan. The request has already
+     * validated every type's own rules.
+     */
+    public function createDebt(User $user, DebtRequest $request): Debt
+    {
+        return DB::transaction(function () use ($user, $request): Debt {
+            $debt = $user->debts()->create($request->debtAttributes());
+
+            if ($request->isCard()) {
+                $debt->cardDetail()->create($request->cardAttributes());
+
+                foreach ($request->installmentAttributes() as $installment) {
+                    $debt->paymentPlans()->create($installment);
+                }
+            }
+
+            if ($request->wantsFirstPlan()) {
+                $debt->paymentPlans()->create($request->planAttributes($this->projection));
+            }
+
+            return $debt;
         });
     }
 

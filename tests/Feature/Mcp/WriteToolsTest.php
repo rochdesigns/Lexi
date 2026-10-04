@@ -1,6 +1,7 @@
 <?php
 
 use App\Mcp\Servers\MoneyServer;
+use App\Mcp\Tools\Money\Write\CreateDebt;
 use App\Mcp\Tools\Money\Write\RecordDebtPayment;
 use App\Mcp\Tools\Money\Write\RecordTransaction;
 use App\Models\Money\Account;
@@ -8,6 +9,7 @@ use App\Models\Money\Debt;
 use App\Models\Money\DebtType;
 use App\Models\Money\IncomeSource;
 use App\Models\User;
+use Illuminate\Testing\TestResponse;
 use Laravel\Passport\Passport;
 
 /**
@@ -158,7 +160,89 @@ test('the write tools are annotated as additive, never destructive', function (s
 test('the server exposes exactly the reviewed write tools, and none of them is also a read tool', function (): void {
     $names = collect(MoneyServer::WRITE_TOOLS)->map(fn (string $tool): string => (new $tool)->name())->sort()->values()->all();
 
-    expect($names)->toBe(['record_debt_payment', 'record_transaction'])
+    expect($names)->toBe(['create_debt', 'record_debt_payment', 'record_transaction'])
         ->and(array_intersect(MoneyServer::TOOLS, MoneyServer::WRITE_TOOLS))->toBe([])
-        ->and(MoneyServer::WRITE_TOOLS)->toBe([RecordTransaction::class, RecordDebtPayment::class]);
+        ->and(MoneyServer::WRITE_TOOLS)->toBe([RecordTransaction::class, RecordDebtPayment::class, CreateDebt::class]);
 });
+
+/**
+ * @param  array<string, mixed>  $arguments
+ */
+function createDebt(mixed $test, array $arguments): TestResponse
+{
+    return $test->postJson('/mcp/money', rpc('tools/call', ['name' => 'create_debt', 'arguments' => $arguments]));
+}
+
+test('an informal debt is created with its balance', function (): void {
+    $user = signedIn();
+
+    createDebt($this, [
+        'name' => 'Loan from Ate Mia', 'type' => 'informal', 'interestType' => 'none',
+        'outstandingBalanceCentavos' => 1_500_050, 'targetPayoffDate' => '2027-06-30',
+    ])->assertOk()->assertJsonPath('result.structuredContent.debt.name', 'Loan from Ate Mia');
+
+    $debt = $user->debts()->firstOrFail();
+    expect($debt->type)->toBe(DebtType::Informal)->and($debt->outstanding_balance)->toBe(1_500_050);
+});
+
+test('a loan is created with its first payment plan', function (): void {
+    $user = signedIn();
+
+    createDebt($this, [
+        'name' => 'Car loan', 'type' => 'loan', 'interestType' => 'amortized', 'monthlyInterestRate' => 1.2, 'dueDay' => 15,
+        'plan' => ['totalMonths' => 36, 'startMonth' => '2026-10', 'principalCentavos' => 36_000_000],
+    ])->assertOk();
+
+    $plan = $user->debts()->firstOrFail()->paymentPlans()->firstOrFail();
+    expect($plan->total_months)->toBe(36)->and($plan->principal)->toBe(36_000_000)->and($plan->monthly_amount)->toBeGreaterThan(0);
+});
+
+test('a buy-now-pay-later debt is created with its plan', function (): void {
+    $user = signedIn();
+
+    createDebt($this, [
+        'name' => 'Shopee SPayLater', 'type' => 'bnpl', 'interestType' => 'none', 'dueDay' => 10,
+        'plan' => ['totalMonths' => 3, 'startMonth' => '2026-10', 'monthlyAmountCentavos' => 100_000],
+    ])->assertOk();
+
+    expect($user->debts()->firstOrFail()->paymentPlans()->firstOrFail()->monthly_amount)->toBe(100_000);
+});
+
+test('a credit card is created with its details and installments', function (): void {
+    $user = signedIn();
+
+    createDebt($this, [
+        'name' => 'BDO Mastercard', 'type' => 'credit_card', 'interestType' => 'revolving', 'monthlyInterestRate' => 3.5, 'dueDay' => 28,
+        'creditLimitCentavos' => 10_000_000, 'statementDay' => 8, 'totalDueCentavos' => 2_000_000,
+        'installments' => [['description' => 'Laptop', 'monthlyAmountCentavos' => 500_000, 'startMonth' => '2025-01', 'endMonth' => '2027-12']],
+    ])->assertOk();
+
+    $card = $user->debts()->with(['cardDetail', 'paymentPlans'])->firstOrFail();
+    expect($card->cardDetail->credit_limit)->toBe(10_000_000)
+        ->and($card->cardDetail->statement_day)->toBe(8)
+        ->and($card->paymentPlans)->toHaveCount(1);
+});
+
+test('a read-only token cannot create a debt', function (): void {
+    $user = signedIn(['mcp:use']);
+
+    createDebt($this, ['name' => 'X', 'type' => 'informal', 'interestType' => 'none', 'outstandingBalanceCentavos' => 100])
+        ->assertOk()->assertJsonMissingPath('result.structuredContent');
+
+    expect($user->debts()->count())->toBe(0);
+});
+
+test('a debt that breaks its type\'s rules is rejected and nothing is written', function (array $arguments): void {
+    $user = signedIn();
+
+    createDebt($this, $arguments)->assertOk()->assertJsonMissingPath('result.structuredContent');
+
+    expect($user->debts()->count())->toBe(0);
+})->with([
+    'informal without a balance' => [['name' => 'X', 'type' => 'informal', 'interestType' => 'none']],
+    'unknown type' => [['name' => 'X', 'type' => 'mortgage', 'interestType' => 'none', 'dueDay' => 1]],
+    'amortized without a rate' => [['name' => 'X', 'type' => 'loan', 'interestType' => 'amortized', 'dueDay' => 1, 'plan' => ['totalMonths' => 12, 'startMonth' => '2026-10', 'principalCentavos' => 100_000]]],
+    'a loan without a plan' => [['name' => 'X', 'type' => 'loan', 'interestType' => 'none', 'dueDay' => 1]],
+    'a card without its limit' => [['name' => 'X', 'type' => 'credit_card', 'interestType' => 'revolving', 'monthlyInterestRate' => 3, 'dueDay' => 1, 'statementDay' => 5, 'revolvingBalanceCentavos' => 0]],
+    'a non-informal debt without a due day' => [['name' => 'X', 'type' => 'bnpl', 'interestType' => 'none', 'plan' => ['totalMonths' => 3, 'startMonth' => '2026-10', 'monthlyAmountCentavos' => 100]]],
+]);
