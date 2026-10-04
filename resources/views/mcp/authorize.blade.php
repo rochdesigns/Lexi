@@ -88,9 +88,14 @@
 <main class="card">
     <h1>Connect {{ $client->name }} to Lexi</h1>
 
+    @php($canWrite = collect($scopes ?? [])->contains(fn ($scope) => (is_object($scope) ? $scope->id : $scope) === 'mcp:write'))
     <p>
         This lets {{ $client->name }} read <strong>Your Money data</strong> (debts, accounts, bills, income and goals).
-        It is read-only: {{ $client->name }} cannot add, change or delete anything.
+        @if ($canWrite)
+            It can also <strong>record</strong> expenses, income and debt payments, which changes your account balances and payment history. It cannot edit or delete anything.
+        @else
+            It is read-only: {{ $client->name }} cannot add, change or delete anything.
+        @endif
     </p>
 
     @if (is_string($redirectHost) && $redirectHost !== '')

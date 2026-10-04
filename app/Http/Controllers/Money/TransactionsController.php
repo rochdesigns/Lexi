@@ -10,6 +10,7 @@ use App\Models\Money\DebtType;
 use App\Models\Money\Transaction;
 use App\Models\Money\TransactionKind;
 use App\Models\Money\TransactionSource;
+use App\Services\Money\Ledger;
 use App\Services\Money\Projection;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -20,7 +21,7 @@ use Inertia\Response;
 
 class TransactionsController extends Controller
 {
-    public function __construct(private Projection $projection) {}
+    public function __construct(private Projection $projection, private Ledger $ledger) {}
 
     public function index(Request $request): Response
     {
@@ -95,11 +96,7 @@ class TransactionsController extends Controller
      */
     public function store(TransactionRequest $request): RedirectResponse
     {
-        DB::transaction(function () use ($request): void {
-            $transaction = $request->user()->transactions()->create($request->transactionAttributes());
-
-            $this->move($transaction, 1);
-        });
+        $this->ledger->recordTransaction($request->user(), $request->transactionAttributes());
 
         return back();
     }
@@ -109,9 +106,9 @@ class TransactionsController extends Controller
         abort_if($transaction->user_id !== $request->user()->id, 403);
 
         DB::transaction(function () use ($request, $transaction): void {
-            $this->move($transaction, -1);
+            $this->ledger->move($transaction, -1);
             $transaction->update($request->transactionAttributes());
-            $this->move($transaction, 1);
+            $this->ledger->move($transaction, 1);
         });
 
         return back();
@@ -122,26 +119,11 @@ class TransactionsController extends Controller
         abort_if($transaction->user_id !== $request->user()->id, 403);
 
         DB::transaction(function () use ($transaction): void {
-            $this->move($transaction, -1);
+            $this->ledger->move($transaction, -1);
             $transaction->delete();
         });
 
         return back();
-    }
-
-    /**
-     * Applies (1) or undoes (-1) what an entry did to its account: income adds
-     * to the balance, an expense takes from it.
-     */
-    private function move(Transaction $transaction, int $direction): void
-    {
-        if ($transaction->account_id === null) {
-            return;
-        }
-
-        $change = $direction * ($transaction->kind === TransactionKind::Income ? 1 : -1) * $transaction->amount;
-
-        Account::whereKey($transaction->account_id)->increment('balance', $change);
     }
 
     /**
