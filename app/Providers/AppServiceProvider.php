@@ -107,13 +107,16 @@ class AppServiceProvider extends ServiceProvider
     }
 
     /**
-     * Wire up the MCP server's OAuth consent screen and rate limit.
+     * Wire up the MCP server's OAuth consent screen, token lifetimes and rate limit.
      *
      * The limit is per user, so one noisy connection cannot starve another.
      */
     protected function configureMcp(): void
     {
         Passport::authorizationView(fn (array $parameters): Response => response()->view('mcp.authorize', $parameters));
+
+        Passport::tokensExpireIn(now()->addHour());
+        Passport::refreshTokensExpireIn(now()->addDays(30));
 
         RateLimiter::for('mcp', fn (Request $request): Limit => Limit::perMinute(60)->by(
             (string) ($request->user()?->getAuthIdentifier() ?? $request->ip()),

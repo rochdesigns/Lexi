@@ -50,6 +50,22 @@ test('a client can register itself', function (): void {
     ])->assertSuccessful();
 });
 
+test('registration is refused for a redirect domain that is not allowed', function (): void {
+    $this->postJson('/oauth/register', [
+        'client_name' => 'Claude',
+        'redirect_uris' => ['https://evil.example/cb'],
+    ])
+        ->assertStatus(400)
+        ->assertJsonPath('error', 'invalid_redirect_uri');
+});
+
+test('a loopback redirect is allowed to register', function (): void {
+    $this->postJson('/oauth/register', [
+        'client_name' => 'Inspector',
+        'redirect_uris' => ['http://localhost:6274/callback'],
+    ])->assertSuccessful();
+});
+
 test('the consent screen says what the connection can see', function (): void {
     $client = app(ClientRepository::class)->createAuthorizationCodeGrantClient(
         'Claude',
@@ -80,4 +96,25 @@ test('requests past the limit are throttled', function (): void {
     }
 
     $this->postJson('/mcp/money', rpc('tools/list'))->assertStatus(429);
+});
+
+test('the throttle is per user, not per address', function (): void {
+    Passport::actingAs(User::factory()->create(), ['mcp:use'], 'api');
+
+    foreach (range(1, 60) as $_) {
+        $this->postJson('/mcp/money', rpc('tools/list'))->assertOk();
+    }
+
+    $this->postJson('/mcp/money', rpc('tools/list'))->assertStatus(429);
+
+    Passport::actingAs(User::factory()->create(), ['mcp:use'], 'api');
+
+    $this->postJson('/mcp/money', rpc('tools/list'))->assertOk();
+});
+
+test('access tokens expire in about an hour and refresh tokens in thirty days', function (): void {
+    $seconds = fn (DateInterval $interval): int => (new DateTimeImmutable('@0'))->add($interval)->getTimestamp();
+
+    expect($seconds(Passport::tokensExpireIn()))->toBeBetween(3500, 3600)
+        ->and($seconds(Passport::refreshTokensExpireIn()))->toBeBetween(30 * 86400 - 100, 30 * 86400);
 });
