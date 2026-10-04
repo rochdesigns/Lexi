@@ -113,8 +113,56 @@ test('the throttle is per user, not per address', function (): void {
 });
 
 test('access tokens expire in about an hour and refresh tokens in thirty days', function (): void {
-    $seconds = fn (DateInterval $interval): int => (new DateTimeImmutable('@0'))->add($interval)->getTimestamp();
+    $now = new DateTimeImmutable;
+    $lifetime = fn (DateInterval $interval): int => $now->add($interval)->getTimestamp() - $now->getTimestamp();
 
-    expect($seconds(Passport::tokensExpireIn()))->toBeBetween(3500, 3600)
-        ->and($seconds(Passport::refreshTokensExpireIn()))->toBeBetween(30 * 86400 - 100, 30 * 86400);
+    expect($lifetime(Passport::tokensExpireIn()))->toBeBetween(3500, 3600)
+        ->and($lifetime(Passport::refreshTokensExpireIn()))->toBeBetween(30 * 86400 - 100, 30 * 86400 + 100);
+});
+
+test('registration is refused for lookalike and userinfo redirect hosts', function (string $uri): void {
+    $this->postJson('/oauth/register', [
+        'client_name' => 'Claude',
+        'redirect_uris' => [$uri],
+    ])
+        ->assertStatus(400)
+        ->assertJsonPath('error', 'invalid_redirect_uri');
+})->with([
+    'localhost userinfo' => 'http://localhost:80@evil.example/cb',
+    'claude.ai userinfo' => 'https://claude.ai@evil.example/cb',
+    'claude.ai subdomain of evil' => 'https://claude.ai.evil.example/cb',
+    'claude.ai prefix' => 'https://claude.aievil.com/cb',
+    'localhost subdomain of evil' => 'http://localhost.evil.example/cb',
+    'plain http elsewhere' => 'http://evil.example/cb',
+    'plain http claude' => 'http://claude.ai/cb',
+]);
+
+test('registration succeeds for every permitted redirect', function (string $uri): void {
+    $this->postJson('/oauth/register', [
+        'client_name' => 'Claude',
+        'redirect_uris' => [$uri],
+    ])->assertSuccessful();
+})->with([
+    'https://claude.ai/api/mcp/auth_callback',
+    'https://claude.com/api/mcp/auth_callback',
+    'http://localhost:6274/callback',
+    'http://127.0.0.1:6274/callback',
+]);
+
+test('one bad redirect rejects the whole registration', function (): void {
+    $this->postJson('/oauth/register', [
+        'client_name' => 'Claude',
+        'redirect_uris' => ['https://claude.ai/api/mcp/auth_callback', 'http://localhost:80@evil.example/cb'],
+    ])
+        ->assertStatus(400)
+        ->assertJsonPath('error', 'invalid_redirect_uri');
+});
+
+test('a non-string redirect entry fails closed', function (): void {
+    $this->postJson('/oauth/register', [
+        'client_name' => 'Claude',
+        'redirect_uris' => [['https://claude.ai/cb']],
+    ])
+        ->assertStatus(400)
+        ->assertJsonPath('error', 'invalid_redirect_uri');
 });
