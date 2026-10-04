@@ -94,3 +94,18 @@ export type InterestValue = (typeof interestTypes)[number]['value'];
 export function interestLabel(value: string): string {
     return interestTypes.find((t) => t.value === value)?.short ?? value;
 }
+
+export const monthNames = [
+    'January',
+    'February',
+    'March',
+    'April',
+    'May',
+    'June',
+    'July',
+    'August',
+    'September',
+    'October',
+    'November',
+    'December',
+];

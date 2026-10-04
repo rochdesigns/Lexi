@@ -2,10 +2,13 @@
 
 namespace App\Services\Money;
 
+use App\Models\Money\Bill;
+use App\Models\Money\BillFrequency;
 use App\Models\Money\Debt;
 use App\Models\Money\DebtPayment;
 use App\Models\Money\DebtStatus;
 use App\Models\Money\DebtType;
+use App\Models\Money\IncomeSource;
 use App\Models\Money\InterestType;
 use App\Models\Money\PaymentPlan;
 use Carbon\CarbonImmutable;
@@ -344,6 +347,144 @@ class Projection
         }
 
         return $series;
+    }
+
+    // ── Overview ─────────────────────────────────────────────────────────
+
+    /**
+     * A semi-monthly source pays its amount on both pay days.
+     *
+     * @param  Collection<int, IncomeSource>  $sources
+     */
+    public function monthlyIncome(Collection $sources): int
+    {
+        return $sources->sum(fn (IncomeSource $source): int => $source->amount * count($source->payDays()));
+    }
+
+    /**
+     * @param  Collection<int, Bill>  $bills
+     */
+    public function monthlyBills(Collection $bills): int
+    {
+        return $bills
+            ->filter(fn (Bill $bill): bool => $bill->frequency === BillFrequency::Monthly)
+            ->sum('amount');
+    }
+
+    /**
+     * Annual bills are saved at one twelfth a month, rounded up per bill so
+     * twelve months of saving never fall short of the bill.
+     *
+     * @param  Collection<int, Bill>  $bills
+     */
+    public function annualSetAside(Collection $bills): int
+    {
+        return $bills
+            ->filter(fn (Bill $bill): bool => $bill->frequency === BillFrequency::Annual)
+            ->sum(fn (Bill $bill): int => (int) ceil($bill->amount / 12));
+    }
+
+    /**
+     * The five numbers for the month. Safe to spend is what is left of income
+     * once bills, the annual set-aside, debt payments and the buffer
+     * contribution are covered, and can be negative. The buffer is zero until
+     * goals exist.
+     *
+     * @param  Collection<int, Debt>  $debts
+     * @param  Collection<int, Bill>  $bills
+     * @param  Collection<int, IncomeSource>  $sources
+     * @return array{income: int, expenses: int, setAside: int, debtPayment: int, bufferContribution: int, safeToSpend: int, perDay: int}
+     */
+    public function overview(Collection $debts, Collection $bills, Collection $sources, CarbonInterface $today, int $bufferContribution = 0): array
+    {
+        $income = $this->monthlyIncome($sources);
+        $expenses = $this->monthlyBills($bills);
+        $setAside = $this->annualSetAside($bills);
+        $debtPayment = $this->totalMonthlyPayment($debts, $today);
+        $safeToSpend = $income - $expenses - $setAside - $debtPayment - $bufferContribution;
+
+        return [
+            'income' => $income,
+            'expenses' => $expenses,
+            'setAside' => $setAside,
+            'debtPayment' => $debtPayment,
+            'bufferContribution' => $bufferContribution,
+            'safeToSpend' => $safeToSpend,
+            'perDay' => $this->dailyAllowance($safeToSpend, $today),
+        ];
+    }
+
+    /** Safe to spend spread over the days left in the month, today included. Never negative. */
+    public function dailyAllowance(int $safeToSpend, CarbonInterface $today): int
+    {
+        $today = CarbonImmutable::instance($today)->startOfDay();
+        $daysLeft = (int) $today->diffInDays($today->endOfMonth()->startOfDay()) + 1;
+
+        return intdiv(max(0, $safeToSpend), $daysLeft);
+    }
+
+    public function nextBillDate(Bill $bill, CarbonInterface $today): CarbonImmutable
+    {
+        $today = CarbonImmutable::instance($today)->startOfDay();
+
+        if ($bill->frequency === BillFrequency::Monthly) {
+            $due = $this->dayInMonth($today, $bill->due_day);
+
+            return $due->lessThan($today) ? $this->dayInMonth($today->addMonthNoOverflow(), $bill->due_day) : $due;
+        }
+
+        $due = $this->dayInMonth($today->setDate($today->year, $bill->due_month, 1), $bill->due_day);
+
+        return $due->lessThan($today) ? $this->dayInMonth($due->addYearNoOverflow(), $bill->due_day) : $due;
+    }
+
+    /**
+     * Debt dues, bills and pay days falling from today through the next
+     * $days days, soonest first.
+     *
+     * @param  Collection<int, Debt>  $debts
+     * @param  Collection<int, Bill>  $bills
+     * @param  Collection<int, IncomeSource>  $sources
+     * @return list<array{kind: string, name: string, amount: int, date: string, autopay: bool}>
+     */
+    public function upcoming(Collection $debts, Collection $bills, Collection $sources, CarbonInterface $today, int $days = 14): array
+    {
+        $start = CarbonImmutable::instance($today)->startOfDay();
+        $end = $start->addDays($days);
+        $items = [];
+
+        foreach ($debts as $debt) {
+            $date = $this->nextDueDate($debt, $start);
+            $amount = $this->dueThisMonth($debt, $start);
+
+            if ($date !== null && $amount > 0 && $date->lessThanOrEqualTo($end)) {
+                $items[] = ['kind' => 'debt', 'name' => $debt->name, 'amount' => $amount, 'date' => $date->toDateString(), 'autopay' => false];
+            }
+        }
+
+        foreach ($bills as $bill) {
+            $date = $this->nextBillDate($bill, $start);
+
+            if ($date->lessThanOrEqualTo($end)) {
+                $items[] = ['kind' => 'bill', 'name' => $bill->name, 'amount' => $bill->amount, 'date' => $date->toDateString(), 'autopay' => $bill->autopay];
+            }
+        }
+
+        foreach ($sources as $source) {
+            foreach ($source->payDays() as $payDay) {
+                foreach ([$start, $start->addMonthNoOverflow()] as $month) {
+                    $date = $this->dayInMonth($month, $payDay);
+
+                    if ($date->greaterThanOrEqualTo($start) && $date->lessThanOrEqualTo($end)) {
+                        $items[] = ['kind' => 'income', 'name' => $source->name, 'amount' => $source->amount, 'date' => $date->toDateString(), 'autopay' => false];
+                    }
+                }
+            }
+        }
+
+        usort($items, fn (array $a, array $b): int => [$a['date'], $a['kind'], $a['name']] <=> [$b['date'], $b['kind'], $b['name']]);
+
+        return $items;
     }
 
     // ── Cards ────────────────────────────────────────────────────────────

@@ -13,6 +13,7 @@ import {
     DialogTitle,
 } from '@/components/ui/dialog';
 import type { LexiTheme } from '@/types';
+import { formatPeso } from '@/utils/money';
 
 type TodayEvent = {
     id: number;
@@ -53,6 +54,7 @@ const props = defineProps<{
     habits: Habit[];
     healthMetrics: HealthMetric[];
     visionBoardItems: VisionBoardItem[];
+    moneySummary: { safeToSpend: number; dueSoonCount: number } | null;
 }>();
 
 // Optimistic task toggle
@@ -593,8 +595,40 @@ watch(visionModalOpen, (open) => {
                         >
                     </div>
 
-                    <div class="text-[13px]" style="color: var(--hab-muted)">
-                        Coming soon
+                    <div v-if="moneySummary">
+                        <p class="text-[12px]" style="color: var(--hab-muted)">
+                            Safe to spend this month
+                        </p>
+                        <p
+                            class="font-['Bricolage_Grotesque'] text-[24px] font-extrabold tabular-nums"
+                            :style="{
+                                color:
+                                    moneySummary.safeToSpend < 0
+                                        ? '#c0392b'
+                                        : 'var(--hab-ink)',
+                            }"
+                        >
+                            {{ formatPeso(moneySummary.safeToSpend) }}
+                        </p>
+                        <p
+                            class="mt-1 text-[12px]"
+                            style="color: var(--hab-muted)"
+                        >
+                            {{ moneySummary.dueSoonCount }}
+                            {{
+                                moneySummary.dueSoonCount === 1
+                                    ? 'payment'
+                                    : 'payments'
+                            }}
+                            due in the next 14 days
+                        </p>
+                    </div>
+                    <div
+                        v-else
+                        class="text-[13px]"
+                        style="color: var(--hab-muted)"
+                    >
+                        Add your income and bills to see what is safe to spend.
                     </div>
                 </Link>
 

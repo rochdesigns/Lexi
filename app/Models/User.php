@@ -3,7 +3,9 @@
 namespace App\Models;
 
 // use Illuminate\Contracts\Auth\MustVerifyEmail;
+use App\Models\Money\Bill;
 use App\Models\Money\Debt;
+use App\Models\Money\IncomeSource;
 use Database\Factories\UserFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Attributes\Hidden;
@@ -99,6 +101,22 @@ class User extends Authenticatable implements PasskeyUser
     public function debts(): HasMany
     {
         return $this->hasMany(Debt::class);
+    }
+
+    /**
+     * @return HasMany<IncomeSource, $this>
+     */
+    public function incomeSources(): HasMany
+    {
+        return $this->hasMany(IncomeSource::class);
+    }
+
+    /**
+     * @return HasMany<Bill, $this>
+     */
+    public function bills(): HasMany
+    {
+        return $this->hasMany(Bill::class);
     }
 
     /**

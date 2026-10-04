@@ -1,5 +1,7 @@
 <?php
 
+use App\Models\Money\Bill;
+use App\Models\Money\IncomeSource;
 use App\Models\User;
 use App\Models\VisionBoardItem;
 use Database\Seeders\DatabaseSeeder;
@@ -44,4 +46,17 @@ test('today page includes vision board items ordered by position', function (): 
             ->where('visionBoardItems.0.caption', 'First')
             ->where('visionBoardItems.1.caption', 'Second')
         );
+});
+
+test('the today money card shows safe to spend once income or bills exist', function (): void {
+    $user = User::where('email', 'elle@example.com')->first();
+
+    $this->actingAs($user)->get('/today')->assertInertia(fn ($page) => $page->where('moneySummary', null));
+
+    IncomeSource::factory()->for($user)->create(['amount' => 1_000_000]);
+    Bill::factory()->for($user)->create(['amount' => 200_000, 'due_day' => now()->day]);
+
+    $this->actingAs($user)->get('/today')->assertInertia(fn ($page) => $page
+        ->where('moneySummary.safeToSpend', 800_000)
+        ->where('moneySummary.dueSoonCount', 1));
 });
