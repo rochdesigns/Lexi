@@ -12,6 +12,7 @@ use App\Http\Controllers\Money\OverviewController as MoneyOverviewController;
 use App\Http\Controllers\Money\PaymentAllocationController;
 use App\Http\Controllers\Money\PaymentPlanController;
 use App\Http\Controllers\Money\PlanController as MoneyPlanController;
+use App\Http\Controllers\Money\RecoveryController;
 use App\Http\Controllers\Money\TransactionsController as MoneyTransactionsController;
 use App\Http\Controllers\TaskController;
 use App\Http\Controllers\TaskSectionController;
@@ -66,6 +67,7 @@ Route::middleware(['auth', 'verified'])->group(function (): void {
         Route::post('/income-sources', [IncomeSourceController::class, 'store'])->name('income-sources.store');
         Route::patch('/income-sources/{incomeSource}', [IncomeSourceController::class, 'update'])->name('income-sources.update');
         Route::delete('/income-sources/{incomeSource}', [IncomeSourceController::class, 'destroy'])->name('income-sources.destroy');
+        Route::patch('/recovery', [RecoveryController::class, 'update'])->name('recovery.update');
         Route::post('/accounts', [AccountController::class, 'store'])->name('accounts.store');
         Route::patch('/accounts/{account}', [AccountController::class, 'update'])->name('accounts.update');
         Route::delete('/accounts/{account}', [AccountController::class, 'destroy'])->name('accounts.destroy');

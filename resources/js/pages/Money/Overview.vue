@@ -1,6 +1,7 @@
 <script setup lang="ts">
-import { Head } from '@inertiajs/vue3';
+import { Head, router } from '@inertiajs/vue3';
 import { computed, ref } from 'vue';
+import { update as updateRecovery } from '@/actions/App/Http/Controllers/Money/RecoveryController';
 import AccountDialog from '@/components/AccountDialog.vue';
 import type { AccountRow } from '@/components/AccountDialog.vue';
 import BillDialog from '@/components/BillDialog.vue';
@@ -26,6 +27,13 @@ type Shortfall = {
     short: number;
 };
 
+type Recovery = {
+    carryover: number;
+    months: number | null;
+    extra: number;
+    options: { months: number; extra: number }[];
+};
+
 const props = defineProps<{
     numbers: {
         income: number;
@@ -36,6 +44,7 @@ const props = defineProps<{
         safeToSpend: number;
         perDay: number;
     };
+    recovery: Recovery | null;
     cashAvailable: number;
     shortfalls: Shortfall[];
     accounts: AccountRow[];
@@ -43,6 +52,10 @@ const props = defineProps<{
     incomeSources: IncomeSourceRow[];
     bills: BillRow[];
 }>();
+
+function setRecovery(months: number | null): void {
+    router.patch(updateRecovery().url, { months }, { preserveScroll: true });
+}
 
 const editingAccount = ref<AccountRow | null>(null);
 const accountOpen = ref(false);
@@ -179,6 +192,54 @@ const cardStyle =
                 About {{ formatPeso(numbers.perDay) }} a day for the rest of the
                 month
             </p>
+        </div>
+
+        <div v-if="recovery" class="mb-6 rounded-[22px] p-6" :style="cardStyle">
+            <div class="mb-1 flex items-center justify-between gap-3">
+                <h2
+                    class="font-['Bricolage_Grotesque'] text-[18px] font-bold"
+                    style="color: var(--hab-ink)"
+                >
+                    Recovery mode
+                </h2>
+                <Button
+                    v-if="recovery.months !== null"
+                    variant="outline"
+                    size="sm"
+                    @click="setRecovery(null)"
+                >
+                    Turn off
+                </Button>
+            </div>
+            <p
+                v-if="recovery.months !== null"
+                class="text-[14px]"
+                style="color: var(--hab-ink)"
+            >
+                Setting aside {{ formatPeso(recovery.extra) }} a month on top of
+                your minimums, so the
+                {{ formatPeso(recovery.carryover) }} carried over on your cards
+                clears in {{ recovery.months }} months. It is already taken off
+                safe to spend.
+            </p>
+            <template v-else>
+                <p class="mb-3 text-[14px]" style="color: var(--hab-muted)">
+                    {{ formatPeso(recovery.carryover) }} is carried over on your
+                    cards and charging interest. Pick how fast to clear it and
+                    the extra comes off safe to spend.
+                </p>
+                <div class="flex flex-wrap gap-2">
+                    <Button
+                        v-for="option in recovery.options"
+                        :key="option.months"
+                        variant="outline"
+                        @click="setRecovery(option.months)"
+                    >
+                        {{ option.months }} months,
+                        {{ formatPeso(option.extra) }} more a month
+                    </Button>
+                </div>
+            </template>
         </div>
 
         <div class="mb-6 rounded-[22px] p-5" :style="cardStyle">

@@ -94,7 +94,7 @@ class TodayController extends Controller
         $bills = $user->bills()->get();
         $sources = $user->incomeSources()->get();
         $moneySummary = $sources->isEmpty() && $bills->isEmpty() ? null : [
-            'safeToSpend' => $projection->overview($debts, $bills, $sources, $today)['safeToSpend'],
+            'safeToSpend' => $projection->overview($debts, $bills, $sources, $today, 0, $user->setting?->recovery_months)['safeToSpend'],
             'dueSoonCount' => collect($projection->upcoming($debts, $bills, $sources, $today))->where('kind', '!=', 'income')->count(),
         ];
 

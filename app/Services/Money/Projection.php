@@ -387,22 +387,23 @@ class Projection
 
     /**
      * The five numbers for the month. Safe to spend is what is left of income
-     * once bills, the annual set-aside, debt payments and the buffer
-     * contribution are covered, and can be negative. The buffer is zero until
+     * once bills, the annual set-aside, debt payments, the buffer contribution
+     * and any recovery payment are covered, and can be negative. The buffer is zero until
      * goals exist.
      *
      * @param  Collection<int, Debt>  $debts
      * @param  Collection<int, Bill>  $bills
      * @param  Collection<int, IncomeSource>  $sources
-     * @return array{income: int, expenses: int, setAside: int, debtPayment: int, bufferContribution: int, safeToSpend: int, perDay: int}
+     * @return array{income: int, expenses: int, setAside: int, debtPayment: int, bufferContribution: int, recoveryContribution: int, safeToSpend: int, perDay: int}
      */
-    public function overview(Collection $debts, Collection $bills, Collection $sources, CarbonInterface $today, int $bufferContribution = 0): array
+    public function overview(Collection $debts, Collection $bills, Collection $sources, CarbonInterface $today, int $bufferContribution = 0, ?int $recoveryMonths = null): array
     {
         $income = $this->monthlyIncome($sources);
         $expenses = $this->monthlyBills($bills);
         $setAside = $this->annualSetAside($bills);
         $debtPayment = $this->totalMonthlyPayment($debts, $today);
-        $safeToSpend = $income - $expenses - $setAside - $debtPayment - $bufferContribution;
+        $recoveryContribution = $recoveryMonths === null ? 0 : $this->recoveryPlan($debts, $recoveryMonths, $today)['extra'];
+        $safeToSpend = $income - $expenses - $setAside - $debtPayment - $bufferContribution - $recoveryContribution;
 
         return [
             'income' => $income,
@@ -410,6 +411,7 @@ class Projection
             'setAside' => $setAside,
             'debtPayment' => $debtPayment,
             'bufferContribution' => $bufferContribution,
+            'recoveryContribution' => $recoveryContribution,
             'safeToSpend' => $safeToSpend,
             'perDay' => $this->dailyAllowance($safeToSpend, $today),
         ];
@@ -851,6 +853,43 @@ class Projection
             'totalPaid' => $paid,
             'totalInterest' => $interest,
             'neverClears' => false,
+        ];
+    }
+
+    /**
+     * Recovery mode: what it takes to clear every carried-over card balance in
+     * $months months. Each card needs a level payment (with its interest) that
+     * clears it in time. The minimum already counted in the debt payment pays
+     * part of that, so only the rest is extra to set aside.
+     *
+     * @param  Collection<int, Debt>  $debts
+     * @return array{months: int, carryover: int, extra: int, cards: list<array{debtId: int, name: string, balance: int, payment: int, extra: int}>}
+     */
+    public function recoveryPlan(Collection $debts, int $months, CarbonInterface $today): array
+    {
+        $cards = $debts
+            ->filter(fn (Debt $debt): bool => $debt->cardDetail !== null && $debt->status !== DebtStatus::PaidOff && $debt->cardDetail->revolving_balance > 0)
+            ->map(function (Debt $debt) use ($months, $today): array {
+                $balance = $debt->cardDetail->revolving_balance;
+                $payment = $this->amortizedPayment($balance, (float) ($debt->monthly_interest_rate ?? 0), $months);
+
+                return [
+                    'debtId' => $debt->id,
+                    'name' => $debt->name,
+                    'balance' => $balance,
+                    'payment' => $payment,
+                    'extra' => max(0, $payment - $this->minimumTowardsBalance($debt, $today)),
+                ];
+            })
+            ->sortBy('name')
+            ->values()
+            ->all();
+
+        return [
+            'months' => $months,
+            'carryover' => array_sum(array_column($cards, 'balance')),
+            'extra' => array_sum(array_column($cards, 'extra')),
+            'cards' => $cards,
         ];
     }
 
