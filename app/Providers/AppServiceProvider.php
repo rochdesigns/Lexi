@@ -4,12 +4,17 @@ namespace App\Providers;
 
 use App\Services\ProductionConfigGuard;
 use Carbon\CarbonImmutable;
+use Illuminate\Cache\RateLimiting\Limit;
+use Illuminate\Http\Request;
+use Illuminate\Http\Response;
 use Illuminate\Support\Facades\Date;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\ServiceProvider;
 use Illuminate\Validation\Rules\Password;
 use Inertia\ExceptionResponse;
 use Inertia\Inertia;
+use Laravel\Passport\Passport;
 
 class AppServiceProvider extends ServiceProvider
 {
@@ -36,6 +41,7 @@ class AppServiceProvider extends ServiceProvider
         $this->configureDefaults();
         $this->assertProductionConfiguration();
         $this->configureErrorPages();
+        $this->configureMcp();
     }
 
     /**
@@ -98,5 +104,19 @@ class AppServiceProvider extends ServiceProvider
                 ->uncompromised()
             : null,
         );
+    }
+
+    /**
+     * Wire up the MCP server's OAuth consent screen and rate limit.
+     *
+     * The limit is per user, so one noisy connection cannot starve another.
+     */
+    protected function configureMcp(): void
+    {
+        Passport::authorizationView(fn (array $parameters): Response => response()->view('mcp.authorize', $parameters));
+
+        RateLimiter::for('mcp', fn (Request $request): Limit => Limit::perMinute(60)->by(
+            (string) ($request->user()?->getAuthIdentifier() ?? $request->ip()),
+        ));
     }
 }
