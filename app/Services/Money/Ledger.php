@@ -65,8 +65,9 @@ class Ledger
     }
 
     /**
-     * Payments are history. The one exception is a debt with only a balance
-     * (informal), where a payment brings that balance down.
+     * Payments are history. A debt with only a balance (informal) has it
+     * brought down, and a payment that names the account it was paid from takes
+     * the amount out of that account.
      *
      * @param  array<string, mixed>  $attributes
      */
@@ -75,11 +76,36 @@ class Ledger
         return DB::transaction(function () use ($debt, $attributes): DebtPayment {
             $payment = $debt->payments()->create($attributes);
 
+            if ($payment->account_id !== null) {
+                Account::whereKey($payment->account_id)->decrement('balance', $payment->amount);
+            }
+
             if ($debt->type === DebtType::Informal && $debt->outstanding_balance !== null) {
                 $debt->update(['outstanding_balance' => max(0, $debt->outstanding_balance - $payment->amount)]);
             }
 
             return $payment;
+        });
+    }
+
+    /**
+     * Takes a payment out of history, putting back what it did to the debt's
+     * balance and to the account it was paid from.
+     */
+    public function removeDebtPayment(DebtPayment $payment): void
+    {
+        DB::transaction(function () use ($payment): void {
+            $debt = $payment->debt;
+
+            if ($debt->type === DebtType::Informal && $debt->outstanding_balance !== null) {
+                $debt->update(['outstanding_balance' => $debt->outstanding_balance + $payment->amount]);
+            }
+
+            if ($payment->account_id !== null) {
+                Account::whereKey($payment->account_id)->increment('balance', $payment->amount);
+            }
+
+            $payment->delete();
         });
     }
 

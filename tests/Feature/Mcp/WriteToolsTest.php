@@ -158,6 +158,32 @@ test('recording a debt payment adds history and lowers an informal debt\'s balan
     expect($debt->payments()->first()->date->toDateString())->toBe('2026-10-02');
 });
 
+test('recording a debt payment from an account takes it out of that account', function (): void {
+    $user = signedIn();
+    $debt = Debt::factory()->for($user)->create(['type' => DebtType::CreditCard]);
+    $account = Account::factory()->for($user)->create(['balance' => 100_000]);
+
+    $this->postJson('/mcp/money', rpc('tools/call', [
+        'name' => 'record_debt_payment',
+        'arguments' => ['debtId' => $debt->id, 'amountCentavos' => 40_000, 'accountId' => $account->id],
+    ]))->assertOk()->assertJsonPath('result.structuredContent.payment.accountId', $account->id);
+
+    expect($account->fresh()->balance)->toBe(60_000);
+});
+
+test('a debt payment cannot be paid from another user\'s account', function (): void {
+    $user = signedIn();
+    $debt = Debt::factory()->for($user)->create(['type' => DebtType::CreditCard]);
+    $account = Account::factory()->create(['balance' => 100_000]);
+
+    $this->postJson('/mcp/money', rpc('tools/call', [
+        'name' => 'record_debt_payment',
+        'arguments' => ['debtId' => $debt->id, 'amountCentavos' => 40_000, 'accountId' => $account->id],
+    ]))->assertOk()->assertJsonMissingPath('result.structuredContent');
+
+    expect($account->fresh()->balance)->toBe(100_000)->and($debt->payments()->count())->toBe(0);
+});
+
 test('the write tools are annotated as additive, never destructive', function (string $tool): void {
     expect((new $tool)->toArray()['annotations'])->toMatchArray(['destructiveHint' => false, 'idempotentHint' => false])
         ->not->toHaveKey('readOnlyHint');
