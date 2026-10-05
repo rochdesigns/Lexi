@@ -32,6 +32,7 @@ class TransactionRequest extends FormRequest
                 'amount' => ['required', 'numeric', 'gt:0', 'max:1000000000'],
                 'note' => ['nullable', 'string', 'max:200'],
                 'category' => ['prohibited'],
+                'custom_category_id' => ['prohibited'],
                 'account_id' => ['required', $account],
                 'debt_id' => ['prohibited'],
                 'income_source_id' => ['nullable', Rule::exists('income_sources', 'id')->where('user_id', $userId)],
@@ -44,6 +45,7 @@ class TransactionRequest extends FormRequest
             'date' => ['required', 'date'],
             'amount' => ['required', 'numeric', 'gt:0', 'max:1000000000'],
             'category' => ['required', Rule::in(TransactionCategory::expenseValues())],
+            'custom_category_id' => ['nullable', 'integer', Rule::exists('custom_categories', 'id')->where('user_id', $userId)],
             'note' => ['nullable', 'string', 'max:200'],
             'account_id' => ['nullable', 'required_without:debt_id', 'prohibits:debt_id', $account],
             'debt_id' => ['nullable', 'required_without:account_id', 'prohibits:account_id', Rule::exists('debts', 'id')->where('user_id', $userId)->where('type', DebtType::CreditCard->value)],
@@ -74,12 +76,14 @@ class TransactionRequest extends FormRequest
     {
         $data = $this->validated();
         $income = $this->kind() === TransactionKind::Income;
+        $customCategoryId = $income ? null : ($data['custom_category_id'] ?? null);
 
         return [
             'kind' => $this->kind(),
             'date' => $data['date'],
             'amount' => Centavos::fromPesos($data['amount']),
-            'category' => $income ? TransactionCategory::Income->value : $data['category'],
+            'category' => $income ? TransactionCategory::Income->value : ($customCategoryId !== null ? TransactionCategory::Other->value : $data['category']),
+            'custom_category_id' => $customCategoryId,
             'note' => $data['note'] ?? null,
             'account_id' => $data['account_id'] ?? null,
             'debt_id' => $data['debt_id'] ?? null,

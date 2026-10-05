@@ -5,6 +5,7 @@ use App\Http\Controllers\EventController;
 use App\Http\Controllers\Money\AccountController;
 use App\Http\Controllers\Money\BillController;
 use App\Http\Controllers\Money\CalendarController as MoneyCalendarController;
+use App\Http\Controllers\Money\CustomCategoryController;
 use App\Http\Controllers\Money\DebtController;
 use App\Http\Controllers\Money\DebtPaymentController;
 use App\Http\Controllers\Money\GoalController;
@@ -90,6 +91,8 @@ Route::middleware(['auth', 'verified'])->group(function (): void {
         Route::post('/transactions/import', [StatementImportController::class, 'store'])->name('transactions.import.store');
         Route::patch('/transactions/{transaction}', [MoneyTransactionsController::class, 'update'])->name('transactions.update');
         Route::delete('/transactions/{transaction}', [MoneyTransactionsController::class, 'destroy'])->name('transactions.destroy');
+        Route::post('/categories', [CustomCategoryController::class, 'store'])->name('categories.store');
+        Route::delete('/categories/{customCategory}', [CustomCategoryController::class, 'destroy'])->name('categories.destroy');
         Route::get('/plan', MoneyPlanController::class)->name('plan');
         Route::post('/plan/what-if/afford', [WhatIfController::class, 'afford'])->name('what-if.afford');
         Route::post('/plan/what-if/extra-cash', [WhatIfController::class, 'extraCash'])->name('what-if.extra-cash');

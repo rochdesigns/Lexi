@@ -1,6 +1,10 @@
 <script setup lang="ts">
 import { Head, router, useForm } from '@inertiajs/vue3';
 import { computed, onMounted, ref } from 'vue';
+import {
+    destroy as destroyCategory,
+    store as storeCategory,
+} from '@/actions/App/Http/Controllers/Money/CustomCategoryController';
 import { store } from '@/actions/App/Http/Controllers/Money/TransactionsController';
 import InfoNote from '@/components/InfoNote.vue';
 import MoneyInput from '@/components/MoneyInput.vue';
@@ -54,6 +58,7 @@ const props = defineProps<{
         isSpendable: boolean;
     }[];
     cards: { id: number; name: string; guard: CardGuard | null }[];
+    customCategories: { id: number; name: string }[];
     lastPaidWith: { accountId: number | null; debtId: number | null } | null;
 }>();
 
@@ -82,10 +87,51 @@ const form = useForm({
     amount: (props.prefill ? toPesos(props.prefill.amount) : null) as
         number | null,
     category: '',
+    custom_category_id: null as number | null,
     paidWith: defaultPaidWith(),
     date: props.prefill?.date ?? props.today,
     note: props.prefill?.name ?? '',
 });
+
+function chooseCategory(value: string): void {
+    form.category = value;
+    form.custom_category_id = null;
+}
+
+function chooseCustomCategory(id: number): void {
+    form.category = 'other';
+    form.custom_category_id = id;
+}
+
+const addingCategory = ref(false);
+const categoryForm = useForm({ name: '' });
+
+function addCategory(): void {
+    categoryForm.post(storeCategory().url, {
+        preserveScroll: true,
+        onSuccess: () => {
+            const name = categoryForm.name.trim().toLowerCase();
+            const added = props.customCategories.find(
+                (item) => item.name.toLowerCase() === name,
+            );
+
+            if (added) {
+                chooseCustomCategory(added.id);
+            }
+
+            categoryForm.reset();
+            addingCategory.value = false;
+        },
+    });
+}
+
+function removeCategory(id: number): void {
+    if (form.custom_category_id === id) {
+        chooseCategory('');
+    }
+
+    router.delete(destroyCategory(id).url, { preserveScroll: true });
+}
 
 function chooseKind(next: 'expense' | 'income'): void {
     kind.value = next;
@@ -165,7 +211,7 @@ function submit(): void {
     }).post(store().url, {
         preserveScroll: true,
         onSuccess: () => {
-            form.reset('amount', 'note', 'category');
+            form.reset('amount', 'note', 'category', 'custom_category_id');
             incomeSourceId.value = '';
             payDate.value = null;
             focusAmount();
@@ -199,7 +245,11 @@ function goTo(month: string): void {
 
 type DayItem =
     | { type: 'transaction'; key: string; row: TransactionRow }
-    | { type: 'payment'; key: string; row: (typeof props.debtPayments)[number] };
+    | {
+          type: 'payment';
+          key: string;
+          row: (typeof props.debtPayments)[number];
+      };
 
 /** Debt payments sit among the day's entries for reference; they are not counted in the totals above. */
 const days = computed(() => {
@@ -443,23 +493,113 @@ const errorClass = 'mt-1 text-[12px] text-red-600';
                         :key="category.value"
                         type="button"
                         role="radio"
-                        :aria-checked="form.category === category.value"
+                        :aria-checked="
+                            form.category === category.value &&
+                            form.custom_category_id === null
+                        "
                         class="rounded-full px-3.5 py-1.5 text-[13px] font-semibold"
                         :style="
-                            form.category === category.value
+                            form.category === category.value &&
+                            form.custom_category_id === null
                                 ? 'background: var(--hab-accent); color: #fff; border: 1px solid var(--hab-accent)'
                                 : 'background: transparent; color: var(--hab-ink); border: 1px solid var(--hab-card-border)'
                         "
-                        @click="form.category = category.value"
+                        @click="chooseCategory(category.value)"
                     >
                         {{ category.label }}
                     </button>
+                    <span
+                        v-for="custom in customCategories"
+                        :key="`custom-${custom.id}`"
+                        class="inline-flex items-center rounded-full text-[13px] font-semibold"
+                        :style="
+                            form.custom_category_id === custom.id
+                                ? 'background: var(--hab-accent); color: #fff; border: 1px solid var(--hab-accent)'
+                                : 'background: transparent; color: var(--hab-ink); border: 1px solid var(--hab-card-border)'
+                        "
+                    >
+                        <button
+                            type="button"
+                            role="radio"
+                            :aria-checked="
+                                form.custom_category_id === custom.id
+                            "
+                            class="py-1.5 pr-1.5 pl-3.5"
+                            @click="chooseCustomCategory(custom.id)"
+                        >
+                            {{ custom.name }}
+                        </button>
+                        <button
+                            type="button"
+                            class="py-1.5 pr-3 pl-1 opacity-60 hover:opacity-100"
+                            :aria-label="`Remove ${custom.name}`"
+                            @click="removeCategory(custom.id)"
+                        >
+                            ×
+                        </button>
+                    </span>
+                    <button
+                        v-if="!addingCategory"
+                        type="button"
+                        class="rounded-full px-3.5 py-1.5 text-[13px] font-semibold"
+                        style="
+                            background: transparent;
+                            color: var(--hab-muted);
+                            border: 1px dashed var(--hab-card-border);
+                        "
+                        @click="addingCategory = true"
+                    >
+                        + New
+                    </button>
+                    <form
+                        v-else
+                        class="inline-flex items-center gap-2"
+                        @submit.prevent="addCategory"
+                    >
+                        <input
+                            v-model="categoryForm.name"
+                            type="text"
+                            maxlength="30"
+                            placeholder="Category name"
+                            aria-label="New category name"
+                            autofocus
+                            class="w-36 rounded-full px-3.5 py-1.5 text-[13px]"
+                            style="
+                                background: transparent;
+                                color: var(--hab-ink);
+                                border: 1px solid var(--hab-card-border);
+                            "
+                        />
+                        <button
+                            type="submit"
+                            class="text-[13px] font-semibold"
+                            style="color: var(--hab-accent)"
+                            :disabled="categoryForm.processing"
+                        >
+                            Add
+                        </button>
+                        <button
+                            type="button"
+                            class="text-[13px]"
+                            style="color: var(--hab-muted)"
+                            @click="
+                                addingCategory = false;
+                                categoryForm.reset();
+                                categoryForm.clearErrors();
+                            "
+                        >
+                            Cancel
+                        </button>
+                    </form>
                 </div>
                 <p
                     v-if="kind === 'expense' && form.errors.category"
                     :class="errorClass"
                 >
                     {{ form.errors.category }}
+                </p>
+                <p v-if="categoryForm.errors.name" :class="errorClass">
+                    {{ categoryForm.errors.name }}
                 </p>
 
                 <div class="mt-3 flex flex-col gap-3 sm:flex-row">
@@ -619,7 +759,8 @@ const errorClass = 'mt-1 text-[12px] text-red-600';
                                         item.row.note ||
                                         (item.row.kind === 'income'
                                             ? 'Income'
-                                            : categoryLabel(item.row.category))
+                                            : (item.row.categoryName ??
+                                              categoryLabel(item.row.category)))
                                     }}
                                 </span>
                                 <span
@@ -629,7 +770,8 @@ const errorClass = 'mt-1 text-[12px] text-red-600';
                                     {{
                                         item.row.kind === 'income'
                                             ? 'Income'
-                                            : categoryLabel(item.row.category)
+                                            : (item.row.categoryName ??
+                                              categoryLabel(item.row.category))
                                     }}
                                     ·
                                     {{ item.row.paidWith
@@ -661,6 +803,7 @@ const errorClass = 'mt-1 text-[12px] text-red-600';
             :transaction="editing"
             :accounts="accounts"
             :cards="cards"
+            :custom-categories="customCategories"
         />
     </div>
 </template>

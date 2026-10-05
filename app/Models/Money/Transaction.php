@@ -28,6 +28,7 @@ class Transaction extends Model
         'date',
         'amount',
         'category',
+        'custom_category_id',
         'note',
         'source',
         'debt_id',
@@ -53,6 +54,14 @@ class Transaction extends Model
     public function user(): BelongsTo
     {
         return $this->belongsTo(User::class);
+    }
+
+    /**
+     * @return BelongsTo<CustomCategory, $this>
+     */
+    public function customCategory(): BelongsTo
+    {
+        return $this->belongsTo(CustomCategory::class);
     }
 
     /**

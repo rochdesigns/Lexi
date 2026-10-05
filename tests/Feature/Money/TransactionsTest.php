@@ -181,3 +181,69 @@ test('another user\'s debt payments never show', function (): void {
     $this->actingAs($this->user)->get('/money/transactions')
         ->assertInertia(fn ($page) => $page->has('debtPayments', 0));
 });
+
+test('a user can add their own category and use it on an expense', function (): void {
+    $this->actingAs($this->user)->post('/money/categories', ['name' => '  Pets '])->assertRedirect();
+
+    $custom = $this->user->customCategories()->sole();
+    expect($custom->name)->toBe('Pets');
+
+    $this->actingAs($this->user)->post('/money/transactions', entry([
+        'account_id' => $this->account->id,
+        'category' => 'food',
+        'custom_category_id' => $custom->id,
+    ]))->assertRedirect();
+
+    $transaction = $this->user->transactions()->sole();
+    expect($transaction->category->value)->toBe('other')
+        ->and($transaction->custom_category_id)->toBe($custom->id);
+
+    $this->actingAs($this->user)->get('/money/transactions')
+        ->assertInertia(fn ($page) => $page
+            ->where('customCategories.0.name', 'Pets')
+            ->where('transactions.0.categoryName', 'Pets')
+            ->where('categoryTotals.0.category', 'Pets'));
+});
+
+test('a custom category name cannot repeat a built-in or an existing one', function (string $name): void {
+    $this->user->customCategories()->create(['name' => 'Pets']);
+
+    $this->actingAs($this->user)->post('/money/categories', ['name' => $name])->assertSessionHasErrors('name');
+
+    expect($this->user->customCategories()->count())->toBe(1);
+})->with(['Food', 'groceries', 'pets', '   ', 'a name that is far too long to be a category']);
+
+test('removing a custom category puts its entries back to other', function (): void {
+    $custom = $this->user->customCategories()->create(['name' => 'Pets']);
+    $transaction = Transaction::factory()->for($this->user)->create(['account_id' => $this->account->id, 'custom_category_id' => $custom->id, 'category' => 'other']);
+
+    $this->actingAs($this->user)->delete("/money/categories/{$custom->id}")->assertRedirect();
+
+    expect($this->user->customCategories()->count())->toBe(0)
+        ->and($transaction->fresh()->custom_category_id)->toBeNull()
+        ->and($transaction->fresh()->category->value)->toBe('other');
+});
+
+test('categories belong to their owner', function (): void {
+    $theirs = User::factory()->create()->customCategories()->create(['name' => 'Secret']);
+
+    $this->actingAs($this->user)->post('/money/transactions', entry([
+        'account_id' => $this->account->id,
+        'custom_category_id' => $theirs->id,
+    ]))->assertSessionHasErrors('custom_category_id');
+
+    $this->actingAs($this->user)->delete("/money/categories/{$theirs->id}")->assertForbidden();
+});
+
+test('a custom category can be picked when editing an expense', function (): void {
+    $custom = $this->user->customCategories()->create(['name' => 'Pets']);
+    $transaction = Transaction::factory()->for($this->user)->create(['account_id' => $this->account->id]);
+
+    $this->actingAs($this->user)->patch("/money/transactions/{$transaction->id}", entry([
+        'account_id' => $this->account->id,
+        'category' => 'other',
+        'custom_category_id' => $custom->id,
+    ]))->assertRedirect();
+
+    expect($transaction->fresh()->custom_category_id)->toBe($custom->id);
+});

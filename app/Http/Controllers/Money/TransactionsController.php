@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Money;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Money\TransactionRequest;
 use App\Models\Money\Account;
+use App\Models\Money\CustomCategory;
 use App\Models\Money\Debt;
 use App\Models\Money\DebtPayment;
 use App\Models\Money\DebtType;
@@ -34,7 +35,7 @@ class TransactionsController extends Controller
 
         $transactions = $user->transactions()
             ->counted()
-            ->with(['account', 'debt', 'statementRow'])
+            ->with(['account', 'debt', 'statementRow', 'customCategory'])
             ->where('date', '>=', $first->toDateString())
             ->where('date', '<', $first->copy()->addMonth()->toDateString())
             ->orderByDesc('date')
@@ -61,6 +62,8 @@ class TransactionsController extends Controller
                 'date' => $transaction->date->toDateString(),
                 'amount' => $transaction->amount,
                 'category' => $transaction->category->value,
+                'customCategoryId' => $transaction->custom_category_id,
+                'categoryName' => $transaction->customCategory?->name,
                 'note' => $transaction->note,
                 'kind' => $transaction->kind->value,
                 'source' => $transaction->source->value,
@@ -80,7 +83,7 @@ class TransactionsController extends Controller
             ])->values(),
             'categoryTotals' => $transactions
                 ->where('kind', TransactionKind::Expense)
-                ->groupBy(fn (Transaction $transaction): string => $transaction->category->value)
+                ->groupBy(fn (Transaction $transaction): string => $transaction->customCategory?->name ?? $transaction->category->value)
                 ->map(fn ($group, string $category): array => ['category' => $category, 'total' => $group->sum('amount')])
                 ->sortByDesc('total')
                 ->values(),
@@ -90,6 +93,10 @@ class TransactionsController extends Controller
                 'id' => $source->id,
                 'name' => $source->name,
                 'amount' => $source->amount,
+            ])->values(),
+            'customCategories' => $user->customCategories->map(fn (CustomCategory $category): array => [
+                'id' => $category->id,
+                'name' => $category->name,
             ])->values(),
             'prefill' => $this->prefill($request),
             'accounts' => $accounts->map(fn (Account $account): array => [

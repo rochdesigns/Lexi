@@ -21,6 +21,8 @@ export type TransactionRow = {
     amount: number;
     kind: 'expense' | 'income';
     category: string;
+    customCategoryId: number | null;
+    categoryName: string | null;
     note: string | null;
     source: string;
     onStatement: boolean;
@@ -36,6 +38,7 @@ const props = defineProps<{
     transaction: TransactionRow | null;
     accounts: { id: number; name: string }[];
     cards: { id: number; name: string }[];
+    customCategories: { id: number; name: string }[];
 }>();
 const emit = defineEmits<{ 'update:open': [boolean] }>();
 
@@ -43,6 +46,7 @@ const form = useForm({
     date: '',
     amount: null as number | null,
     category: '',
+    categoryChoice: '',
     note: '',
     paidWith: '',
 });
@@ -61,6 +65,9 @@ watch(
             date: transaction.date,
             amount: toPesos(transaction.amount),
             category: transaction.category,
+            categoryChoice: transaction.customCategoryId
+                ? `custom:${transaction.customCategoryId}`
+                : transaction.category,
             note: transaction.note ?? '',
             paidWith: transaction.accountId
                 ? `account:${transaction.accountId}`
@@ -76,7 +83,7 @@ function submit(): void {
 
     const transaction = props.transaction;
 
-    form.transform(({ paidWith, category, ...data }) => {
+    form.transform(({ paidWith, categoryChoice, ...data }) => {
         const account = paidWith.startsWith('account:')
             ? Number(paidWith.slice(8))
             : null;
@@ -95,7 +102,12 @@ function submit(): void {
 
         return {
             ...data,
-            category,
+            category: categoryChoice.startsWith('custom:')
+                ? 'other'
+                : categoryChoice,
+            custom_category_id: categoryChoice.startsWith('custom:')
+                ? Number(categoryChoice.slice(7))
+                : null,
             note: data.note || null,
             account_id: account,
             debt_id: paidWith.startsWith('card:')
@@ -174,13 +186,23 @@ const errorClass = 'mt-1 text-[12px] text-red-600';
                 <div class="grid grid-cols-2 gap-3">
                     <div v-if="transaction?.kind !== 'income'">
                         <label :class="labelClass">Category</label>
-                        <select v-model="form.category" :class="fieldClass">
+                        <select
+                            v-model="form.categoryChoice"
+                            :class="fieldClass"
+                        >
                             <option
                                 v-for="category in transactionCategories"
                                 :key="category.value"
                                 :value="category.value"
                             >
                                 {{ category.label }}
+                            </option>
+                            <option
+                                v-for="custom in customCategories"
+                                :key="`custom-${custom.id}`"
+                                :value="`custom:${custom.id}`"
+                            >
+                                {{ custom.name }}
                             </option>
                         </select>
                         <p v-if="form.errors.category" :class="errorClass">
