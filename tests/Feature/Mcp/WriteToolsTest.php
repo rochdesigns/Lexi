@@ -85,6 +85,65 @@ test('recording income adds to the account and can settle an income source', fun
     $this->assertDatabaseHas('transactions', ['user_id' => $user->id, 'kind' => 'income', 'category' => 'income', 'income_source_id' => $source->id]);
 });
 
+test('recording a transfer moves money between two accounts', function (): void {
+    $user = signedIn();
+    $from = Account::factory()->for($user)->create(['balance' => 100_000]);
+    $to = Account::factory()->for($user)->create(['balance' => 5_000]);
+
+    $this->postJson('/mcp/money', rpc('tools/call', [
+        'name' => 'record_transaction',
+        'arguments' => ['kind' => 'transfer', 'amountCentavos' => 40_000, 'accountId' => $from->id, 'toAccountId' => $to->id, 'note' => 'Top up'],
+    ]))->assertOk()
+        ->assertJsonPath('result.structuredContent.accountBalanceAfter', 60_000)
+        ->assertJsonPath('result.structuredContent.toAccountBalanceAfter', 45_000)
+        ->assertJsonPath('result.structuredContent.transaction.toAccountId', $to->id);
+
+    expect($from->fresh()->balance)->toBe(60_000)->and($to->fresh()->balance)->toBe(45_000);
+    $this->assertDatabaseHas('transactions', ['user_id' => $user->id, 'kind' => 'transfer', 'category' => 'transfer', 'account_id' => $from->id, 'to_account_id' => $to->id, 'amount' => 40_000]);
+});
+
+test('a bad transfer is rejected and nothing moves', function (array $arguments): void {
+    $user = signedIn();
+    $from = Account::factory()->for($user)->create(['balance' => 10_000]);
+    $to = Account::factory()->for($user)->create(['balance' => 10_000]);
+    $card = Debt::factory()->for($user)->create(['type' => DebtType::CreditCard]);
+    $arguments = array_map(fn ($value) => match ($value) {
+        'FROM' => $from->id,
+        'TO' => $to->id,
+        'CARD' => $card->id,
+        default => $value,
+    }, ['kind' => 'transfer', 'amountCentavos' => 100, ...$arguments]);
+
+    $this->postJson('/mcp/money', rpc('tools/call', ['name' => 'record_transaction', 'arguments' => $arguments]))
+        ->assertOk()->assertJsonMissingPath('result.structuredContent');
+
+    expect($user->transactions()->count())->toBe(0)
+        ->and($from->fresh()->balance)->toBe(10_000)
+        ->and($to->fresh()->balance)->toBe(10_000);
+})->with([
+    'the same account on both sides' => [['accountId' => 'FROM', 'toAccountId' => 'FROM']],
+    'no destination' => [['accountId' => 'FROM']],
+    'no source' => [['toAccountId' => 'TO']],
+    'a category' => [['accountId' => 'FROM', 'toAccountId' => 'TO', 'category' => 'food']],
+    'a card' => [['accountId' => 'FROM', 'toAccountId' => 'TO', 'debtId' => 'CARD']],
+]);
+
+test('an expense or income cannot carry a destination account', function (): void {
+    $user = signedIn();
+    $from = Account::factory()->for($user)->create(['balance' => 10_000]);
+    $to = Account::factory()->for($user)->create(['balance' => 10_000]);
+
+    foreach ([
+        ['amountCentavos' => 100, 'category' => 'food', 'accountId' => $from->id, 'toAccountId' => $to->id],
+        ['kind' => 'income', 'amountCentavos' => 100, 'accountId' => $from->id, 'toAccountId' => $to->id],
+    ] as $arguments) {
+        $this->postJson('/mcp/money', rpc('tools/call', ['name' => 'record_transaction', 'arguments' => $arguments]))
+            ->assertOk()->assertJsonMissingPath('result.structuredContent');
+    }
+
+    expect($user->transactions()->count())->toBe(0)->and($to->fresh()->balance)->toBe(10_000);
+});
+
 test('an expense can be charged to a card, which leaves account balances alone', function (): void {
     $user = signedIn();
     $account = Account::factory()->for($user)->create(['balance' => 10_000]);
@@ -120,7 +179,8 @@ test('bad input is rejected and nothing is written', function (array $arguments)
 ]);
 
 test('another user\'s account, card, income source and debt cannot be used', function (): void {
-    signedIn();
+    $user = signedIn();
+    $mine = Account::factory()->for($user)->create(['balance' => 10_000]);
     $other = User::factory()->create();
     $account = Account::factory()->for($other)->create(['balance' => 10_000]);
     $card = Debt::factory()->for($other)->create(['type' => DebtType::CreditCard]);
@@ -131,6 +191,8 @@ test('another user\'s account, card, income source and debt cannot be used', fun
         ['record_transaction', ['amountCentavos' => 100, 'category' => 'food', 'accountId' => $account->id]],
         ['record_transaction', ['amountCentavos' => 100, 'category' => 'food', 'debtId' => $card->id]],
         ['record_transaction', ['kind' => 'income', 'amountCentavos' => 100, 'accountId' => $account->id]],
+        ['record_transaction', ['kind' => 'transfer', 'amountCentavos' => 100, 'accountId' => $account->id, 'toAccountId' => $mine->id]],
+        ['record_transaction', ['kind' => 'transfer', 'amountCentavos' => 100, 'accountId' => $mine->id, 'toAccountId' => $account->id]],
         ['record_debt_payment', ['amountCentavos' => 100, 'debtId' => $loan->id]],
     ] as [$name, $arguments]) {
         $this->postJson('/mcp/money', rpc('tools/call', ['name' => $name, 'arguments' => $arguments]))
