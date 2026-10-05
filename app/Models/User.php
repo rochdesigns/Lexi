@@ -4,6 +4,7 @@ namespace App\Models;
 
 use App\Models\Money\Account;
 use App\Models\Money\Bill;
+use App\Models\Money\CustomCategory;
 use App\Models\Money\Debt;
 use App\Models\Money\Goal;
 use App\Models\Money\IncomeSource;
@@ -127,6 +128,14 @@ class User extends Authenticatable implements MustVerifyEmail, OAuthenticatable,
     public function debts(): HasMany
     {
         return $this->hasMany(Debt::class);
+    }
+
+    /**
+     * @return HasMany<CustomCategory, $this>
+     */
+    public function customCategories(): HasMany
+    {
+        return $this->hasMany(CustomCategory::class)->orderBy('name');
     }
 
     /**
