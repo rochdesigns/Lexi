@@ -1,5 +1,6 @@
 <?php
 
+use App\Models\Money\Account;
 use App\Models\Money\Debt;
 use App\Models\Money\DebtPayment;
 use App\Models\Money\DebtType;
@@ -79,4 +80,42 @@ test('other people cannot record or delete payments on my debt', function (): vo
     $this->actingAs($stranger)->delete("/money/payments/{$payment->id}")->assertForbidden();
 
     expect(DebtPayment::count())->toBe(1);
+});
+
+test('a payment that names an account takes the amount out of it', function (): void {
+    $account = Account::factory()->for($this->user)->create(['balance' => 500_000]);
+
+    $this->actingAs($this->user)
+        ->post("/money/debts/{$this->debt->id}/payments", paymentPayload(['account_id' => $account->id]))
+        ->assertRedirect();
+
+    expect(DebtPayment::firstOrFail()->account_id)->toBe($account->id)
+        ->and($account->fresh()->balance)->toBe(500_000 - 150_025);
+});
+
+test('a payment without an account leaves every account alone', function (): void {
+    $account = Account::factory()->for($this->user)->create(['balance' => 500_000]);
+
+    $this->actingAs($this->user)->post("/money/debts/{$this->debt->id}/payments", paymentPayload());
+
+    expect($account->fresh()->balance)->toBe(500_000);
+});
+
+test('a payment cannot be paid from another person\'s account', function (): void {
+    $account = Account::factory()->create(['balance' => 500_000]);
+
+    $this->actingAs($this->user)
+        ->post("/money/debts/{$this->debt->id}/payments", paymentPayload(['account_id' => $account->id]))
+        ->assertSessionHasErrors('account_id');
+
+    expect(DebtPayment::count())->toBe(0)->and($account->fresh()->balance)->toBe(500_000);
+});
+
+test('deleting a payment puts the amount back in the account it came from', function (): void {
+    $account = Account::factory()->for($this->user)->create(['balance' => 300_000]);
+    $payment = $this->debt->payments()->create(['account_id' => $account->id, 'date' => '2026-10-05', 'amount' => 200_000, 'is_extra' => false]);
+
+    $this->actingAs($this->user)->delete("/money/payments/{$payment->id}")->assertRedirect();
+
+    expect(DebtPayment::count())->toBe(0)->and($account->fresh()->balance)->toBe(500_000);
 });

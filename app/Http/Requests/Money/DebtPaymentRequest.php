@@ -19,6 +19,7 @@ class DebtPaymentRequest extends FormRequest
 
         return [
             'payment_plan_id' => ['nullable', Rule::exists('payment_plans', 'id')->where('debt_id', $debt->id)],
+            'account_id' => ['nullable', Rule::exists('accounts', 'id')->where('user_id', $this->user()->id)],
             'date' => ['required', 'date'],
             'amount' => ['required', 'numeric', 'gt:0', 'max:1000000000'],
             'is_extra' => ['required', 'boolean'],

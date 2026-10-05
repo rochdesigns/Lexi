@@ -60,10 +60,12 @@ class DebtController extends Controller
                 'date' => $payment->date->toDateString(),
                 'amount' => $payment->amount,
                 'isExtra' => $payment->is_extra,
+                'accountId' => $payment->account_id,
             ])
             ->values();
 
         return Inertia::render('Money/Debt', [
+            'accounts' => $request->user()->accounts()->orderBy('name')->get()->map(fn ($account): array => ['id' => $account->id, 'name' => $account->name, 'balance' => $account->balance])->values(),
             'debt' => $this->present($debt, $today),
             'plans' => $plans,
             'payments' => $payments,

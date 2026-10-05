@@ -43,6 +43,7 @@ type Plan = PaymentPlanItem & {
 type Payment = {
     id: number;
     paymentPlanId: number | null;
+    accountId: number | null;
     date: string;
     amount: number;
     isExtra: boolean;
@@ -64,6 +65,7 @@ const props = defineProps<{
             | null;
     };
     plans: Plan[];
+    accounts: { id: number; name: string; balance: number }[];
     payments: Payment[];
     rollOff: { month: string; total: number }[];
     clearingDefault: number | null;
@@ -470,6 +472,7 @@ const stats = computed(() => {
             v-model:open="paymentDialog"
             :debt-id="debt.id"
             :plans="plans"
+            :accounts="accounts"
         />
 
         <Dialog :open="deletingDebt" @update:open="deletingDebt = $event">

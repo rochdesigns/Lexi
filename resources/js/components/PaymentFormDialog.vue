@@ -15,6 +15,7 @@ const props = defineProps<{
     open: boolean;
     debtId: number;
     plans: { id: number; description: string }[];
+    accounts: { id: number; name: string; balance: number }[];
 }>();
 const emit = defineEmits<{ 'update:open': [boolean] }>();
 
@@ -26,6 +27,7 @@ function today(): string {
 
 const form = useForm({
     payment_plan_id: '' as number | string,
+    account_id: '' as number | string,
     date: today(),
     amount: null as number | null,
     is_extra: false,
@@ -46,6 +48,7 @@ function submit(): void {
     form.transform((data) => ({
         ...data,
         payment_plan_id: data.payment_plan_id || null,
+        account_id: data.account_id || null,
     })).post(store(props.debtId).url, {
         preserveScroll: true,
         onSuccess: () => emit('update:open', false),
@@ -106,6 +109,23 @@ const errorClass = 'mt-1 text-[12px] text-red-600';
                     </select>
                     <p v-if="form.errors.payment_plan_id" :class="errorClass">
                         {{ form.errors.payment_plan_id }}
+                    </p>
+                </div>
+
+                <div v-if="accounts.length > 0">
+                    <label :class="labelClass">Paid from</label>
+                    <select v-model="form.account_id" :class="fieldClass">
+                        <option value="">Don't change an account</option>
+                        <option
+                            v-for="account in accounts"
+                            :key="account.id"
+                            :value="account.id"
+                        >
+                            {{ account.name }}
+                        </option>
+                    </select>
+                    <p v-if="form.errors.account_id" :class="errorClass">
+                        {{ form.errors.account_id }}
                     </p>
                 </div>
 
