@@ -60,6 +60,7 @@ class OverviewController extends Controller
                 'dueDay' => $bill->due_day,
                 'dueMonth' => $bill->due_month,
                 'autopay' => $bill->autopay,
+                'accountId' => $bill->account_id,
             ])->values(),
         ]);
     }

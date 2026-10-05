@@ -34,6 +34,7 @@ class RecordTransaction extends WriteTool
             'accountId' => $schema->integer()->description('The account the money comes out of (expense or transfer) or goes into (income).'),
             'toAccountId' => $schema->integer()->description('Transfer only: the account the money goes into. Must differ from accountId.'),
             'debtId' => $schema->integer()->description('The credit card an expense was charged to. Expenses only.'),
+            'billId' => $schema->integer()->description('Expenses only: the bill this pays, from list_bills. Marks that month\'s bill paid, and uses the bill\'s account when accountId and debtId are left out.'),
             'incomeSourceId' => $schema->integer()->description('Income only: the income source this pay settles.'),
             'payDate' => $schema->string()->format('date')->description('Income only: the pay day this settles, YYYY-MM-DD.'),
         ];
@@ -59,6 +60,7 @@ class RecordTransaction extends WriteTool
             'accountId' => ['required', 'integer', $ownedAccount],
             'toAccountId' => ['required', 'integer', 'different:accountId', $ownedAccount],
             'debtId' => ['prohibited'],
+            'billId' => ['prohibited'],
             'incomeSourceId' => ['prohibited'],
             'payDate' => ['prohibited'],
         ] : ($income ? [
@@ -70,6 +72,7 @@ class RecordTransaction extends WriteTool
             'accountId' => ['required', 'integer', $ownedAccount],
             'toAccountId' => ['prohibited'],
             'debtId' => ['prohibited'],
+            'billId' => ['prohibited'],
             'incomeSourceId' => ['nullable', 'integer', Rule::exists('income_sources', 'id')->where('user_id', $user->id)],
             'payDate' => ['nullable', 'date_format:Y-m-d'],
         ] : [
@@ -78,12 +81,20 @@ class RecordTransaction extends WriteTool
             'date' => ['nullable', 'date_format:Y-m-d'],
             'category' => ['required', Rule::in($ledger->expenseCategories())],
             'note' => ['nullable', 'string', 'max:200'],
-            'accountId' => ['nullable', 'integer', 'required_without:debtId', 'prohibits:debtId', $ownedAccount],
-            'debtId' => ['nullable', 'integer', 'required_without:accountId', 'prohibits:accountId', Rule::exists('debts', 'id')->where('user_id', $user->id)->where('type', 'credit_card')],
+            'accountId' => ['nullable', 'integer', 'required_without_all:debtId,billId', 'prohibits:debtId', $ownedAccount],
+            'debtId' => ['nullable', 'integer', 'required_without_all:accountId,billId', 'prohibits:accountId', Rule::exists('debts', 'id')->where('user_id', $user->id)->where('type', 'credit_card')],
+            'billId' => ['nullable', 'integer', Rule::exists('bills', 'id')->where('user_id', $user->id)],
             'toAccountId' => ['prohibited'],
             'incomeSourceId' => ['prohibited'],
             'payDate' => ['prohibited'],
         ]));
+
+        $bill = ! $income && ! $transfer && isset($data['billId']) ? $user->bills()->whereKey($data['billId'])->first() : null;
+        $accountId = $data['accountId'] ?? (isset($data['debtId']) ? null : $bill?->account_id);
+
+        if (! $income && ! $transfer && $accountId === null && ! isset($data['debtId'])) {
+            return Response::error('That bill has no account set. Pass accountId or debtId.');
+        }
 
         $transaction = $ledger->recordTransaction($user, [
             'kind' => $transfer ? 'transfer' : ($income ? 'income' : 'expense'),
@@ -91,9 +102,10 @@ class RecordTransaction extends WriteTool
             'amount' => $data['amountCentavos'],
             'category' => $transfer ? 'transfer' : ($income ? 'income' : $data['category']),
             'note' => $data['note'] ?? null,
-            'account_id' => $data['accountId'] ?? null,
+            'account_id' => $accountId,
             'to_account_id' => $data['toAccountId'] ?? null,
             'debt_id' => $data['debtId'] ?? null,
+            'bill_id' => $bill?->id,
             'income_source_id' => $data['incomeSourceId'] ?? null,
             'pay_date' => $data['payDate'] ?? null,
         ]);
@@ -112,6 +124,7 @@ class RecordTransaction extends WriteTool
                 'accountId' => $transaction->account_id,
                 'toAccountId' => $transaction->to_account_id,
                 'debtId' => $transaction->debt_id,
+                'billId' => $transaction->bill_id,
             ],
             'accountBalanceAfter' => $account?->balance,
             'toAccountBalanceAfter' => $toAccount?->balance,

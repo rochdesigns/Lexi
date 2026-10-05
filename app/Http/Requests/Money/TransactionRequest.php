@@ -37,6 +37,7 @@ class TransactionRequest extends FormRequest
                 'account_id' => ['required', $account],
                 'to_account_id' => ['required', 'different:account_id', $account],
                 'debt_id' => ['prohibited'],
+                'bill_id' => ['prohibited'],
                 'income_source_id' => ['prohibited'],
                 'pay_date' => ['prohibited'],
             ];
@@ -53,6 +54,7 @@ class TransactionRequest extends FormRequest
                 'account_id' => ['required', $account],
                 'to_account_id' => ['prohibited'],
                 'debt_id' => ['prohibited'],
+                'bill_id' => ['prohibited'],
                 'income_source_id' => ['nullable', Rule::exists('income_sources', 'id')->where('user_id', $userId)],
                 'pay_date' => ['nullable', 'date'],
             ];
@@ -67,6 +69,7 @@ class TransactionRequest extends FormRequest
             'note' => ['nullable', 'string', 'max:200'],
             'account_id' => ['nullable', 'required_without:debt_id', 'prohibits:debt_id', $account],
             'debt_id' => ['nullable', 'required_without:account_id', 'prohibits:account_id', Rule::exists('debts', 'id')->where('user_id', $userId)->where('type', DebtType::CreditCard->value)],
+            'bill_id' => ['nullable', 'integer', Rule::exists('bills', 'id')->where('user_id', $userId)],
             'to_account_id' => ['prohibited'],
             'income_source_id' => ['prohibited'],
             'pay_date' => ['prohibited'],
@@ -108,6 +111,7 @@ class TransactionRequest extends FormRequest
             'account_id' => $data['account_id'] ?? null,
             'to_account_id' => $data['to_account_id'] ?? null,
             'debt_id' => $data['debt_id'] ?? null,
+            ...(array_key_exists('bill_id', $data) ? ['bill_id' => $data['bill_id']] : []),
             'income_source_id' => $data['income_source_id'] ?? null,
             'pay_date' => $data['pay_date'] ?? null,
         ];

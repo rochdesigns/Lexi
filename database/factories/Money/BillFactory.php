@@ -19,6 +19,7 @@ class BillFactory extends Factory
     {
         return [
             'user_id' => User::factory(),
+            'account_id' => null,
             'name' => fake()->words(2, true),
             'amount' => 150_000,
             'frequency' => BillFrequency::Monthly,

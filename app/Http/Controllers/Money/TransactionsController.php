@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Money;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Money\TransactionRequest;
 use App\Models\Money\Account;
+use App\Models\Money\Bill;
 use App\Models\Money\CustomCategory;
 use App\Models\Money\Debt;
 use App\Models\Money\DebtPayment;
@@ -35,7 +36,7 @@ class TransactionsController extends Controller
 
         $transactions = $user->transactions()
             ->counted()
-            ->with(['account', 'toAccount', 'debt', 'statementRow', 'customCategory'])
+            ->with(['account', 'toAccount', 'debt', 'bill', 'statementRow', 'customCategory'])
             ->where('date', '>=', $first->toDateString())
             ->where('date', '<', $first->copy()->addMonth()->toDateString())
             ->orderByDesc('date')
@@ -74,6 +75,8 @@ class TransactionsController extends Controller
                 'toAccountId' => $transaction->to_account_id,
                 'toAccountName' => $transaction->toAccount?->name,
                 'debtId' => $transaction->debt_id,
+                'billId' => $transaction->bill_id,
+                'billName' => $transaction->bill?->name,
                 'paidWith' => data_get($transaction, 'account.name') ?? data_get($transaction, 'debt.name'),
             ])->values(),
             'debtPayments' => $debtPayments->map(fn (DebtPayment $payment): array => [
@@ -106,6 +109,12 @@ class TransactionsController extends Controller
                 'name' => $account->name,
                 'balance' => $account->balance,
                 'isSpendable' => $account->is_spendable,
+            ])->values(),
+            'bills' => $user->bills()->orderBy('name')->get()->map(fn (Bill $bill): array => [
+                'id' => $bill->id,
+                'name' => $bill->name,
+                'amount' => $bill->amount,
+                'accountId' => $bill->account_id,
             ])->values(),
             'cards' => $user->debts()->where('type', DebtType::CreditCard)->with('cardDetail')->orderBy('name')->get()->map(fn (Debt $card): array => [
                 'id' => $card->id,

@@ -698,6 +698,7 @@ class Projection
         }
 
         foreach ($bills as $bill) {
+            $bill->loadMissing('payments');
             $dates = [$this->nextBillDate($bill, $start)];
 
             if ($bill->frequency === BillFrequency::Monthly) {
@@ -706,7 +707,7 @@ class Projection
 
             foreach ($dates as $date) {
                 if ($date->greaterThanOrEqualTo($start) && $date->lessThanOrEqualTo($end)) {
-                    $items[] = ['kind' => 'bill', 'name' => $bill->name, 'amount' => $bill->amount, 'date' => $date->toDateString(), 'autopay' => $bill->autopay, 'sourceId' => null, 'received' => false];
+                    $items[] = ['kind' => 'bill', 'name' => $bill->name, 'amount' => $bill->amount, 'date' => $date->toDateString(), 'autopay' => $bill->autopay, 'sourceId' => null, 'received' => $bill->isPaidInMonthOf($date)];
                 }
             }
         }
