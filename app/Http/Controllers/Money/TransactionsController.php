@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Http\Requests\Money\TransactionRequest;
 use App\Models\Money\Account;
 use App\Models\Money\Debt;
+use App\Models\Money\DebtPayment;
 use App\Models\Money\DebtType;
 use App\Models\Money\Transaction;
 use App\Models\Money\TransactionKind;
@@ -39,6 +40,15 @@ class TransactionsController extends Controller
             ->orderByDesc('date')
             ->orderByDesc('id')
             ->get();
+        $debtPayments = DebtPayment::query()
+            ->whereIn('debt_id', $user->debts()->select('id'))
+            ->whereNotNull('account_id')
+            ->with(['account', 'debt'])
+            ->where('date', '>=', $first->toDateString())
+            ->where('date', '<', $first->copy()->addMonth()->toDateString())
+            ->orderByDesc('date')
+            ->orderByDesc('id')
+            ->get();
         $latest = $user->transactions()->counted()->where('source', TransactionSource::Manual)->where('kind', TransactionKind::Expense)->latest('id')->first();
         $accounts = $user->accounts()->orderBy('name')->get();
 
@@ -60,6 +70,13 @@ class TransactionsController extends Controller
                 'accountId' => $transaction->account_id,
                 'debtId' => $transaction->debt_id,
                 'paidWith' => data_get($transaction, 'account.name') ?? data_get($transaction, 'debt.name'),
+            ])->values(),
+            'debtPayments' => $debtPayments->map(fn (DebtPayment $payment): array => [
+                'id' => $payment->id,
+                'date' => $payment->date->toDateString(),
+                'amount' => $payment->amount,
+                'debtName' => $payment->debt->name,
+                'paidWith' => $payment->account?->name,
             ])->values(),
             'categoryTotals' => $transactions
                 ->where('kind', TransactionKind::Expense)

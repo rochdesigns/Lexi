@@ -159,3 +159,25 @@ test('the form offers my accounts and cards and remembers the last one used', fu
 
     $this->actingAs($this->user)->get('/money/transactions')->assertInertia(fn ($page) => $page->where('lastPaidWith', ['accountId' => null, 'debtId' => $this->card->id]));
 });
+
+test('debt payments paid from an account are listed for the month without touching the totals', function (): void {
+    $this->card->payments()->create(['account_id' => $this->account->id, 'date' => '2026-10-10', 'amount' => 500_000, 'is_extra' => false]);
+    $this->card->payments()->create(['account_id' => null, 'date' => '2026-10-11', 'amount' => 100_000, 'is_extra' => false]);
+    $this->card->payments()->create(['account_id' => $this->account->id, 'date' => '2026-09-30', 'amount' => 300_000, 'is_extra' => false]);
+
+    $this->actingAs($this->user)->get('/money/transactions?month=2026-10')
+        ->assertInertia(fn ($page) => $page
+            ->has('debtPayments', 1)
+            ->where('debtPayments.0.amount', 500_000)
+            ->where('debtPayments.0.debtName', 'Platinum')
+            ->where('debtPayments.0.paidWith', 'GCash')
+            ->where('total', 0));
+});
+
+test('another user\'s debt payments never show', function (): void {
+    $other = Debt::factory()->for(User::factory()->create())->create();
+    $other->payments()->create(['account_id' => $this->account->id, 'date' => '2026-10-10', 'amount' => 1_000, 'is_extra' => false]);
+
+    $this->actingAs($this->user)->get('/money/transactions')
+        ->assertInertia(fn ($page) => $page->has('debtPayments', 0));
+});

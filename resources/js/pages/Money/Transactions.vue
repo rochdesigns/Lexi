@@ -30,6 +30,13 @@ const props = defineProps<{
     currentMonth: string;
     today: string;
     transactions: TransactionRow[];
+    debtPayments: {
+        id: number;
+        date: string;
+        amount: number;
+        debtName: string;
+        paidWith: string | null;
+    }[];
     categoryTotals: { category: string; total: number }[];
     total: number;
     received: number;
@@ -190,17 +197,28 @@ function goTo(month: string): void {
     );
 }
 
-const days = computed(() => {
-    const groups = new Map<string, TransactionRow[]>();
+type DayItem =
+    | { type: 'transaction'; key: string; row: TransactionRow }
+    | { type: 'payment'; key: string; row: (typeof props.debtPayments)[number] };
 
-    for (const transaction of props.transactions) {
-        groups.set(transaction.date, [
-            ...(groups.get(transaction.date) ?? []),
-            transaction,
-        ]);
+/** Debt payments sit among the day's entries for reference; they are not counted in the totals above. */
+const days = computed(() => {
+    const groups = new Map<string, DayItem[]>();
+    const add = (date: string, item: DayItem): void => {
+        groups.set(date, [...(groups.get(date) ?? []), item]);
+    };
+
+    for (const row of props.transactions) {
+        add(row.date, { type: 'transaction', key: `t${row.id}`, row });
     }
 
-    return [...groups.entries()].map(([date, items]) => ({ date, items }));
+    for (const row of props.debtPayments) {
+        add(row.date, { type: 'payment', key: `p${row.id}`, row });
+    }
+
+    return [...groups.entries()]
+        .sort(([a], [b]) => b.localeCompare(a))
+        .map(([date, items]) => ({ date, items }));
 });
 
 const importOpen = ref(false);
@@ -532,7 +550,7 @@ const errorClass = 'mt-1 text-[12px] text-red-600';
         </div>
 
         <p
-            v-if="transactions.length === 0"
+            v-if="transactions.length === 0 && debtPayments.length === 0"
             class="rounded-[22px] p-8 text-center text-[14px]"
             :style="cardStyle + 'color: var(--hab-muted)'"
         >
@@ -555,17 +573,42 @@ const errorClass = 'mt-1 text-[12px] text-red-600';
                 <ul>
                     <li
                         v-for="(item, index) in day.items"
-                        :key="item.id"
+                        :key="item.key"
                         :style="
                             index > 0
                                 ? 'border-top: 1px solid var(--hab-hairline)'
                                 : ''
                         "
                     >
+                        <div
+                            v-if="item.type === 'payment'"
+                            class="flex w-full items-center justify-between gap-3 py-2.5"
+                        >
+                            <span class="min-w-0">
+                                <span
+                                    class="block truncate text-[14px] font-semibold"
+                                    style="color: var(--hab-ink)"
+                                >
+                                    Payment to {{ item.row.debtName }}
+                                </span>
+                                <span
+                                    class="block text-[12px]"
+                                    style="color: var(--hab-muted)"
+                                >
+                                    Debt payment · {{ item.row.paidWith }}
+                                </span>
+                            </span>
+                            <span
+                                class="shrink-0 text-[14px] font-semibold tabular-nums"
+                                style="color: var(--hab-ink)"
+                                >{{ formatPeso(item.row.amount) }}</span
+                            >
+                        </div>
                         <button
+                            v-else
                             type="button"
                             class="flex w-full items-center justify-between gap-3 py-2.5 text-left"
-                            @click="edit(item)"
+                            @click="edit(item.row)"
                         >
                             <span class="min-w-0">
                                 <span
@@ -573,10 +616,10 @@ const errorClass = 'mt-1 text-[12px] text-red-600';
                                     style="color: var(--hab-ink)"
                                 >
                                     {{
-                                        item.note ||
-                                        (item.kind === 'income'
+                                        item.row.note ||
+                                        (item.row.kind === 'income'
                                             ? 'Income'
-                                            : categoryLabel(item.category))
+                                            : categoryLabel(item.row.category))
                                     }}
                                 </span>
                                 <span
@@ -584,13 +627,13 @@ const errorClass = 'mt-1 text-[12px] text-red-600';
                                     style="color: var(--hab-muted)"
                                 >
                                     {{
-                                        item.kind === 'income'
+                                        item.row.kind === 'income'
                                             ? 'Income'
-                                            : categoryLabel(item.category)
+                                            : categoryLabel(item.row.category)
                                     }}
                                     ·
-                                    {{ item.paidWith
-                                    }}<template v-if="item.onStatement">
+                                    {{ item.row.paidWith
+                                    }}<template v-if="item.row.onStatement">
                                         · on statement</template
                                     >
                                 </span>
@@ -599,12 +642,12 @@ const errorClass = 'mt-1 text-[12px] text-red-600';
                                 class="shrink-0 text-[14px] font-semibold tabular-nums"
                                 :style="{
                                     color:
-                                        item.kind === 'income'
+                                        item.row.kind === 'income'
                                             ? 'var(--hab-accent)'
                                             : 'var(--hab-ink)',
                                 }"
-                                >{{ item.kind === 'income' ? '+' : ''
-                                }}{{ formatPeso(item.amount) }}</span
+                                >{{ item.row.kind === 'income' ? '+' : ''
+                                }}{{ formatPeso(item.row.amount) }}</span
                             >
                         </button>
                     </li>
