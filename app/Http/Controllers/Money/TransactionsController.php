@@ -35,7 +35,7 @@ class TransactionsController extends Controller
 
         $transactions = $user->transactions()
             ->counted()
-            ->with(['account', 'debt', 'statementRow', 'customCategory'])
+            ->with(['account', 'toAccount', 'debt', 'statementRow', 'customCategory'])
             ->where('date', '>=', $first->toDateString())
             ->where('date', '<', $first->copy()->addMonth()->toDateString())
             ->orderByDesc('date')
@@ -71,6 +71,8 @@ class TransactionsController extends Controller
                 'payDate' => $transaction->pay_date?->toDateString(),
                 'onStatement' => $transaction->statementRow !== null,
                 'accountId' => $transaction->account_id,
+                'toAccountId' => $transaction->to_account_id,
+                'toAccountName' => $transaction->toAccount?->name,
                 'debtId' => $transaction->debt_id,
                 'paidWith' => data_get($transaction, 'account.name') ?? data_get($transaction, 'debt.name'),
             ])->values(),

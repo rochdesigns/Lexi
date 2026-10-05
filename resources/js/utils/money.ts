@@ -122,5 +122,9 @@ export const transactionCategories = [
 ] as const;
 
 export function categoryLabel(value: string): string {
+    if (value === 'transfer') {
+        return 'Transfer';
+    }
+
     return transactionCategories.find((c) => c.value === value)?.label ?? value;
 }

@@ -63,7 +63,9 @@ const props = defineProps<{
 }>();
 
 /** An entry is spending or money received. Income goes into an account. */
-const kind = ref<'expense' | 'income'>(props.prefill ? 'income' : 'expense');
+const kind = ref<'expense' | 'income' | 'transfer'>(
+    props.prefill ? 'income' : 'expense',
+);
 const incomeSourceId = ref<number | ''>(props.prefill?.incomeSourceId ?? '');
 const payDate = ref<string | null>(props.prefill?.date ?? null);
 
@@ -89,6 +91,7 @@ const form = useForm({
     category: '',
     custom_category_id: null as number | null,
     paidWith: defaultPaidWith(),
+    toAccount: '',
     date: props.prefill?.date ?? props.today,
     note: props.prefill?.name ?? '',
 });
@@ -133,8 +136,18 @@ function removeCategory(id: number): void {
     router.delete(destroyCategory(id).url, { preserveScroll: true });
 }
 
-function chooseKind(next: 'expense' | 'income'): void {
+function chooseKind(next: 'expense' | 'income' | 'transfer'): void {
     kind.value = next;
+
+    if (next === 'transfer') {
+        const from = props.accounts.find(
+            (account) => form.paidWith === `account:${account.id}`,
+        );
+        const to = props.accounts.find((account) => account.id !== from?.id);
+
+        form.paidWith = `account:${(from ?? props.accounts[0])?.id}`;
+        form.toAccount = to ? `account:${to.id}` : '';
+    }
 
     if (
         next === 'income' &&
@@ -159,11 +172,15 @@ function chooseSource(): void {
     }
 }
 
-const hasMethods = computed(() =>
-    kind.value === 'income'
+const hasMethods = computed(() => {
+    if (kind.value === 'transfer') {
+        return props.accounts.length > 1;
+    }
+
+    return kind.value === 'income'
         ? props.accounts.length > 0
-        : props.accounts.length > 0 || props.cards.length > 0,
-);
+        : props.accounts.length > 0 || props.cards.length > 0;
+});
 
 /** Spending on a card that already carries a balance adds to what is charging interest. */
 const guard = computed(
@@ -183,10 +200,22 @@ function focusAmount(): void {
 onMounted(focusAmount);
 
 function submit(): void {
-    form.transform(({ paidWith, category, ...data }) => {
+    form.transform(({ paidWith, toAccount, category, ...data }) => {
         const account = paidWith.startsWith('account:')
             ? Number(paidWith.slice(8))
             : null;
+
+        if (kind.value === 'transfer') {
+            return {
+                ...data,
+                kind: 'transfer',
+                note: data.note || null,
+                account_id: account,
+                to_account_id: toAccount.startsWith('account:')
+                    ? Number(toAccount.slice(8))
+                    : null,
+            };
+        }
 
         if (kind.value === 'income') {
             return {
@@ -212,6 +241,11 @@ function submit(): void {
         preserveScroll: true,
         onSuccess: () => {
             form.reset('amount', 'note', 'category', 'custom_category_id');
+
+            if (kind.value === 'transfer') {
+                form.reset('toAccount');
+            }
+
             incomeSourceId.value = '';
             payDate.value = null;
             focusAmount();
@@ -288,6 +322,9 @@ const methodError = computed(() => {
 
     return errors.account_id ?? errors.debt_id;
 });
+const toAccountError = computed(
+    () => (form.errors as Record<string, string | undefined>).to_account_id,
+);
 
 const fieldClass =
     'w-full rounded-[11px] border border-[var(--hab-card-border)] bg-[var(--hab-card-bg)] px-3 py-2 text-[14px] text-[var(--hab-ink)] outline-none focus:border-[var(--hab-accent)]';
@@ -334,7 +371,7 @@ const errorClass = 'mt-1 text-[12px] text-red-600';
                 aria-label="Entry type"
             >
                 <button
-                    v-for="option in ['expense', 'income'] as const"
+                    v-for="option in ['expense', 'income', 'transfer'] as const"
                     :key="option"
                     type="button"
                     role="radio"
@@ -347,7 +384,13 @@ const errorClass = 'mt-1 text-[12px] text-red-600';
                     "
                     @click="chooseKind(option)"
                 >
-                    {{ option === 'expense' ? 'Expense' : 'Income' }}
+                    {{
+                        option === 'expense'
+                            ? 'Expense'
+                            : option === 'income'
+                              ? 'Income'
+                              : 'Transfer'
+                    }}
                 </button>
             </div>
 
@@ -357,13 +400,22 @@ const errorClass = 'mt-1 text-[12px] text-red-600';
                 style="color: var(--hab-muted)"
             >
                 {{
-                    kind === 'income'
-                        ? 'Add an account on the Overview to record income.'
-                        : 'Add an account on the Overview, or a card on Debts, to log what you spend.'
+                    kind === 'transfer'
+                        ? 'Add a second account on the Overview to move money between accounts.'
+                        : kind === 'income'
+                          ? 'Add an account on the Overview to record income.'
+                          : 'Add an account on the Overview, or a card on Debts, to log what you spend.'
                 }}
             </p>
             <template v-else>
-                <div class="grid grid-cols-1 gap-3 sm:grid-cols-[1fr_1fr_1fr]">
+                <div
+                    class="grid grid-cols-1 gap-3"
+                    :class="
+                        kind === 'transfer'
+                            ? 'sm:grid-cols-[1fr_1fr_1fr_1fr]'
+                            : 'sm:grid-cols-[1fr_1fr_1fr]'
+                    "
+                >
                     <div ref="amountBox">
                         <label
                             class="mb-1 block text-[12.5px] font-semibold text-[var(--hab-ink-secondary)]"
@@ -383,7 +435,11 @@ const errorClass = 'mt-1 text-[12px] text-red-600';
                         <label
                             class="mb-1 block text-[12.5px] font-semibold text-[var(--hab-ink-secondary)]"
                             >{{
-                                kind === 'income' ? 'Paid into' : 'Paid with'
+                                kind === 'transfer'
+                                    ? 'From'
+                                    : kind === 'income'
+                                      ? 'Paid into'
+                                      : 'Paid with'
                             }}</label
                         >
                         <select v-model="form.paidWith" :class="fieldClass">
@@ -411,6 +467,28 @@ const errorClass = 'mt-1 text-[12px] text-red-600';
                         </select>
                         <p v-if="methodError" :class="errorClass">
                             {{ methodError }}
+                        </p>
+                    </div>
+                    <div v-if="kind === 'transfer'">
+                        <label
+                            class="mb-1 block text-[12.5px] font-semibold text-[var(--hab-ink-secondary)]"
+                            >To</label
+                        >
+                        <select v-model="form.toAccount" :class="fieldClass">
+                            <option value="" disabled>Choose an account</option>
+                            <option
+                                v-for="account in accounts"
+                                :key="`to${account.id}`"
+                                :value="`account:${account.id}`"
+                                :disabled="
+                                    form.paidWith === `account:${account.id}`
+                                "
+                            >
+                                {{ account.name }}
+                            </option>
+                        </select>
+                        <p v-if="toAccountError" :class="errorClass">
+                            {{ toAccountError }}
                         </p>
                     </div>
                     <div>
@@ -611,7 +689,11 @@ const errorClass = 'mt-1 text-[12px] text-red-600';
                         :class="fieldClass"
                     />
                     <Button type="submit" :disabled="form.processing">{{
-                        kind === 'income' ? 'Add income' : 'Add expense'
+                        kind === 'transfer'
+                            ? 'Add transfer'
+                            : kind === 'income'
+                              ? 'Add income'
+                              : 'Add expense'
                     }}</Button>
                 </div>
             </template>
@@ -775,7 +857,11 @@ const errorClass = 'mt-1 text-[12px] text-red-600';
                                     }}
                                     ·
                                     {{ item.row.paidWith
-                                    }}<template v-if="item.row.onStatement">
+                                    }}<template
+                                        v-if="item.row.kind === 'transfer'"
+                                    >
+                                        → {{ item.row.toAccountName }}</template
+                                    ><template v-if="item.row.onStatement">
                                         · on statement</template
                                     >
                                 </span>

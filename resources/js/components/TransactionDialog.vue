@@ -19,7 +19,7 @@ export type TransactionRow = {
     id: number;
     date: string;
     amount: number;
-    kind: 'expense' | 'income';
+    kind: 'expense' | 'income' | 'transfer';
     category: string;
     customCategoryId: number | null;
     categoryName: string | null;
@@ -29,6 +29,8 @@ export type TransactionRow = {
     incomeSourceId: number | null;
     payDate: string | null;
     accountId: number | null;
+    toAccountId: number | null;
+    toAccountName: string | null;
     debtId: number | null;
     paidWith: string | null;
 };
@@ -49,6 +51,7 @@ const form = useForm({
     categoryChoice: '',
     note: '',
     paidWith: '',
+    toAccount: '',
 });
 
 watch(
@@ -69,6 +72,9 @@ watch(
                 ? `custom:${transaction.customCategoryId}`
                 : transaction.category,
             note: transaction.note ?? '',
+            toAccount: transaction.toAccountId
+                ? `account:${transaction.toAccountId}`
+                : '',
             paidWith: transaction.accountId
                 ? `account:${transaction.accountId}`
                 : `card:${transaction.debtId}`,
@@ -83,10 +89,22 @@ function submit(): void {
 
     const transaction = props.transaction;
 
-    form.transform(({ paidWith, categoryChoice, ...data }) => {
+    form.transform(({ paidWith, toAccount, categoryChoice, ...data }) => {
         const account = paidWith.startsWith('account:')
             ? Number(paidWith.slice(8))
             : null;
+
+        if (transaction.kind === 'transfer') {
+            return {
+                ...data,
+                kind: 'transfer',
+                note: data.note || null,
+                account_id: account,
+                to_account_id: toAccount.startsWith('account:')
+                    ? Number(toAccount.slice(8))
+                    : null,
+            };
+        }
 
         // Income keeps the source and pay day it was logged for, so the forecast still knows it landed.
         if (transaction.kind === 'income') {
@@ -137,6 +155,9 @@ const methodError = computed(() => {
 
     return errors.account_id ?? errors.debt_id;
 });
+const toAccountError = computed(
+    () => (form.errors as Record<string, string | undefined>).to_account_id,
+);
 
 const fieldClass =
     'w-full rounded-[11px] border border-[var(--hab-card-border)] bg-[var(--hab-card-bg)] px-3 py-2 text-[14px] text-[var(--hab-ink)] outline-none focus:border-[var(--hab-accent)]';
@@ -152,7 +173,9 @@ const errorClass = 'mt-1 text-[12px] text-red-600';
                 <DialogTitle>{{
                     transaction?.kind === 'income'
                         ? 'Edit income'
-                        : 'Edit expense'
+                        : transaction?.kind === 'transfer'
+                          ? 'Edit transfer'
+                          : 'Edit expense'
                 }}</DialogTitle>
             </DialogHeader>
 
@@ -184,7 +207,7 @@ const errorClass = 'mt-1 text-[12px] text-red-600';
                 </div>
 
                 <div class="grid grid-cols-2 gap-3">
-                    <div v-if="transaction?.kind !== 'income'">
+                    <div v-if="transaction?.kind === 'expense'">
                         <label :class="labelClass">Category</label>
                         <select
                             v-model="form.categoryChoice"
@@ -211,9 +234,11 @@ const errorClass = 'mt-1 text-[12px] text-red-600';
                     </div>
                     <div>
                         <label :class="labelClass">{{
-                            transaction?.kind === 'income'
-                                ? 'Paid into'
-                                : 'Paid with'
+                            transaction?.kind === 'transfer'
+                                ? 'From'
+                                : transaction?.kind === 'income'
+                                  ? 'Paid into'
+                                  : 'Paid with'
                         }}</label>
                         <select v-model="form.paidWith" :class="fieldClass">
                             <optgroup v-if="accounts.length" label="Accounts">
@@ -227,7 +252,7 @@ const errorClass = 'mt-1 text-[12px] text-red-600';
                             </optgroup>
                             <optgroup
                                 v-if="
-                                    transaction?.kind !== 'income' &&
+                                    transaction?.kind === 'expense' &&
                                     cards.length
                                 "
                                 label="Cards"
@@ -243,6 +268,24 @@ const errorClass = 'mt-1 text-[12px] text-red-600';
                         </select>
                         <p v-if="methodError" :class="errorClass">
                             {{ methodError }}
+                        </p>
+                    </div>
+                    <div v-if="transaction?.kind === 'transfer'">
+                        <label :class="labelClass">To</label>
+                        <select v-model="form.toAccount" :class="fieldClass">
+                            <option
+                                v-for="account in accounts"
+                                :key="`to${account.id}`"
+                                :value="`account:${account.id}`"
+                                :disabled="
+                                    form.paidWith === `account:${account.id}`
+                                "
+                            >
+                                {{ account.name }}
+                            </option>
+                        </select>
+                        <p v-if="toAccountError" :class="errorClass">
+                            {{ toAccountError }}
                         </p>
                     </div>
                 </div>
