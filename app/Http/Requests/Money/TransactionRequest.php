@@ -14,7 +14,8 @@ class TransactionRequest extends FormRequest
 {
     /**
      * The amount arrives in pesos. An expense is paid from one of my accounts
-     * or charged to one of my cards, not both and not neither. Income is paid
+     * or charged to one of my cards, not both and not neither. A transfer moves
+     * money from one of my accounts to a different one of mine. Income is paid
      * into one of my accounts, has no category, and may say which of my income
      * sources and pay day it settles.
      *
@@ -25,6 +26,22 @@ class TransactionRequest extends FormRequest
         $userId = $this->user()->id;
         $account = Rule::exists('accounts', 'id')->where('user_id', $userId);
 
+        if ($this->kind() === TransactionKind::Transfer) {
+            return [
+                'kind' => ['sometimes', Rule::enum(TransactionKind::class)],
+                'date' => ['required', 'date'],
+                'amount' => ['required', 'numeric', 'gt:0', 'max:1000000000'],
+                'note' => ['nullable', 'string', 'max:200'],
+                'category' => ['prohibited'],
+                'custom_category_id' => ['prohibited'],
+                'account_id' => ['required', $account],
+                'to_account_id' => ['required', 'different:account_id', $account],
+                'debt_id' => ['prohibited'],
+                'income_source_id' => ['prohibited'],
+                'pay_date' => ['prohibited'],
+            ];
+        }
+
         if ($this->kind() === TransactionKind::Income) {
             return [
                 'kind' => ['sometimes', Rule::enum(TransactionKind::class)],
@@ -34,6 +51,7 @@ class TransactionRequest extends FormRequest
                 'category' => ['prohibited'],
                 'custom_category_id' => ['prohibited'],
                 'account_id' => ['required', $account],
+                'to_account_id' => ['prohibited'],
                 'debt_id' => ['prohibited'],
                 'income_source_id' => ['nullable', Rule::exists('income_sources', 'id')->where('user_id', $userId)],
                 'pay_date' => ['nullable', 'date'],
@@ -49,6 +67,7 @@ class TransactionRequest extends FormRequest
             'note' => ['nullable', 'string', 'max:200'],
             'account_id' => ['nullable', 'required_without:debt_id', 'prohibits:debt_id', $account],
             'debt_id' => ['nullable', 'required_without:account_id', 'prohibits:account_id', Rule::exists('debts', 'id')->where('user_id', $userId)->where('type', DebtType::CreditCard->value)],
+            'to_account_id' => ['prohibited'],
             'income_source_id' => ['prohibited'],
             'pay_date' => ['prohibited'],
         ];
@@ -76,16 +95,18 @@ class TransactionRequest extends FormRequest
     {
         $data = $this->validated();
         $income = $this->kind() === TransactionKind::Income;
-        $customCategoryId = $income ? null : ($data['custom_category_id'] ?? null);
+        $transfer = $this->kind() === TransactionKind::Transfer;
+        $customCategoryId = $income || $transfer ? null : ($data['custom_category_id'] ?? null);
 
         return [
             'kind' => $this->kind(),
             'date' => $data['date'],
             'amount' => Centavos::fromPesos($data['amount']),
-            'category' => $income ? TransactionCategory::Income->value : ($customCategoryId !== null ? TransactionCategory::Other->value : $data['category']),
+            'category' => $transfer ? TransactionCategory::Transfer->value : ($income ? TransactionCategory::Income->value : ($customCategoryId !== null ? TransactionCategory::Other->value : $data['category'])),
             'custom_category_id' => $customCategoryId,
             'note' => $data['note'] ?? null,
             'account_id' => $data['account_id'] ?? null,
+            'to_account_id' => $data['to_account_id'] ?? null,
             'debt_id' => $data['debt_id'] ?? null,
             'income_source_id' => $data['income_source_id'] ?? null,
             'pay_date' => $data['pay_date'] ?? null,

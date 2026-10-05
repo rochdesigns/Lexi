@@ -16,6 +16,9 @@ enum TransactionCategory: string
     /** Money received. Not one of the categories offered for spending. */
     case Income = 'income';
 
+    /** Money moved between the user's own accounts. Not one of the categories offered for spending. */
+    case Transfer = 'transfer';
+
     /**
      * The categories an expense can have.
      *
@@ -24,7 +27,7 @@ enum TransactionCategory: string
     public static function expenseValues(): array
     {
         return collect(self::cases())
-            ->reject(fn (self $category): bool => $category === self::Income)
+            ->reject(fn (self $category): bool => in_array($category, [self::Income, self::Transfer], true))
             ->map(fn (self $category): string => $category->value)
             ->values()
             ->all();

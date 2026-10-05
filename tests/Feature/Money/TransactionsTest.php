@@ -247,3 +247,80 @@ test('a custom category can be picked when editing an expense', function (): voi
 
     expect($transaction->fresh()->custom_category_id)->toBe($custom->id);
 });
+
+test('a transfer moves money between two accounts and is not spending', function (): void {
+    $maya = Account::factory()->for($this->user)->create(['name' => 'Maya', 'balance' => 0]);
+
+    $this->actingAs($this->user)->post('/money/transactions', [
+        'kind' => 'transfer',
+        'date' => '2026-10-15',
+        'amount' => 400,
+        'note' => 'Top up',
+        'account_id' => $this->account->id,
+        'to_account_id' => $maya->id,
+    ])->assertRedirect();
+
+    $transfer = $this->user->transactions()->sole();
+    expect($transfer->kind->value)->toBe('transfer')
+        ->and($transfer->category->value)->toBe('transfer')
+        ->and($transfer->amount)->toBe(40_000)
+        ->and($this->account->fresh()->balance)->toBe(960_000)
+        ->and($maya->fresh()->balance)->toBe(40_000);
+
+    $this->actingAs($this->user)->get('/money/transactions')
+        ->assertInertia(fn ($page) => $page
+            ->where('transactions.0.kind', 'transfer')
+            ->where('transactions.0.toAccountName', 'Maya')
+            ->where('total', 0)
+            ->where('received', 0)
+            ->has('categoryTotals', 0));
+});
+
+test('a transfer needs two different accounts of your own', function (array $overrides): void {
+    $maya = Account::factory()->for($this->user)->create();
+    $theirs = Account::factory()->for(User::factory()->create())->create();
+    $overrides = collect($overrides)->map(fn ($value) => match ($value) {
+        'from' => $this->account->id,
+        'maya' => $maya->id,
+        'theirs' => $theirs->id,
+        default => $value,
+    })->all();
+
+    $this->actingAs($this->user)->post('/money/transactions', [
+        'kind' => 'transfer', 'date' => '2026-10-15', 'amount' => 100, 'account_id' => $this->account->id, ...$overrides,
+    ])->assertSessionHasErrors();
+
+    expect($this->user->transactions()->count())->toBe(0)
+        ->and($this->account->fresh()->balance)->toBe(1_000_000);
+})->with([
+    'same account' => [['to_account_id' => 'from']],
+    'someone else\'s account' => [['to_account_id' => 'theirs']],
+    'no destination' => [[]],
+    'with a category' => [['to_account_id' => 'maya', 'category' => 'food']],
+    'with a card' => [['to_account_id' => 'maya', 'debt_id' => 1]],
+]);
+
+test('editing a transfer moves the balances again, and deleting puts them back', function (): void {
+    $maya = Account::factory()->for($this->user)->create(['balance' => 0]);
+    $cash = Account::factory()->for($this->user)->create(['balance' => 0]);
+    $this->actingAs($this->user)->post('/money/transactions', ['kind' => 'transfer', 'date' => '2026-10-15', 'amount' => 100, 'account_id' => $this->account->id, 'to_account_id' => $maya->id]);
+    $transfer = $this->user->transactions()->sole();
+
+    $this->actingAs($this->user)->patch("/money/transactions/{$transfer->id}", ['date' => '2026-10-15', 'amount' => 250, 'account_id' => $this->account->id, 'to_account_id' => $cash->id])->assertRedirect();
+
+    expect($this->account->fresh()->balance)->toBe(975_000)
+        ->and($maya->fresh()->balance)->toBe(0)
+        ->and($cash->fresh()->balance)->toBe(25_000);
+
+    $this->actingAs($this->user)->delete("/money/transactions/{$transfer->id}")->assertRedirect();
+
+    expect($this->account->fresh()->balance)->toBe(1_000_000)
+        ->and($cash->fresh()->balance)->toBe(0);
+});
+
+test('an expense cannot carry a destination account', function (): void {
+    $maya = Account::factory()->for($this->user)->create();
+
+    $this->actingAs($this->user)->post('/money/transactions', entry(['account_id' => $this->account->id, 'to_account_id' => $maya->id]))
+        ->assertSessionHasErrors('to_account_id');
+});

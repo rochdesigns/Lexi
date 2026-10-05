@@ -50,6 +50,20 @@ class TransactionFactory extends Factory
         ]);
     }
 
+    /**
+     * Money moved between two of the user's accounts.
+     */
+    public function transfer(?Account $from = null, ?Account $to = null): static
+    {
+        return $this->state(fn (array $attributes): array => [
+            'kind' => TransactionKind::Transfer,
+            'category' => TransactionCategory::Transfer,
+            'debt_id' => null,
+            'account_id' => $from === null ? Account::factory()->state(['user_id' => $attributes['user_id']]) : $from->id,
+            'to_account_id' => $to === null ? Account::factory()->state(['user_id' => $attributes['user_id']]) : $to->id,
+        ]);
+    }
+
     public function onCard(?Debt $card = null): static
     {
         return $this->state(fn (array $attributes): array => [

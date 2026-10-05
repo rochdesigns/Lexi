@@ -6,4 +6,5 @@ enum TransactionKind: string
 {
     case Expense = 'expense';
     case Income = 'income';
+    case Transfer = 'transfer';
 }

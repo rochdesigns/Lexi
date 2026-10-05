@@ -110,11 +110,24 @@ class Ledger
     }
 
     /**
-     * Applies (1) or undoes (-1) what an entry did to its account: income adds
-     * to the balance, an expense takes from it.
+     * Applies (1) or undoes (-1) what an entry did to its accounts: income adds
+     * to the balance, an expense takes from it, and a transfer does both, one
+     * on each side.
      */
     public function move(Transaction $transaction, int $direction): void
     {
+        if ($transaction->kind === TransactionKind::Transfer) {
+            if ($transaction->account_id !== null) {
+                Account::whereKey($transaction->account_id)->decrement('balance', $direction * $transaction->amount);
+            }
+
+            if ($transaction->to_account_id !== null) {
+                Account::whereKey($transaction->to_account_id)->increment('balance', $direction * $transaction->amount);
+            }
+
+            return;
+        }
+
         if ($transaction->account_id === null) {
             return;
         }

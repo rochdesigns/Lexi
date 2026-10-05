@@ -33,6 +33,7 @@ class Transaction extends Model
         'source',
         'debt_id',
         'account_id',
+        'to_account_id',
         'income_source_id',
         'pay_date',
         'matched_transaction_id',
@@ -54,6 +55,16 @@ class Transaction extends Model
     public function user(): BelongsTo
     {
         return $this->belongsTo(User::class);
+    }
+
+    /**
+     * The account a transfer pays into.
+     *
+     * @return BelongsTo<Account, $this>
+     */
+    public function toAccount(): BelongsTo
+    {
+        return $this->belongsTo(Account::class, 'to_account_id');
     }
 
     /**
