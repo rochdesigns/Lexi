@@ -83,7 +83,7 @@ class TransactionsController extends Controller
             ])->values(),
             'categoryTotals' => $transactions
                 ->where('kind', TransactionKind::Expense)
-                ->groupBy(fn (Transaction $transaction): string => $transaction->customCategory?->name ?? $transaction->category->value)
+                ->groupBy(fn (Transaction $transaction): string => $transaction->customCategory->name ?? $transaction->category->value)
                 ->map(fn ($group, string $category): array => ['category' => $category, 'total' => $group->sum('amount')])
                 ->sortByDesc('total')
                 ->values(),
