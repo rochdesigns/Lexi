@@ -18,6 +18,7 @@ class BillRequest extends FormRequest
     {
         return [
             'name' => ['required', 'string', 'max:100'],
+            'account_id' => ['nullable', 'integer', Rule::exists('accounts', 'id')->where('user_id', $this->user()->id)],
             'amount' => ['required', 'numeric', 'gt:0', 'max:1000000000'],
             'frequency' => ['required', Rule::enum(BillFrequency::class)],
             'due_day' => ['required', 'integer', 'between:1,31'],

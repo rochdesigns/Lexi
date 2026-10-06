@@ -328,7 +328,10 @@ const cardStyle =
                         >
                             {{ kindLabel[item.kind]
                             }}<template v-if="item.received">
-                                · received</template
+                                ·
+                                {{
+                                    item.kind === 'bill' ? 'paid' : 'received'
+                                }}</template
                             ><template v-if="item.autopay">
                                 · automatic</template
                             ><template v-if="item.short > 0">

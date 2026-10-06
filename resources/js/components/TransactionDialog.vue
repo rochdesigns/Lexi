@@ -32,6 +32,8 @@ export type TransactionRow = {
     toAccountId: number | null;
     toAccountName: string | null;
     debtId: number | null;
+    billId: number | null;
+    billName: string | null;
     paidWith: string | null;
 };
 

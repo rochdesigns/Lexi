@@ -426,7 +426,7 @@ const cardStyle =
                     </div>
                     <div class="flex shrink-0 items-center gap-3">
                         <span
-                            v-if="item.kind === 'income' && item.received"
+                            v-if="item.kind !== 'debt' && item.received"
                             class="rounded-full px-2.5 py-0.5 text-[11.5px] font-semibold"
                             style="
                                 background: color-mix(
@@ -436,7 +436,9 @@ const cardStyle =
                                 );
                                 color: var(--hab-accent);
                             "
-                            >Received</span
+                            >{{
+                                item.kind === 'bill' ? 'Paid' : 'Received'
+                            }}</span
                         >
                         <Link
                             v-else-if="item.kind === 'income' && item.sourceId"
@@ -543,8 +545,9 @@ const cardStyle =
                 <InfoNote id="overview-bills">
                     Used for the Bills number in safe to spend, and for due
                     dates on the calendar and in the shortfall warnings. Yearly
-                    bills are set aside at a twelfth each month. Paying one does
-                    not change a balance until you log it as an expense.
+                    bills are set aside at a twelfth each month. Log the payment
+                    as an expense on the bill to mark it paid and take it off
+                    the account it came from.
                 </InfoNote>
                 <p
                     v-if="bills.length === 0"
@@ -586,6 +589,10 @@ const cardStyle =
 
         <AccountDialog v-model:open="accountOpen" :account="editingAccount" />
         <IncomeSourceDialog v-model:open="incomeOpen" :source="editingIncome" />
-        <BillDialog v-model:open="billOpen" :bill="editingBill" />
+        <BillDialog
+            v-model:open="billOpen"
+            :bill="editingBill"
+            :accounts="accounts"
+        />
     </div>
 </template>

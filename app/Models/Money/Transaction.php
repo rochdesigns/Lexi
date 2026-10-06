@@ -32,6 +32,7 @@ class Transaction extends Model
         'note',
         'source',
         'debt_id',
+        'bill_id',
         'account_id',
         'to_account_id',
         'income_source_id',
@@ -81,6 +82,16 @@ class Transaction extends Model
     public function debt(): BelongsTo
     {
         return $this->belongsTo(Debt::class);
+    }
+
+    /**
+     * The bill this expense pays, if any.
+     *
+     * @return BelongsTo<Bill, $this>
+     */
+    public function bill(): BelongsTo
+    {
+        return $this->belongsTo(Bill::class);
     }
 
     /**

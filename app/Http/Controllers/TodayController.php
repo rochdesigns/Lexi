@@ -95,7 +95,7 @@ class TodayController extends Controller
         $contributions = $projection->goalContributions($user->goals()->with('account')->get(), $debts, $bills, $today);
         $moneySummary = $sources->isEmpty() && $bills->isEmpty() ? null : [
             'safeToSpend' => $projection->overview($debts, $bills, $sources, $today, $contributions['buffer'], $user->setting?->recovery_months, $contributions['sinking'])['safeToSpend'],
-            'dueSoonCount' => collect($projection->upcoming($debts, $bills, $sources, $today))->where('kind', '!=', 'income')->count(),
+            'dueSoonCount' => collect($projection->upcoming($debts, $bills, $sources, $today))->where('kind', '!=', 'income')->where('received', false)->count(),
         ];
 
         return Inertia::render('Today', [

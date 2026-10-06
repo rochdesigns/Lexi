@@ -25,13 +25,19 @@ export type BillRow = {
     dueDay: number;
     dueMonth: number | null;
     autopay: boolean;
+    accountId: number | null;
 };
 
-const props = defineProps<{ open: boolean; bill?: BillRow | null }>();
+const props = defineProps<{
+    open: boolean;
+    bill?: BillRow | null;
+    accounts: { id: number; name: string }[];
+}>();
 const emit = defineEmits<{ 'update:open': [boolean] }>();
 
 const form = useForm({
     name: '',
+    account_id: '' as number | string,
     amount: null as number | null,
     frequency: 'monthly',
     due_day: 1 as number | string,
@@ -49,6 +55,7 @@ watch(
         form.clearErrors();
         form.defaults({
             name: props.bill?.name ?? '',
+            account_id: props.bill?.accountId ?? '',
             amount: props.bill ? toPesos(props.bill.amount) : null,
             frequency: props.bill?.frequency ?? 'monthly',
             due_day: props.bill?.dueDay ?? 1,
@@ -65,6 +72,7 @@ function submit(): void {
     };
     const data = form.transform((values) => ({
         ...values,
+        account_id: values.account_id === '' ? null : values.account_id,
         due_month: values.frequency === 'annual' ? values.due_month : null,
     }));
 
@@ -178,6 +186,26 @@ const errorClass = 'mt-1 text-[12px] text-red-600';
                             {{ form.errors.due_day }}
                         </p>
                     </div>
+                </div>
+
+                <div v-if="accounts.length">
+                    <FieldLabel
+                        hint="Logging this bill as an expense takes it out of this account by default."
+                        >Paid from</FieldLabel
+                    >
+                    <select v-model="form.account_id" :class="fieldClass">
+                        <option value="">No account</option>
+                        <option
+                            v-for="account in accounts"
+                            :key="account.id"
+                            :value="account.id"
+                        >
+                            {{ account.name }}
+                        </option>
+                    </select>
+                    <p v-if="form.errors.account_id" :class="errorClass">
+                        {{ form.errors.account_id }}
+                    </p>
                 </div>
 
                 <label

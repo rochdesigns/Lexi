@@ -57,6 +57,12 @@ const props = defineProps<{
         balance: number;
         isSpendable: boolean;
     }[];
+    bills: {
+        id: number;
+        name: string;
+        amount: number;
+        accountId: number | null;
+    }[];
     cards: { id: number; name: string; guard: CardGuard | null }[];
     customCategories: { id: number; name: string }[];
     lastPaidWith: { accountId: number | null; debtId: number | null } | null;
@@ -91,10 +97,30 @@ const form = useForm({
     category: '',
     custom_category_id: null as number | null,
     paidWith: defaultPaidWith(),
+    bill: '',
     toAccount: '',
     date: props.prefill?.date ?? props.today,
     note: props.prefill?.name ?? '',
 });
+
+/** Picking a bill fills in what it costs and the account it is paid from. */
+function chooseBill(): void {
+    const bill = props.bills.find((item) => String(item.id) === form.bill);
+
+    if (!bill) {
+        return;
+    }
+
+    if (form.amount === null) {
+        form.amount = toPesos(bill.amount);
+    }
+
+    if (bill.accountId) {
+        form.paidWith = `account:${bill.accountId}`;
+    }
+
+    form.note ||= bill.name;
+}
 
 function chooseCategory(value: string): void {
     form.category = value;
@@ -200,7 +226,7 @@ function focusAmount(): void {
 onMounted(focusAmount);
 
 function submit(): void {
-    form.transform(({ paidWith, toAccount, category, ...data }) => {
+    form.transform(({ paidWith, toAccount, category, bill, ...data }) => {
         const account = paidWith.startsWith('account:')
             ? Number(paidWith.slice(8))
             : null;
@@ -231,6 +257,7 @@ function submit(): void {
         return {
             ...data,
             category,
+            bill_id: bill ? Number(bill) : null,
             note: data.note || null,
             account_id: account,
             debt_id: paidWith.startsWith('card:')
@@ -240,7 +267,13 @@ function submit(): void {
     }).post(store().url, {
         preserveScroll: true,
         onSuccess: () => {
-            form.reset('amount', 'note', 'category', 'custom_category_id');
+            form.reset(
+                'amount',
+                'note',
+                'category',
+                'custom_category_id',
+                'bill',
+            );
 
             if (kind.value === 'transfer') {
                 form.reset('toAccount');
@@ -322,6 +355,9 @@ const methodError = computed(() => {
 
     return errors.account_id ?? errors.debt_id;
 });
+const billError = computed(
+    () => (form.errors as Record<string, string | undefined>).bill_id,
+);
 const toAccountError = computed(
     () => (form.errors as Record<string, string | undefined>).to_account_id,
 );
@@ -505,6 +541,30 @@ const errorClass = 'mt-1 text-[12px] text-red-600';
                             {{ form.errors.date }}
                         </p>
                     </div>
+                </div>
+
+                <div v-if="kind === 'expense' && bills.length" class="mt-3">
+                    <label
+                        class="mb-1 block text-[12.5px] font-semibold text-[var(--hab-ink-secondary)]"
+                        >Pays a bill</label
+                    >
+                    <select
+                        v-model="form.bill"
+                        :class="fieldClass"
+                        @change="chooseBill"
+                    >
+                        <option value="">Not a bill</option>
+                        <option
+                            v-for="bill in bills"
+                            :key="bill.id"
+                            :value="String(bill.id)"
+                        >
+                            {{ bill.name }}
+                        </option>
+                    </select>
+                    <p v-if="billError" :class="errorClass">
+                        {{ billError }}
+                    </p>
                 </div>
 
                 <div
@@ -857,7 +917,10 @@ const errorClass = 'mt-1 text-[12px] text-red-600';
                                     }}
                                     ·
                                     {{ item.row.paidWith
-                                    }}<template
+                                    }}<template v-if="item.row.billName">
+                                        · bill:
+                                        {{ item.row.billName }}</template
+                                    ><template
                                         v-if="item.row.kind === 'transfer'"
                                     >
                                         → {{ item.row.toAccountName }}</template

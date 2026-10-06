@@ -5,6 +5,7 @@ use App\Mcp\Tools\Money\Write\CreateDebt;
 use App\Mcp\Tools\Money\Write\RecordDebtPayment;
 use App\Mcp\Tools\Money\Write\RecordTransaction;
 use App\Models\Money\Account;
+use App\Models\Money\Bill;
 use App\Models\Money\Debt;
 use App\Models\Money\DebtType;
 use App\Models\Money\IncomeSource;
@@ -340,3 +341,30 @@ test('a debt that breaks its type\'s rules is rejected and nothing is written', 
     'a card without its limit' => [['name' => 'X', 'type' => 'credit_card', 'interestType' => 'revolving', 'monthlyInterestRate' => 3, 'dueDay' => 1, 'statementDay' => 5, 'revolvingBalanceCentavos' => 0]],
     'a non-informal debt without a due day' => [['name' => 'X', 'type' => 'bnpl', 'interestType' => 'none', 'plan' => ['totalMonths' => 3, 'startMonth' => '2026-10', 'monthlyAmountCentavos' => 100]]],
 ]);
+
+test('recording an expense against a bill uses the bill\'s account', function (): void {
+    $user = signedIn();
+    $account = Account::factory()->for($user)->create(['balance' => 100_000]);
+    $bill = Bill::factory()->for($user)->create(['account_id' => $account->id]);
+
+    $this->postJson('/mcp/money', rpc('tools/call', [
+        'name' => 'record_transaction',
+        'arguments' => ['amountCentavos' => 20_000, 'category' => 'home', 'billId' => $bill->id, 'date' => '2026-10-01'],
+    ]))->assertOk()
+        ->assertJsonPath('result.structuredContent.transaction.billId', $bill->id)
+        ->assertJsonPath('result.structuredContent.accountBalanceAfter', 80_000);
+
+    $this->assertDatabaseHas('transactions', ['user_id' => $user->id, 'bill_id' => $bill->id, 'account_id' => $account->id]);
+});
+
+test('a bill with no account needs an account or card to be recorded', function (): void {
+    $user = signedIn();
+    $bill = Bill::factory()->for($user)->create();
+
+    $this->postJson('/mcp/money', rpc('tools/call', [
+        'name' => 'record_transaction',
+        'arguments' => ['amountCentavos' => 20_000, 'category' => 'home', 'billId' => $bill->id],
+    ]))->assertOk()->assertJsonPath('result.isError', true);
+
+    expect($user->transactions()->count())->toBe(0);
+});
