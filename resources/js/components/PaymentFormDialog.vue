@@ -25,8 +25,12 @@ function today(): string {
     return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
 }
 
+function defaultPlanId(): number | string {
+    return props.plans.length === 1 ? props.plans[0].id : '';
+}
+
 const form = useForm({
-    payment_plan_id: '' as number | string,
+    payment_plan_id: defaultPlanId() as number | string,
     account_id: '' as number | string,
     date: today(),
     amount: null as number | null,
@@ -40,6 +44,7 @@ watch(
             form.reset();
             form.clearErrors();
             form.date = today();
+            form.payment_plan_id = defaultPlanId();
         }
     },
 );
