@@ -46,7 +46,8 @@ const props = defineProps<{
     received: number;
     incomeSources: { id: number; name: string; amount: number }[];
     prefill: {
-        incomeSourceId: number;
+        incomeSourceId: number | null;
+        billId: number | null;
         name: string;
         amount: number;
         date: string;
@@ -70,12 +71,20 @@ const props = defineProps<{
 
 /** An entry is spending or money received. Income goes into an account. */
 const kind = ref<'expense' | 'income' | 'transfer'>(
-    props.prefill ? 'income' : 'expense',
+    props.prefill?.incomeSourceId ? 'income' : 'expense',
 );
 const incomeSourceId = ref<number | ''>(props.prefill?.incomeSourceId ?? '');
 const payDate = ref<string | null>(props.prefill?.date ?? null);
 
 function defaultPaidWith(): string {
+    const billAccountId = props.bills.find(
+        (bill) => bill.id === props.prefill?.billId,
+    )?.accountId;
+
+    if (billAccountId) {
+        return `account:${billAccountId}`;
+    }
+
     if (props.lastPaidWith?.accountId) {
         return `account:${props.lastPaidWith.accountId}`;
     }
@@ -97,7 +106,7 @@ const form = useForm({
     category: '',
     custom_category_id: null as number | null,
     paidWith: defaultPaidWith(),
-    bill: '',
+    bill: props.prefill?.billId ? String(props.prefill.billId) : '',
     toAccount: '',
     date: props.prefill?.date ?? props.today,
     note: props.prefill?.name ?? '',

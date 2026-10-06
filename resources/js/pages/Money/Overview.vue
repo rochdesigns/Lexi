@@ -20,6 +20,7 @@ type Upcoming = {
     date: string;
     autopay: boolean;
     sourceId: number | null;
+    billId: number | null;
     received: boolean;
 };
 
@@ -453,6 +454,20 @@ const cardStyle =
                             class="rounded-full px-2.5 py-0.5 text-[11.5px] font-semibold underline"
                             style="color: var(--hab-ink)"
                             >Received?</Link
+                        >
+                        <Link
+                            v-else-if="item.kind === 'bill' && item.billId"
+                            :href="
+                                transactions({
+                                    query: {
+                                        bill: item.billId,
+                                        date: item.date,
+                                    },
+                                }).url
+                            "
+                            class="rounded-full px-2.5 py-0.5 text-[11.5px] font-semibold underline"
+                            style="color: var(--hab-ink)"
+                            >Mark paid</Link
                         >
                         <p
                             class="text-[14px] font-semibold tabular-nums"

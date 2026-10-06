@@ -94,3 +94,36 @@ test('next month\'s bill is still due after this month\'s is paid', function ():
 
     expect($items)->toHaveCount(1)->and($items[0]['date'])->toBe('2026-11-05')->and($items[0]['received'])->toBeFalse();
 });
+
+test('the overview gives a bill\'s id so it can be marked paid', function (): void {
+    $bill = Bill::factory()->for($this->user)->create(['due_day' => 25]);
+
+    $this->actingAs($this->user)->get('/money')->assertInertia(fn ($page) => $page
+        ->where('upcoming.0.billId', $bill->id)
+        ->where('upcoming.0.sourceId', null));
+});
+
+test('mark paid opens the expense form with the bill ready, dated today', function (): void {
+    $bill = Bill::factory()->for($this->user)->create(['name' => 'Meralco', 'amount' => 350_000, 'account_id' => $this->account->id]);
+
+    $this->actingAs($this->user)->get('/money/transactions?bill='.$bill->id.'&date=2026-10-25')->assertInertia(fn ($page) => $page
+        ->where('prefill.billId', $bill->id)
+        ->where('prefill.incomeSourceId', null)
+        ->where('prefill.name', 'Meralco')
+        ->where('prefill.amount', 350_000)
+        ->where('prefill.date', '2026-10-15'));
+});
+
+test('mark paid keeps the due date when the bill falls in a later month', function (): void {
+    $bill = Bill::factory()->for($this->user)->create();
+
+    $this->actingAs($this->user)->get('/money/transactions?bill='.$bill->id.'&date=2026-11-02')->assertInertia(fn ($page) => $page
+        ->where('prefill.date', '2026-11-02'));
+});
+
+test('mark paid ignores someone else\'s bill', function (): void {
+    $bill = Bill::factory()->create();
+
+    $this->actingAs($this->user)->get('/money/transactions?bill='.$bill->id)->assertInertia(fn ($page) => $page
+        ->where('prefill', null));
+});

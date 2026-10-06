@@ -464,7 +464,7 @@ class Projection
      * @param  Collection<int, Debt>  $debts
      * @param  Collection<int, Bill>  $bills
      * @param  Collection<int, IncomeSource>  $sources
-     * @return list<array{kind: string, name: string, amount: int, date: string, autopay: bool, sourceId: int|null, received: bool}>
+     * @return list<array{kind: string, name: string, amount: int, date: string, autopay: bool, sourceId: int|null, billId: int|null, received: bool}>
      */
     public function upcoming(Collection $debts, Collection $bills, Collection $sources, CarbonInterface $today, int $days = 14): array
     {
@@ -595,8 +595,8 @@ class Projection
      * works out how much of each due the running balance cannot cover. With a
      * null starting balance there is nothing to check, so nothing is short.
      *
-     * @param  list<array{kind: string, name: string, amount: int, date: string, autopay: bool, sourceId: int|null, received: bool}>  $events
-     * @return list<array{kind: string, name: string, amount: int, date: string, autopay: bool, sourceId: int|null, received: bool, short: int}>
+     * @param  list<array{kind: string, name: string, amount: int, date: string, autopay: bool, sourceId: int|null, billId: int|null, received: bool}>  $events
+     * @return list<array{kind: string, name: string, amount: int, date: string, autopay: bool, sourceId: int|null, billId: int|null, received: bool, short: int}>
      */
     private function settle(array $events, ?int $cash): array
     {
@@ -682,7 +682,7 @@ class Projection
      * @param  Collection<int, Debt>  $debts
      * @param  Collection<int, Bill>  $bills
      * @param  Collection<int, IncomeSource>  $sources
-     * @return list<array{kind: string, name: string, amount: int, date: string, autopay: bool, sourceId: int|null, received: bool}>
+     * @return list<array{kind: string, name: string, amount: int, date: string, autopay: bool, sourceId: int|null, billId: int|null, received: bool}>
      */
     private function events(Collection $debts, Collection $bills, Collection $sources, CarbonInterface $today, int $days): array
     {
@@ -693,7 +693,7 @@ class Projection
 
         foreach ($debts as $debt) {
             foreach ($this->debtDues($debt, $start, $end) as $due) {
-                $items[] = ['kind' => 'debt', 'name' => $debt->name, 'amount' => $due['amount'], 'date' => $due['date'], 'autopay' => false, 'sourceId' => null, 'received' => false];
+                $items[] = ['kind' => 'debt', 'name' => $debt->name, 'amount' => $due['amount'], 'date' => $due['date'], 'autopay' => false, 'sourceId' => null, 'billId' => null, 'received' => false];
             }
         }
 
@@ -707,7 +707,7 @@ class Projection
 
             foreach ($dates as $date) {
                 if ($date->greaterThanOrEqualTo($start) && $date->lessThanOrEqualTo($end)) {
-                    $items[] = ['kind' => 'bill', 'name' => $bill->name, 'amount' => $bill->amount, 'date' => $date->toDateString(), 'autopay' => $bill->autopay, 'sourceId' => null, 'received' => $bill->isPaidInMonthOf($date)];
+                    $items[] = ['kind' => 'bill', 'name' => $bill->name, 'amount' => $bill->amount, 'date' => $date->toDateString(), 'autopay' => $bill->autopay, 'sourceId' => null, 'billId' => $bill->id, 'received' => $bill->isPaidInMonthOf($date)];
                 }
             }
         }
@@ -718,7 +718,7 @@ class Projection
                     $date = $this->dayInMonth($start->startOfMonth()->addMonths($offset), $payDay);
 
                     if ($date->greaterThanOrEqualTo($start) && $date->lessThanOrEqualTo($end)) {
-                        $items[] = ['kind' => 'income', 'name' => $source->name, 'amount' => $source->amount, 'date' => $date->toDateString(), 'autopay' => false, 'sourceId' => $source->id, 'received' => $this->isReceived($source, $date)];
+                        $items[] = ['kind' => 'income', 'name' => $source->name, 'amount' => $source->amount, 'date' => $date->toDateString(), 'autopay' => false, 'sourceId' => $source->id, 'billId' => null, 'received' => $this->isReceived($source, $date)];
                     }
                 }
             }

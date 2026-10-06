@@ -162,26 +162,35 @@ class TransactionsController extends Controller
     }
 
     /**
-     * Opens the form ready to record a pay day as received, from the
-     * "Received" link on the Overview.
+     * Opens the form ready to record a pay day as received, or a bill as
+     * paid, from the "Received?" and "Mark paid" links on the Overview.
      *
-     * @return array{incomeSourceId: int, name: string, amount: int, date: string}|null
+     * @return array{incomeSourceId: int|null, billId: int|null, name: string, amount: int, date: string}|null
      */
     private function prefill(Request $request): ?array
     {
-        $source = $request->filled('income') ? $request->user()->incomeSources()->find($request->integer('income')) : null;
+        $user = $request->user();
+        $source = $request->filled('income') ? $user->incomeSources()->find($request->integer('income')) : null;
+        $bill = $source === null && $request->filled('bill') ? $user->bills()->find($request->integer('bill')) : null;
+        $row = $source ?? $bill;
 
-        if ($source === null) {
+        if ($row === null) {
             return null;
         }
 
         $date = (string) $request->query('date', '');
+        $date = preg_match('/^\d{4}-\d{2}-\d{2}$/', $date) === 1 ? $date : Carbon::today()->toDateString();
+
+        if ($bill !== null && Carbon::parse($date)->isSameMonth(Carbon::today())) {
+            $date = Carbon::today()->toDateString();
+        }
 
         return [
-            'incomeSourceId' => $source->id,
-            'name' => $source->name,
-            'amount' => $source->amount,
-            'date' => preg_match('/^\d{4}-\d{2}-\d{2}$/', $date) === 1 ? $date : Carbon::today()->toDateString(),
+            'incomeSourceId' => $source?->id,
+            'billId' => $bill?->id,
+            'name' => $row->name,
+            'amount' => $row->amount,
+            'date' => $date,
         ];
     }
 }
