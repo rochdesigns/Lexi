@@ -59,6 +59,15 @@ class Bill extends Model
     }
 
     /**
+     * Whether a payment is logged for the due on $due: anything dated after the
+     * previous due up to the due itself, so a payment made early counts.
+     */
+    public function isPaidForDue(CarbonInterface $due, CarbonInterface $previousDue): bool
+    {
+        return $this->payments->contains(fn (Transaction $payment): bool => $payment->date->greaterThan($previousDue) && $payment->date->lessThanOrEqualTo($due));
+    }
+
+    /**
      * Whether a payment is logged in the calendar month of the given date.
      */
     public function isPaidInMonthOf(CarbonInterface $date): bool

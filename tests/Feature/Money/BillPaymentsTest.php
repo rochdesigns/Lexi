@@ -189,3 +189,34 @@ test('a paid bill or debt is not taken off the cash again when checking for shor
 
     expect($shortfalls())->toBe([]);
 });
+
+test('a bill paid early, in the month before it falls due, shows as paid', function (): void {
+    $bill = Bill::factory()->for($this->user)->create(['due_day' => 5]);
+    $upcoming = fn (): array => app(Projection::class)->upcoming(collect(), $this->user->bills()->get(), collect(), Carbon::parse('2026-10-28'), 14);
+
+    Transaction::factory()->for($this->user)->create(['date' => '2026-10-04', 'account_id' => $this->account->id, 'bill_id' => $bill->id]);
+    expect($upcoming()[0]['date'])->toBe('2026-11-05')->and($upcoming()[0]['received'])->toBeFalse();
+
+    Transaction::factory()->for($this->user)->create(['date' => '2026-10-27', 'account_id' => $this->account->id, 'bill_id' => $bill->id]);
+    expect($upcoming()[0]['received'])->toBeTrue();
+});
+
+test('a debt paid early, in the month before it falls due, shows as paid', function (): void {
+    $loan = loanDueOn20th($this->user);
+    $upcoming = fn (): array => app(Projection::class)->upcoming($this->user->debts()->with(['paymentPlans.debt', 'payments'])->get(), collect(), collect(), Carbon::parse('2026-10-25'), 30);
+
+    expect($upcoming()[0]['date'])->toBe('2026-11-20');
+
+    DebtPayment::factory()->for($loan)->create(['date' => '2026-10-22', 'amount' => 100_000]);
+
+    expect($upcoming()[0]['received'])->toBeTrue();
+});
+
+test('an early payment settles only the due it is ahead of', function (): void {
+    $loan = loanDueOn20th($this->user);
+    DebtPayment::factory()->for($loan)->create(['date' => '2026-10-12', 'amount' => 100_000]);
+
+    $items = app(Projection::class)->upcoming($this->user->debts()->with(['paymentPlans.debt', 'payments'])->get(), collect(), collect(), Carbon::today(), 40);
+
+    expect($items[0]['received'])->toBeTrue()->and($items[1]['received'])->toBeFalse();
+});
