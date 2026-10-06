@@ -33,10 +33,12 @@ class TransactionsController extends Controller
         $requested = (string) $request->query('month', $current);
         $month = preg_match('/^\d{4}-(0[1-9]|1[0-2])$/', $requested) === 1 ? $requested : $current;
         $first = Carbon::createFromFormat('Y-m-d', $month.'-01')->startOfDay();
+        $accountFilter = $request->filled('account') ? $user->accounts()->find($request->integer('account'))?->id : null;
 
         $transactions = $user->transactions()
             ->counted()
             ->with(['account', 'toAccount', 'debt', 'bill', 'statementRow', 'customCategory'])
+            ->when($accountFilter, fn ($query) => $query->where(fn ($query) => $query->where('account_id', $accountFilter)->orWhere('to_account_id', $accountFilter)))
             ->where('date', '>=', $first->toDateString())
             ->where('date', '<', $first->copy()->addMonth()->toDateString())
             ->orderByDesc('date')
@@ -46,6 +48,7 @@ class TransactionsController extends Controller
             ->whereIn('debt_id', $user->debts()->select('id'))
             ->whereNotNull('account_id')
             ->with(['account', 'debt'])
+            ->when($accountFilter, fn ($query) => $query->where('account_id', $accountFilter))
             ->where('date', '>=', $first->toDateString())
             ->where('date', '<', $first->copy()->addMonth()->toDateString())
             ->orderByDesc('date')
@@ -57,6 +60,7 @@ class TransactionsController extends Controller
         return Inertia::render('Money/Transactions', [
             'month' => $month,
             'currentMonth' => $current,
+            'accountFilter' => $accountFilter,
             'today' => Carbon::today()->toDateString(),
             'transactions' => $transactions->map(fn (Transaction $transaction): array => [
                 'id' => $transaction->id,

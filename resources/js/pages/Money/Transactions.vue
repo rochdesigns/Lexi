@@ -31,6 +31,7 @@ type CardGuard = {
 
 const props = defineProps<{
     month: string;
+    accountFilter: number | null;
     currentMonth: string;
     today: string;
     transactions: TransactionRow[];
@@ -311,9 +312,14 @@ function shiftMonth(delta: number): string {
     return `${next.getFullYear()}-${String(next.getMonth() + 1).padStart(2, '0')}`;
 }
 
-function goTo(month: string): void {
+function goTo(
+    month: string,
+    account: number | null = props.accountFilter,
+): void {
     router.get(
-        transactionsRoute({ query: { month } }).url,
+        transactionsRoute({
+            query: { month, ...(account ? { account } : {}) },
+        }).url,
         {},
         { preserveScroll: true, preserveState: true },
     );
@@ -798,7 +804,30 @@ const errorClass = 'mt-1 text-[12px] text-red-600';
                     >This month</Button
                 >
             </div>
-            <div class="flex items-center gap-3">
+            <div class="flex flex-wrap items-center gap-3">
+                <select
+                    v-if="accounts.length > 1"
+                    :value="accountFilter ?? ''"
+                    aria-label="Filter by account"
+                    class="rounded-[11px] border border-[var(--hab-card-border)] bg-[var(--hab-card-bg)] px-3 py-1.5 text-[13.5px] text-[var(--hab-ink)] outline-none focus:border-[var(--hab-accent)]"
+                    @change="
+                        goTo(
+                            month,
+                            Number(
+                                ($event.target as HTMLSelectElement).value,
+                            ) || null,
+                        )
+                    "
+                >
+                    <option value="">All accounts</option>
+                    <option
+                        v-for="account in accounts"
+                        :key="account.id"
+                        :value="account.id"
+                    >
+                        {{ account.name }}
+                    </option>
+                </select>
                 <p class="text-[14px]" style="color: var(--hab-muted)">
                     Spent
                     <span
