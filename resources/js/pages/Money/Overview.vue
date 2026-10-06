@@ -427,7 +427,7 @@ const cardStyle =
                     </div>
                     <div class="flex shrink-0 items-center gap-3">
                         <span
-                            v-if="item.kind !== 'debt' && item.received"
+                            v-if="item.received"
                             class="rounded-full px-2.5 py-0.5 text-[11.5px] font-semibold"
                             style="
                                 background: color-mix(
@@ -438,7 +438,7 @@ const cardStyle =
                                 color: var(--hab-accent);
                             "
                             >{{
-                                item.kind === 'bill' ? 'Paid' : 'Received'
+                                item.kind === 'income' ? 'Received' : 'Paid'
                             }}</span
                         >
                         <Link

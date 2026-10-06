@@ -594,6 +594,8 @@ class Projection
      * Walks the events in date order, pay days before dues on the same day, and
      * works out how much of each due the running balance cannot cover. With a
      * null starting balance there is nothing to check, so nothing is short.
+     * A due that is already paid is not taken off again, as the balance has
+     * come down by it.
      *
      * @param  list<array{kind: string, name: string, amount: int, date: string, autopay: bool, sourceId: int|null, billId: int|null, received: bool}>  $events
      * @return list<array{kind: string, name: string, amount: int, date: string, autopay: bool, sourceId: int|null, billId: int|null, received: bool, short: int}>
@@ -610,7 +612,7 @@ class Projection
 
             if ($event['kind'] === 'income') {
                 $balance += $event['received'] ? 0 : $event['amount'];
-            } else {
+            } elseif (! $event['received']) {
                 $balance -= $event['amount'];
                 $short = $cash === null ? 0 : max(0, min($event['amount'], -$balance));
             }
@@ -693,7 +695,7 @@ class Projection
 
         foreach ($debts as $debt) {
             foreach ($this->debtDues($debt, $start, $end) as $due) {
-                $items[] = ['kind' => 'debt', 'name' => $debt->name, 'amount' => $due['amount'], 'date' => $due['date'], 'autopay' => false, 'sourceId' => null, 'billId' => null, 'received' => false];
+                $items[] = ['kind' => 'debt', 'name' => $debt->name, 'amount' => $due['amount'], 'date' => $due['date'], 'autopay' => false, 'sourceId' => null, 'billId' => null, 'received' => $this->paidInMonth($debt, CarbonImmutable::parse($due['date'])) >= $due['amount']];
             }
         }
 
