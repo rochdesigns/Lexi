@@ -282,6 +282,21 @@ class Projection
             ->sum('amount');
     }
 
+    /** Payments dated after $after up to and including $until, so an early payment counts for the due it is ahead of. */
+    private function paidBetween(Debt $debt, string $after, string $until): int
+    {
+        return $debt->payments
+            ->filter(fn (DebtPayment $payment): bool => $payment->date->toDateString() > $after && $payment->date->toDateString() <= $until)
+            ->sum('amount');
+    }
+
+    private function previousBillDate(Bill $bill, CarbonImmutable $due): CarbonImmutable
+    {
+        return $bill->frequency === BillFrequency::Monthly
+            ? $this->dayInMonth($due->startOfMonth()->subMonthNoOverflow(), $bill->due_day)
+            : $due->subYearNoOverflow();
+    }
+
     /** Plan balances plus any outstanding or revolving balance. */
     public function totalRemaining(Debt $debt, CarbonInterface $asOf): int
     {
@@ -464,7 +479,7 @@ class Projection
      * @param  Collection<int, Debt>  $debts
      * @param  Collection<int, Bill>  $bills
      * @param  Collection<int, IncomeSource>  $sources
-     * @return list<array{kind: string, name: string, amount: int, date: string, autopay: bool, sourceId: int|null, received: bool}>
+     * @return list<array{kind: string, name: string, amount: int, date: string, autopay: bool, sourceId: int|null, billId: int|null, received: bool}>
      */
     public function upcoming(Collection $debts, Collection $bills, Collection $sources, CarbonInterface $today, int $days = 14): array
     {
@@ -594,9 +609,11 @@ class Projection
      * Walks the events in date order, pay days before dues on the same day, and
      * works out how much of each due the running balance cannot cover. With a
      * null starting balance there is nothing to check, so nothing is short.
+     * A due that is already paid is not taken off again, as the balance has
+     * come down by it.
      *
-     * @param  list<array{kind: string, name: string, amount: int, date: string, autopay: bool, sourceId: int|null, received: bool}>  $events
-     * @return list<array{kind: string, name: string, amount: int, date: string, autopay: bool, sourceId: int|null, received: bool, short: int}>
+     * @param  list<array{kind: string, name: string, amount: int, date: string, autopay: bool, sourceId: int|null, billId: int|null, received: bool}>  $events
+     * @return list<array{kind: string, name: string, amount: int, date: string, autopay: bool, sourceId: int|null, billId: int|null, received: bool, short: int}>
      */
     private function settle(array $events, ?int $cash): array
     {
@@ -610,7 +627,7 @@ class Projection
 
             if ($event['kind'] === 'income') {
                 $balance += $event['received'] ? 0 : $event['amount'];
-            } else {
+            } elseif (! $event['received']) {
                 $balance -= $event['amount'];
                 $short = $cash === null ? 0 : max(0, min($event['amount'], -$balance));
             }
@@ -644,7 +661,9 @@ class Projection
      * for that month. Later ones use only what the plans bill that month, since
      * a card's minimum on a statement that has not closed yet is not known.
      *
-     * @return list<array{date: string, amount: int}>
+     * previous is the due date before it, which an early payment is counted from.
+     *
+     * @return list<array{date: string, previous: string, amount: int}>
      */
     private function debtDues(Debt $debt, CarbonImmutable $start, CarbonImmutable $end): array
     {
@@ -658,11 +677,14 @@ class Projection
         $amount = $isCard ? $this->dueThisMonth($debt, $start) : $this->billedIn($debt, $date, $start);
         $closes = $isCard ? ($this->pendingStatement($debt, $start) ?? $this->nextStatement($debt, $start))['closes_on'] : null;
         $dues = [];
+        $previous = $date->subMonthNoOverflow();
 
         for ($i = 0; $i < 60 && $date->lessThanOrEqualTo($end); $i++) {
             if ($amount > 0) {
-                $dues[] = ['date' => $date->toDateString(), 'amount' => $amount];
+                $dues[] = ['date' => $date->toDateString(), 'previous' => $previous->toDateString(), 'amount' => $amount];
             }
+
+            $previous = $date;
 
             if ($isCard) {
                 $closes = $this->dayInMonth($closes->addMonthNoOverflow(), $debt->cardDetail->statement_day);
@@ -682,7 +704,7 @@ class Projection
      * @param  Collection<int, Debt>  $debts
      * @param  Collection<int, Bill>  $bills
      * @param  Collection<int, IncomeSource>  $sources
-     * @return list<array{kind: string, name: string, amount: int, date: string, autopay: bool, sourceId: int|null, received: bool}>
+     * @return list<array{kind: string, name: string, amount: int, date: string, autopay: bool, sourceId: int|null, billId: int|null, received: bool}>
      */
     private function events(Collection $debts, Collection $bills, Collection $sources, CarbonInterface $today, int $days): array
     {
@@ -693,7 +715,7 @@ class Projection
 
         foreach ($debts as $debt) {
             foreach ($this->debtDues($debt, $start, $end) as $due) {
-                $items[] = ['kind' => 'debt', 'name' => $debt->name, 'amount' => $due['amount'], 'date' => $due['date'], 'autopay' => false, 'sourceId' => null, 'received' => false];
+                $items[] = ['kind' => 'debt', 'name' => $debt->name, 'amount' => $due['amount'], 'date' => $due['date'], 'autopay' => false, 'sourceId' => null, 'billId' => null, 'received' => $this->paidBetween($debt, $due['previous'], $due['date']) >= $due['amount']];
             }
         }
 
@@ -707,7 +729,7 @@ class Projection
 
             foreach ($dates as $date) {
                 if ($date->greaterThanOrEqualTo($start) && $date->lessThanOrEqualTo($end)) {
-                    $items[] = ['kind' => 'bill', 'name' => $bill->name, 'amount' => $bill->amount, 'date' => $date->toDateString(), 'autopay' => $bill->autopay, 'sourceId' => null, 'received' => $bill->isPaidInMonthOf($date)];
+                    $items[] = ['kind' => 'bill', 'name' => $bill->name, 'amount' => $bill->amount, 'date' => $date->toDateString(), 'autopay' => $bill->autopay, 'sourceId' => null, 'billId' => $bill->id, 'received' => $bill->isPaidForDue($date, $this->previousBillDate($bill, $date))];
                 }
             }
         }
@@ -718,7 +740,7 @@ class Projection
                     $date = $this->dayInMonth($start->startOfMonth()->addMonths($offset), $payDay);
 
                     if ($date->greaterThanOrEqualTo($start) && $date->lessThanOrEqualTo($end)) {
-                        $items[] = ['kind' => 'income', 'name' => $source->name, 'amount' => $source->amount, 'date' => $date->toDateString(), 'autopay' => false, 'sourceId' => $source->id, 'received' => $this->isReceived($source, $date)];
+                        $items[] = ['kind' => 'income', 'name' => $source->name, 'amount' => $source->amount, 'date' => $date->toDateString(), 'autopay' => false, 'sourceId' => $source->id, 'billId' => null, 'received' => $this->isReceived($source, $date)];
                     }
                 }
             }

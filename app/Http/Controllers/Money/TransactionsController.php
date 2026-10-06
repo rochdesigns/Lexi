@@ -33,10 +33,12 @@ class TransactionsController extends Controller
         $requested = (string) $request->query('month', $current);
         $month = preg_match('/^\d{4}-(0[1-9]|1[0-2])$/', $requested) === 1 ? $requested : $current;
         $first = Carbon::createFromFormat('Y-m-d', $month.'-01')->startOfDay();
+        $accountFilter = $request->filled('account') ? $user->accounts()->find($request->integer('account'))?->id : null;
 
         $transactions = $user->transactions()
             ->counted()
             ->with(['account', 'toAccount', 'debt', 'bill', 'statementRow', 'customCategory'])
+            ->when($accountFilter, fn ($query) => $query->where(fn ($query) => $query->where('account_id', $accountFilter)->orWhere('to_account_id', $accountFilter)))
             ->where('date', '>=', $first->toDateString())
             ->where('date', '<', $first->copy()->addMonth()->toDateString())
             ->orderByDesc('date')
@@ -46,6 +48,7 @@ class TransactionsController extends Controller
             ->whereIn('debt_id', $user->debts()->select('id'))
             ->whereNotNull('account_id')
             ->with(['account', 'debt'])
+            ->when($accountFilter, fn ($query) => $query->where('account_id', $accountFilter))
             ->where('date', '>=', $first->toDateString())
             ->where('date', '<', $first->copy()->addMonth()->toDateString())
             ->orderByDesc('date')
@@ -57,6 +60,7 @@ class TransactionsController extends Controller
         return Inertia::render('Money/Transactions', [
             'month' => $month,
             'currentMonth' => $current,
+            'accountFilter' => $accountFilter,
             'today' => Carbon::today()->toDateString(),
             'transactions' => $transactions->map(fn (Transaction $transaction): array => [
                 'id' => $transaction->id,
@@ -162,26 +166,35 @@ class TransactionsController extends Controller
     }
 
     /**
-     * Opens the form ready to record a pay day as received, from the
-     * "Received" link on the Overview.
+     * Opens the form ready to record a pay day as received, or a bill as
+     * paid, from the "Received?" and "Mark paid" links on the Overview.
      *
-     * @return array{incomeSourceId: int, name: string, amount: int, date: string}|null
+     * @return array{incomeSourceId: int|null, billId: int|null, name: string, amount: int, date: string}|null
      */
     private function prefill(Request $request): ?array
     {
-        $source = $request->filled('income') ? $request->user()->incomeSources()->find($request->integer('income')) : null;
+        $user = $request->user();
+        $source = $request->filled('income') ? $user->incomeSources()->find($request->integer('income')) : null;
+        $bill = $source === null && $request->filled('bill') ? $user->bills()->find($request->integer('bill')) : null;
+        $row = $source ?? $bill;
 
-        if ($source === null) {
+        if ($row === null) {
             return null;
         }
 
         $date = (string) $request->query('date', '');
+        $date = preg_match('/^\d{4}-\d{2}-\d{2}$/', $date) === 1 ? $date : Carbon::today()->toDateString();
+
+        if ($bill !== null && Carbon::parse($date)->isSameMonth(Carbon::today())) {
+            $date = Carbon::today()->toDateString();
+        }
 
         return [
-            'incomeSourceId' => $source->id,
-            'name' => $source->name,
-            'amount' => $source->amount,
-            'date' => preg_match('/^\d{4}-\d{2}-\d{2}$/', $date) === 1 ? $date : Carbon::today()->toDateString(),
+            'incomeSourceId' => $source?->id,
+            'billId' => $bill?->id,
+            'name' => $row->name,
+            'amount' => $row->amount,
+            'date' => $date,
         ];
     }
 }

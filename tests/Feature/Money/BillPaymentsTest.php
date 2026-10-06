@@ -2,6 +2,9 @@
 
 use App\Models\Money\Account;
 use App\Models\Money\Bill;
+use App\Models\Money\Debt;
+use App\Models\Money\DebtPayment;
+use App\Models\Money\PaymentPlan;
 use App\Models\Money\Transaction;
 use App\Models\User;
 use App\Services\Money\Projection;
@@ -93,4 +96,127 @@ test('next month\'s bill is still due after this month\'s is paid', function ():
     $items = app(Projection::class)->upcoming(collect(), $this->user->bills()->get(), collect(), Carbon::parse('2026-10-15'), 30);
 
     expect($items)->toHaveCount(1)->and($items[0]['date'])->toBe('2026-11-05')->and($items[0]['received'])->toBeFalse();
+});
+
+test('the overview gives a bill\'s id so it can be marked paid', function (): void {
+    $bill = Bill::factory()->for($this->user)->create(['due_day' => 25]);
+
+    $this->actingAs($this->user)->get('/money')->assertInertia(fn ($page) => $page
+        ->where('upcoming.0.billId', $bill->id)
+        ->where('upcoming.0.sourceId', null));
+});
+
+test('mark paid opens the expense form with the bill ready, dated today', function (): void {
+    $bill = Bill::factory()->for($this->user)->create(['name' => 'Meralco', 'amount' => 350_000, 'account_id' => $this->account->id]);
+
+    $this->actingAs($this->user)->get('/money/transactions?bill='.$bill->id.'&date=2026-10-25')->assertInertia(fn ($page) => $page
+        ->where('prefill.billId', $bill->id)
+        ->where('prefill.incomeSourceId', null)
+        ->where('prefill.name', 'Meralco')
+        ->where('prefill.amount', 350_000)
+        ->where('prefill.date', '2026-10-15'));
+});
+
+test('mark paid keeps the due date when the bill falls in a later month', function (): void {
+    $bill = Bill::factory()->for($this->user)->create();
+
+    $this->actingAs($this->user)->get('/money/transactions?bill='.$bill->id.'&date=2026-11-02')->assertInertia(fn ($page) => $page
+        ->where('prefill.date', '2026-11-02'));
+});
+
+test('mark paid ignores someone else\'s bill', function (): void {
+    $bill = Bill::factory()->create();
+
+    $this->actingAs($this->user)->get('/money/transactions?bill='.$bill->id)->assertInertia(fn ($page) => $page
+        ->where('prefill', null));
+});
+
+function loanDueOn20th(User $user): Debt
+{
+    $loan = Debt::factory()->for($user)->create(['name' => 'RCBC', 'due_day' => 20]);
+    PaymentPlan::factory()->for($loan)->create(['principal' => 600_000, 'monthly_amount' => 100_000, 'total_months' => 6, 'start_month' => '2026-10-01']);
+
+    return $loan->load('paymentPlans');
+}
+
+test('a debt due is paid once this month\'s payments cover what is due', function (): void {
+    $loan = loanDueOn20th($this->user);
+    $upcoming = fn (): array => app(Projection::class)->upcoming($this->user->debts()->with(['paymentPlans.debt', 'payments'])->get(), collect(), collect(), Carbon::today(), 14);
+
+    expect($upcoming()[0]['received'])->toBeFalse();
+
+    DebtPayment::factory()->for($loan)->create(['date' => '2026-10-10', 'amount' => 40_000]);
+    expect($upcoming()[0]['received'])->toBeFalse();
+
+    DebtPayment::factory()->for($loan)->create(['date' => '2026-10-12', 'amount' => 60_000]);
+    expect($upcoming()[0]['received'])->toBeTrue();
+});
+
+test('a payment this month does not settle next month\'s due', function (): void {
+    $loan = loanDueOn20th($this->user);
+    DebtPayment::factory()->for($loan)->create(['date' => '2026-10-12', 'amount' => 100_000]);
+
+    $items = app(Projection::class)->upcoming($this->user->debts()->with(['paymentPlans.debt', 'payments'])->get(), collect(), collect(), Carbon::today(), 40);
+
+    expect($items)->toHaveCount(2)
+        ->and($items[0]['received'])->toBeTrue()
+        ->and($items[1]['date'])->toBe('2026-11-20')
+        ->and($items[1]['received'])->toBeFalse();
+});
+
+test('the overview and the calendar show a paid debt as paid', function (): void {
+    $loan = loanDueOn20th($this->user);
+    DebtPayment::factory()->for($loan)->create(['date' => '2026-10-12', 'amount' => 100_000]);
+
+    $this->actingAs($this->user)->get('/money')->assertInertia(fn ($page) => $page
+        ->where('upcoming.0.name', 'RCBC')
+        ->where('upcoming.0.received', true));
+    $this->actingAs($this->user)->get('/money/calendar')->assertInertia(fn ($page) => $page
+        ->where('days.0.items.0.name', 'RCBC')
+        ->where('days.0.items.0.received', true));
+});
+
+test('a paid bill or debt is not taken off the cash again when checking for shortfalls', function (): void {
+    $this->account->update(['balance' => 50_000]);
+    $bill = Bill::factory()->for($this->user)->create(['amount' => 150_000, 'due_day' => 25]);
+    $loan = loanDueOn20th($this->user);
+    $shortfalls = fn (): array => app(Projection::class)->shortfalls($this->user->debts()->with(['paymentPlans.debt', 'payments'])->get(), $this->user->bills()->get(), collect(), $this->user->accounts()->get(), Carbon::today());
+
+    expect($shortfalls())->not->toBeEmpty();
+
+    Transaction::factory()->for($this->user)->create(['date' => '2026-10-12', 'account_id' => $this->account->id, 'bill_id' => $bill->id]);
+    DebtPayment::factory()->for($loan)->create(['date' => '2026-10-12', 'amount' => 100_000]);
+
+    expect($shortfalls())->toBe([]);
+});
+
+test('a bill paid early, in the month before it falls due, shows as paid', function (): void {
+    $bill = Bill::factory()->for($this->user)->create(['due_day' => 5]);
+    $upcoming = fn (): array => app(Projection::class)->upcoming(collect(), $this->user->bills()->get(), collect(), Carbon::parse('2026-10-28'), 14);
+
+    Transaction::factory()->for($this->user)->create(['date' => '2026-10-04', 'account_id' => $this->account->id, 'bill_id' => $bill->id]);
+    expect($upcoming()[0]['date'])->toBe('2026-11-05')->and($upcoming()[0]['received'])->toBeFalse();
+
+    Transaction::factory()->for($this->user)->create(['date' => '2026-10-27', 'account_id' => $this->account->id, 'bill_id' => $bill->id]);
+    expect($upcoming()[0]['received'])->toBeTrue();
+});
+
+test('a debt paid early, in the month before it falls due, shows as paid', function (): void {
+    $loan = loanDueOn20th($this->user);
+    $upcoming = fn (): array => app(Projection::class)->upcoming($this->user->debts()->with(['paymentPlans.debt', 'payments'])->get(), collect(), collect(), Carbon::parse('2026-10-25'), 30);
+
+    expect($upcoming()[0]['date'])->toBe('2026-11-20');
+
+    DebtPayment::factory()->for($loan)->create(['date' => '2026-10-22', 'amount' => 100_000]);
+
+    expect($upcoming()[0]['received'])->toBeTrue();
+});
+
+test('an early payment settles only the due it is ahead of', function (): void {
+    $loan = loanDueOn20th($this->user);
+    DebtPayment::factory()->for($loan)->create(['date' => '2026-10-12', 'amount' => 100_000]);
+
+    $items = app(Projection::class)->upcoming($this->user->debts()->with(['paymentPlans.debt', 'payments'])->get(), collect(), collect(), Carbon::today(), 40);
+
+    expect($items[0]['received'])->toBeTrue()->and($items[1]['received'])->toBeFalse();
 });

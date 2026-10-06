@@ -330,7 +330,7 @@ const cardStyle =
                             }}<template v-if="item.received">
                                 ·
                                 {{
-                                    item.kind === 'bill' ? 'paid' : 'received'
+                                    item.kind === 'income' ? 'received' : 'paid'
                                 }}</template
                             ><template v-if="item.autopay">
                                 · automatic</template

@@ -112,7 +112,7 @@ test('the received link opens the form with that income filled in', function ():
     $theirs = IncomeSource::factory()->create();
 
     $this->actingAs($this->user)->get("/money/transactions?income={$source->id}&date=2026-10-30")->assertInertia(fn ($page) => $page
-        ->where('prefill', ['incomeSourceId' => $source->id, 'name' => 'Salary', 'amount' => 2_500_000, 'date' => '2026-10-30'])
+        ->where('prefill', ['incomeSourceId' => $source->id, 'billId' => null, 'name' => 'Salary', 'amount' => 2_500_000, 'date' => '2026-10-30'])
         ->has('incomeSources', 1));
     $this->actingAs($this->user)->get("/money/transactions?income={$source->id}&date=nonsense")->assertInertia(fn ($page) => $page->where('prefill.date', '2026-10-15'));
     $this->actingAs($this->user)->get("/money/transactions?income={$theirs->id}")->assertInertia(fn ($page) => $page->where('prefill', null));

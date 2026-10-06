@@ -2,6 +2,7 @@
 
 use App\Models\Money\Account;
 use App\Models\Money\Debt;
+use App\Models\Money\DebtPayment;
 use App\Models\Money\DebtType;
 use App\Models\Money\InterestType;
 use App\Models\Money\Transaction;
@@ -323,4 +324,41 @@ test('an expense cannot carry a destination account', function (): void {
 
     $this->actingAs($this->user)->post('/money/transactions', entry(['account_id' => $this->account->id, 'to_account_id' => $maya->id]))
         ->assertSessionHasErrors('to_account_id');
+});
+
+test('the transactions list can be filtered to one account', function (): void {
+    $other = Account::factory()->for($this->user)->create(['name' => 'BDO']);
+    $third = Account::factory()->for($this->user)->create(['name' => 'Maya']);
+    Transaction::factory()->for($this->user)->create(['date' => '2026-10-10', 'amount' => 10_000, 'account_id' => $this->account->id]);
+    Transaction::factory()->for($this->user)->create(['date' => '2026-10-11', 'amount' => 25_000, 'account_id' => $other->id]);
+    Transaction::factory()->for($this->user)->create(['date' => '2026-10-12', 'amount' => 5_000, 'kind' => 'transfer', 'category' => 'transfer', 'account_id' => $other->id, 'to_account_id' => $this->account->id]);
+
+    $this->actingAs($this->user)->get('/money/transactions')->assertInertia(fn ($page) => $page
+        ->where('accountFilter', null)
+        ->has('transactions', 3));
+    $this->actingAs($this->user)->get('/money/transactions?account='.$this->account->id)->assertInertia(fn ($page) => $page
+        ->where('accountFilter', $this->account->id)
+        ->has('transactions', 2)
+        ->where('total', 10_000));
+    $this->actingAs($this->user)->get('/money/transactions?account='.$third->id)->assertInertia(fn ($page) => $page
+        ->has('transactions', 0));
+});
+
+test('the account filter also narrows debt payments to the account they were paid from', function (): void {
+    $other = Account::factory()->for($this->user)->create(['name' => 'BDO']);
+    DebtPayment::factory()->for($this->card)->create(['date' => '2026-10-10', 'account_id' => $this->account->id]);
+    DebtPayment::factory()->for($this->card)->create(['date' => '2026-10-11', 'account_id' => $other->id]);
+
+    $this->actingAs($this->user)->get('/money/transactions?account='.$other->id)->assertInertia(fn ($page) => $page
+        ->has('debtPayments', 1)
+        ->where('debtPayments.0.paidWith', 'BDO'));
+});
+
+test('the account filter ignores an account that is not mine', function (): void {
+    $stranger = Account::factory()->create();
+    Transaction::factory()->for($this->user)->create(['date' => '2026-10-10', 'account_id' => $this->account->id]);
+
+    $this->actingAs($this->user)->get('/money/transactions?account='.$stranger->id)->assertInertia(fn ($page) => $page
+        ->where('accountFilter', null)
+        ->has('transactions', 1));
 });
