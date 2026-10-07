@@ -12,6 +12,7 @@ import {
     DialogHeader,
     DialogTitle,
 } from '@/components/ui/dialog';
+import { formError, formField, formLabel } from '@/utils/blueprint';
 import { categoryLabel, formatDay, formatPeso } from '@/utils/money';
 
 type PreviewRow = {
@@ -107,16 +108,14 @@ const statusLabel = {
 } as const;
 
 const statusStyle = {
-    new: 'background: color-mix(in srgb, var(--hab-accent) 16%, transparent); color: var(--hab-accent)',
-    matches: 'background: var(--hab-hairline); color: var(--hab-ink)',
-    imported: 'background: var(--hab-hairline); color: var(--hab-muted)',
+    new: 'background: color-mix(in srgb, var(--bp-accent) 16%, transparent); color: var(--bp-accent)',
+    matches: 'background: var(--bp-hair); color: var(--bp-ink)',
+    imported: 'background: var(--bp-hair); color: var(--bp-muted)',
 } as const;
 
-const fieldClass =
-    'w-full rounded-[11px] border border-[var(--hab-card-border)] bg-[var(--hab-card-bg)] px-3 py-2 text-[14px] text-[var(--hab-ink)] outline-none focus:border-[var(--hab-accent)]';
-const labelClass =
-    'mb-1 block text-[12.5px] font-semibold text-[var(--hab-ink-secondary)]';
-const errorClass = 'mt-1 text-[12px] text-red-600';
+const fieldClass = formField;
+const labelClass = formLabel;
+const errorClass = formError;
 </script>
 
 <template>
@@ -129,7 +128,7 @@ const errorClass = 'mt-1 text-[12px] text-red-600';
             <div
                 class="flex max-h-[70vh] flex-col gap-3.5 overflow-y-auto pt-1"
             >
-                <p class="text-[13px]" style="color: var(--hab-muted)">
+                <p class="text-[13px]" style="color: var(--bp-muted)">
                     Paste the charges from your statement, or choose a CSV file.
                     Each line needs a date, a description and an amount.
                     Payments and refunds are left out. Charges you already
@@ -178,7 +177,7 @@ const errorClass = 'mt-1 text-[12px] text-red-600';
                 <div v-if="preview">
                     <p
                         class="mb-2 text-[13.5px] font-semibold"
-                        style="color: var(--hab-ink)"
+                        style="color: var(--bp-ink)"
                     >
                         {{ preview.counts.new }} new,
                         {{ preview.counts.matches }} on your list,
@@ -188,8 +187,8 @@ const errorClass = 'mt-1 text-[12px] text-red-600';
                         >
                     </p>
                     <ul
-                        class="rounded-[12px]"
-                        style="border: 1px solid var(--hab-hairline)"
+                        class="rounded-[3px]"
+                        style="border: 1px solid var(--bp-hair)"
                     >
                         <li
                             v-for="(row, index) in preview.rows"
@@ -197,20 +196,20 @@ const errorClass = 'mt-1 text-[12px] text-red-600';
                             class="flex items-center justify-between gap-3 px-3 py-2"
                             :style="
                                 index > 0
-                                    ? 'border-top: 1px solid var(--hab-hairline)'
+                                    ? 'border-top: 1px solid var(--bp-hair)'
                                     : ''
                             "
                         >
                             <span class="min-w-0">
                                 <span
                                     class="block truncate text-[13.5px]"
-                                    style="color: var(--hab-ink)"
+                                    style="color: var(--bp-ink)"
                                 >
                                     {{ row.description || 'No description' }}
                                 </span>
                                 <span
                                     class="block text-[11.5px]"
-                                    style="color: var(--hab-muted)"
+                                    style="color: var(--bp-muted)"
                                 >
                                     {{ formatDay(row.date) }}
                                     <template v-if="row.matched">
@@ -233,7 +232,7 @@ const errorClass = 'mt-1 text-[12px] text-red-600';
                                 </span>
                                 <span
                                     class="text-[13.5px] font-semibold tabular-nums"
-                                    style="color: var(--hab-ink)"
+                                    style="color: var(--bp-ink)"
                                 >
                                     {{ formatPeso(row.amount) }}
                                 </span>
@@ -243,7 +242,7 @@ const errorClass = 'mt-1 text-[12px] text-red-600';
                     <ul
                         v-if="preview.skipped.length"
                         class="mt-2 text-[12px]"
-                        style="color: var(--hab-muted)"
+                        style="color: var(--bp-muted)"
                     >
                         <li v-for="skip in preview.skipped" :key="skip.line">
                             Line {{ skip.line }} skipped: {{ skip.reason }}.
