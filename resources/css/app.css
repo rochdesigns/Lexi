@@ -190,12 +190,6 @@
     --hab-spend-fill: linear-gradient(90deg, #ffd27a, #ffe9a8);
 }
 
-/* Remap shadcn sidebar color to Habitat theme */
-body[data-theme] {
-    --sidebar-background: var(--hab-sidebar-bg);
-    --sidebar: var(--hab-sidebar-bg);
-}
-
 /* ── Habitat theme palettes ──────────────────────────── */
 body[data-theme='ocean'] {
     --hab-sidebar-bg: #142731;
@@ -557,12 +551,134 @@ body[data-theme='garden'],
     user-select: none;
 }
 
-/* ── Habitat body background (authenticated pages) ───── */
-body[data-theme] {
-    background-color: var(--hab-app-bg);
-}
-
 /* ── Habitat progress bar transition ─────────────────── */
 .hab-progress-fill {
     transition: width 0.5s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+/* ── Blueprint (4a) system ───────────────────────────────
+   Paper, hairlines and one accent, set like a drawing sheet. The app shell
+   uses it everywhere; pages opt in with `.bp` as they are redesigned. The
+   accent follows the user's theme: blue by default, green for the forest
+   and garden themes, terracotta for clay. */
+:root {
+    --bp-paper: #f6f5f1;
+    --bp-sidebar: #efeee9;
+    --bp-card: #fdfcfa;
+    --bp-ink: #1b1b1a;
+    --bp-ink-2: #3d3c39;
+    --bp-muted: #6f6e69;
+    --bp-faint: #9a9892;
+    --bp-fainter: #b3b1aa;
+    --bp-line: #dcdad3;
+    --bp-hair: #e9e7e1;
+    --bp-hover: rgba(27, 27, 26, 0.045);
+    --bp-active: rgba(27, 27, 26, 0.065);
+    --bp-accent: #2d5da8;
+    --bp-soft: #cdd9ee;
+    --bp-tint: #eef2f9;
+    --bp-accent-line: #c3d1ea;
+    --bp-grid1: rgba(45, 93, 168, 0.13);
+    --bp-grid2: rgba(45, 93, 168, 0.055);
+    --bp-noise: url('data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 width=%22180%22 height=%22180%22%3E%3Cfilter id=%22n%22%3E%3CfeTurbulence type=%22fractalNoise%22 baseFrequency=%22.85%22 numOctaves=%223%22 stitchTiles=%22stitch%22/%3E%3CfeColorMatrix values=%220 0 0 0 0.1 0 0 0 0 0.1 0 0 0 0 0.1 0 0 0 0.09 0%22/%3E%3C/filter%3E%3Crect width=%22100%25%22 height=%22100%25%22 filter=%22url(%23n)%22/%3E%3C/svg%3E');
+    --bp-sans: 'IBM Plex Sans', ui-sans-serif, system-ui, sans-serif;
+}
+
+body[data-theme='forest'],
+body[data-theme='garden'] {
+    --bp-accent: #2f6b4f;
+    --bp-soft: #cfe0d5;
+    --bp-tint: #edf3ef;
+    --bp-accent-line: #bfd5c7;
+    --bp-grid1: rgba(47, 107, 79, 0.13);
+    --bp-grid2: rgba(47, 107, 79, 0.055);
+}
+
+body[data-theme='clay'] {
+    --bp-accent: #b4532a;
+    --bp-soft: #ecd2c4;
+    --bp-tint: #f8eee8;
+    --bp-accent-line: #e6c7b6;
+    --bp-grid1: rgba(180, 83, 42, 0.13);
+    --bp-grid2: rgba(180, 83, 42, 0.055);
+}
+
+/* The shell's sidebar is paper, not the old dark slab. */
+body[data-theme] {
+    --sidebar-background: var(--bp-sidebar);
+    --sidebar: var(--bp-sidebar);
+    --sidebar-border: var(--bp-line);
+    background-color: var(--bp-paper);
+}
+
+/* In a layer, so a page's own utility classes (a white label on a black
+   button, say) win over these defaults. */
+@layer components {
+    .bp {
+        font-family: var(--bp-sans);
+        color: var(--bp-ink);
+        -webkit-font-smoothing: antialiased;
+    }
+
+    .bp-mono {
+        font-family: var(--hab-mono);
+    }
+
+    /* Small uppercase mono caption, the sheet's labelling voice. */
+    .bp-caption {
+        font-family: var(--hab-mono);
+        font-size: 10px;
+        letter-spacing: 0.12em;
+        text-transform: uppercase;
+        color: var(--bp-muted);
+    }
+
+    /* Two-weight icon: a pale filled glyph under the outline. */
+    .bp-duo {
+        display: inline-grid;
+    }
+    .bp-duo > span {
+        grid-area: 1 / 1;
+        font-family: 'Material Symbols Rounded';
+        line-height: 1;
+        user-select: none;
+    }
+    .bp-duo > span:first-child {
+        font-variation-settings: 'FILL' 1;
+    }
+
+    .bp-grid-paper {
+        background-color: var(--bp-paper);
+        background-image:
+            linear-gradient(var(--bp-grid1) 1px, transparent 1px),
+            linear-gradient(90deg, var(--bp-grid1) 1px, transparent 1px),
+            linear-gradient(var(--bp-grid2) 1px, transparent 1px),
+            linear-gradient(90deg, var(--bp-grid2) 1px, transparent 1px);
+        background-size:
+            80px 80px,
+            80px 80px,
+            16px 16px,
+            16px 16px;
+        background-position: -1px -1px;
+    }
+
+    .bp-grid-fine {
+        background-color: var(--bp-paper);
+        background-image:
+            linear-gradient(var(--bp-grid2) 1px, transparent 1px),
+            linear-gradient(90deg, var(--bp-grid2) 1px, transparent 1px);
+        background-size: 12px 12px;
+    }
+}
+
+/* Header breadcrumb: once a detail page adds a crumb, the section label steps back. */
+.page-label:has(~ .page-crumb *) {
+    color: var(--bp-muted);
+    font-weight: 400;
+}
+
+/* Native ticks and radios inside blueprint pages and dialogs take the accent. */
+.bp input[type='checkbox'],
+.bp input[type='radio'] {
+    accent-color: var(--bp-accent);
 }

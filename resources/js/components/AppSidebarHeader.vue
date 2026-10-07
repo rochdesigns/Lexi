@@ -40,25 +40,30 @@ const sections: Section[] = [
     },
 ];
 
-const pageLabels: Record<string, string> = {
-    '/today': 'Today',
-    '/calendar': 'Calendar',
-    '/tasks': 'Tasks',
-    '/health': 'Health',
-    '/habits': 'Habits',
-    '/notes': 'Notes',
-    '/journal': 'Journal',
-    '/meals': 'Meals',
-    '/groceries': 'Groceries',
-    '/pets': 'Pets',
-    // Most specific first: the first prefix that matches wins, which also keeps
-    // detail pages such as /money/debts/1 labelled "Debts" rather than "1".
-    '/money/debts': 'Debts',
-    '/money/calendar': 'Calendar',
-    '/money/transactions': 'Transactions',
-    '/money/plan': 'Plan',
-    '/money': 'Overview',
-    '/photos': 'Photos',
+type Page = { label: string; icon: string };
+
+/**
+ * Each page's breadcrumb label and icon, matching the sidebar. Most specific
+ * first: the first prefix that matches wins, which also keeps detail pages such
+ * as /money/debts/1 labelled "Debts" rather than "1".
+ */
+const pages: Record<string, Page> = {
+    '/today': { label: 'Today', icon: 'wb_sunny' },
+    '/calendar': { label: 'Calendar', icon: 'calendar_month' },
+    '/tasks': { label: 'Tasks', icon: 'check_circle' },
+    '/health': { label: 'Health', icon: 'favorite' },
+    '/habits': { label: 'Habits', icon: 'loop' },
+    '/notes': { label: 'Notes', icon: 'sticky_note_2' },
+    '/journal': { label: 'Journal', icon: 'auto_stories' },
+    '/meals': { label: 'Meals', icon: 'restaurant' },
+    '/groceries': { label: 'Groceries', icon: 'shopping_cart' },
+    '/pets': { label: 'Pets', icon: 'pets' },
+    '/money/debts': { label: 'Debts', icon: 'credit_card' },
+    '/money/calendar': { label: 'Calendar', icon: 'event_upcoming' },
+    '/money/transactions': { label: 'Transactions', icon: 'receipt_long' },
+    '/money/plan': { label: 'Plan', icon: 'flag' },
+    '/money': { label: 'Overview', icon: 'account_balance_wallet' },
+    '/photos': { label: 'Photos', icon: 'photo_library' },
 };
 
 const activeSection = computed(
@@ -68,13 +73,14 @@ const activeSection = computed(
         ) ?? null,
 );
 
-const pageLabel = computed((): string => {
-    const matched = Object.keys(pageLabels).find((p) =>
-        currentUrl.value.startsWith(p),
-    );
+const pagePath = computed(
+    (): string | null =>
+        Object.keys(pages).find((p) => currentUrl.value.startsWith(p)) ?? null,
+);
 
-    if (matched) {
-        return pageLabels[matched];
+const pageLabel = computed((): string => {
+    if (pagePath.value) {
+        return pages[pagePath.value].label;
     }
 
     const segment = currentUrl.value.split('/').filter(Boolean).pop() ?? '';
@@ -82,98 +88,78 @@ const pageLabel = computed((): string => {
     return segment.charAt(0).toUpperCase() + segment.slice(1);
 });
 
-const notificationCount = 1;
+const pageIcon = computed(
+    (): string | null =>
+        (pagePath.value ? pages[pagePath.value].icon : null) ??
+        activeSection.value?.icon ??
+        null,
+);
+
+/** A detail page (deeper than its list) links the list's crumb back to it. */
+const pageLink = computed((): string | null =>
+    pagePath.value && currentUrl.value.split('?')[0] !== pagePath.value
+        ? pagePath.value
+        : null,
+);
 </script>
 
 <template>
     <header
-        class="sticky top-0 z-10 flex h-14 shrink-0 items-center gap-3 border-b px-4 md:px-6"
-        style="
-            background: rgba(239, 236, 228, 0.86);
-            backdrop-filter: blur(12px);
-            border-color: #e0dacd;
-        "
+        class="bp sticky top-0 z-10 flex h-[52px] shrink-0 items-center gap-3 bg-[var(--bp-paper)]/90 px-4 backdrop-blur md:px-6"
     >
         <!-- Mobile sidebar trigger -->
         <SidebarTrigger class="-ml-1 shrink-0 md:hidden" />
 
         <!-- Breadcrumb -->
-        <div class="flex items-center gap-1.5 text-[13px]">
+        <div class="flex min-w-0 items-center gap-[7px] text-[13px]">
+            <span
+                v-if="pageIcon"
+                class="ms text-[var(--bp-muted)]"
+                style="font-size: 16px"
+                aria-hidden="true"
+                >{{ pageIcon }}</span
+            >
             <template v-if="activeSection">
-                <span
-                    class="material-symbols-rounded"
-                    style="font-size: 16px; color: var(--hab-faint)"
-                >
-                    {{ activeSection.icon }}
-                </span>
-                <span style="color: var(--hab-faint)">{{
+                <span class="text-[var(--bp-muted)]">{{
                     activeSection.label
                 }}</span>
-                <span style="color: var(--hab-faint)">/</span>
+                <span class="text-[var(--bp-faint)]">/</span>
             </template>
-            <span class="font-semibold" style="color: var(--hab-ink)">{{
+            <Link
+                v-if="pageLink"
+                :href="pageLink"
+                class="page-label truncate font-medium hover:text-[var(--bp-ink)]"
+                >{{ pageLabel }}</Link
+            >
+            <span v-else class="page-label truncate font-medium">{{
                 pageLabel
             }}</span>
+            <!-- A detail page adds its own last crumb here with
+                 <Teleport defer to="#page-crumb">. -->
+            <span id="page-crumb" class="page-crumb contents" />
         </div>
 
         <!-- Right actions -->
-        <div class="ml-auto flex items-center gap-2">
-            <!-- Search -->
-            <div
-                class="hidden w-[200px] items-center gap-2 rounded-[11px] border px-3 py-1.5 sm:flex lg:w-[250px]"
-                style="border-color: #e0dacd; background: var(--hab-card-bg)"
+        <div class="ml-auto flex items-center gap-1">
+            <button
+                type="button"
+                class="hidden items-center gap-1.5 rounded px-2.5 py-1.5 text-[13px] text-[var(--bp-muted)] hover:bg-[var(--bp-hover)] sm:flex"
             >
-                <span
-                    class="material-symbols-rounded shrink-0"
-                    style="font-size: 16px; color: var(--hab-faint)"
+                <span class="ms" style="font-size: 17px" aria-hidden="true"
                     >search</span
                 >
-                <input
-                    type="text"
-                    placeholder="Search anything in your life…"
-                    class="min-w-0 flex-1 bg-transparent text-[13px] outline-none"
-                    style="color: var(--hab-ink)"
-                    readonly
-                />
-                <kbd
-                    class="rounded-[6px] px-1.5 py-0.5 text-[10px] font-medium"
-                    style="
-                        background: var(--hab-chip-fill);
-                        color: var(--hab-faint);
-                    "
-                    >⌘K</kbd
-                >
-            </div>
-
-            <!-- Notification bell -->
-            <button
-                class="relative flex h-9 w-9 items-center justify-center rounded-lg hover:bg-black/5"
-            >
-                <span
-                    class="material-symbols-rounded"
-                    style="font-size: 20px; color: var(--hab-ink-secondary)"
-                >
-                    notifications
-                </span>
-                <span
-                    v-if="notificationCount > 0"
-                    class="absolute top-1.5 right-1.5 h-2 w-2 rounded-full"
-                    style="background: #c0512c"
-                ></span>
+                <span>Search</span>
+                <kbd class="bp-mono text-[10px] text-[var(--bp-faint)]">⌘K</kbd>
             </button>
 
-            <!-- New entry: quick-add lands on Transactions in a later phase -->
+            <!-- A page puts its own main action here with
+                 <Teleport defer to="#page-actions">; the default shows otherwise. -->
+            <div id="page-actions" class="page-actions ml-1.5 flex gap-1.5" />
             <Link
                 href="/money/transactions"
-                class="flex items-center gap-1.5 rounded-[11px] px-3 py-2 text-[13px] font-semibold sm:px-4"
-                style="
-                    background: var(--hab-btn-dark-bg);
-                    color: var(--hab-btn-dark-ink);
-                "
+                class="default-action ml-1.5 flex items-center gap-1.5 rounded bg-[var(--bp-ink)] px-3 py-1.5 text-[13px] font-semibold text-[var(--bp-card)]"
             >
-                <span
-                    class="material-symbols-rounded"
-                    style="font-size: 16px; color: var(--hab-btn-dark-ink)"
+                <span class="ms" style="font-size: 16px" aria-hidden="true"
                     >add</span
                 >
                 <span class="hidden sm:inline">New entry</span>
@@ -181,3 +167,9 @@ const notificationCount = 1;
         </div>
     </header>
 </template>
+
+<style scoped>
+.page-actions:has(*) ~ .default-action {
+    display: none;
+}
+</style>
