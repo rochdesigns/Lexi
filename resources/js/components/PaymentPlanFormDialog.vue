@@ -15,6 +15,7 @@ import {
     DialogHeader,
     DialogTitle,
 } from '@/components/ui/dialog';
+import { formError, formField, formLabel } from '@/utils/blueprint';
 import { formatPeso, interestTypes, toPesos } from '@/utils/money';
 
 export type PaymentPlanItem = {
@@ -293,11 +294,9 @@ function submit(): void {
     }
 }
 
-const fieldClass =
-    'w-full rounded-[11px] border border-[var(--hab-card-border)] bg-[var(--hab-card-bg)] px-3 py-2 text-[14px] text-[var(--hab-ink)] outline-none focus:border-[var(--hab-accent)]';
-const labelClass =
-    'mb-1 block text-[12.5px] font-semibold text-[var(--hab-ink-secondary)]';
-const errorClass = 'mt-1 text-[12px] text-red-600';
+const fieldClass = formField;
+const labelClass = formLabel;
+const errorClass = formError;
 </script>
 
 <template>
@@ -363,7 +362,7 @@ const errorClass = 'mt-1 text-[12px] text-red-600';
                         />
                         <p
                             class="mt-1 text-[12px]"
-                            style="color: var(--hab-muted)"
+                            style="color: var(--bp-muted)"
                         >
                             Changing this changes the months.
                         </p>
@@ -413,18 +412,15 @@ const errorClass = 'mt-1 text-[12px] text-red-600';
                 <p
                     v-if="isAmortized"
                     class="-mt-2 text-[12px]"
-                    style="color: var(--hab-muted)"
+                    style="color: var(--bp-muted)"
                 >
                     Leave per month empty to work it out from the principal,
                     rate and months.
                 </p>
 
                 <div
-                    class="rounded-[11px] px-3 py-2.5 text-[13px]"
-                    style="
-                        background: var(--hab-surface);
-                        color: var(--hab-ink-secondary);
-                    "
+                    class="rounded-[3px] px-3 py-2.5 text-[13px]"
+                    style="background: var(--bp-paper); color: var(--bp-ink-2)"
                     aria-live="polite"
                 >
                     <template v-if="previewLines.length > 0">
@@ -436,7 +432,7 @@ const errorClass = 'mt-1 text-[12px] text-red-600';
                             {{ line }}
                         </p>
                     </template>
-                    <p v-else style="color: var(--hab-muted)">
+                    <p v-else style="color: var(--bp-muted)">
                         {{
                             missingMessage ??
                             'Fill in the amounts to see what this costs.'
@@ -446,7 +442,7 @@ const errorClass = 'mt-1 text-[12px] text-red-600';
 
                 <div
                     class="flex flex-col gap-2 text-[13.5px]"
-                    style="color: var(--hab-ink)"
+                    style="color: var(--bp-ink)"
                 >
                     <label v-if="isCard" class="flex items-center gap-2">
                         <input v-model="form.in_minimum" type="checkbox" />

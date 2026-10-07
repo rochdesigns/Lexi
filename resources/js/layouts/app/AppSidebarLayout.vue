@@ -31,7 +31,10 @@ onUnmounted(() => {
 <template>
     <AppShell variant="sidebar">
         <AppSidebar />
-        <AppContent variant="sidebar" class="overflow-x-hidden">
+        <AppContent
+            variant="sidebar"
+            class="overflow-x-hidden bg-[var(--bp-paper)] bg-(image:--bp-noise)"
+        >
             <AppSidebarHeader :breadcrumbs="breadcrumbs" />
             <slot />
         </AppContent>

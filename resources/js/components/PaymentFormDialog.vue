@@ -10,6 +10,7 @@ import {
     DialogHeader,
     DialogTitle,
 } from '@/components/ui/dialog';
+import { formError, formField, formLabel } from '@/utils/blueprint';
 
 const props = defineProps<{
     open: boolean;
@@ -60,11 +61,9 @@ function submit(): void {
     });
 }
 
-const fieldClass =
-    'w-full rounded-[11px] border border-[var(--hab-card-border)] bg-[var(--hab-card-bg)] px-3 py-2 text-[14px] text-[var(--hab-ink)] outline-none focus:border-[var(--hab-accent)]';
-const labelClass =
-    'mb-1 block text-[12.5px] font-semibold text-[var(--hab-ink-secondary)]';
-const errorClass = 'mt-1 text-[12px] text-red-600';
+const fieldClass = formField;
+const labelClass = formLabel;
+const errorClass = formError;
 </script>
 
 <template>
@@ -136,7 +135,7 @@ const errorClass = 'mt-1 text-[12px] text-red-600';
 
                 <label
                     class="flex items-center gap-2 text-[13.5px]"
-                    style="color: var(--hab-ink)"
+                    style="color: var(--bp-ink)"
                 >
                     <input v-model="form.is_extra" type="checkbox" />
                     Extra payment, beyond what was due

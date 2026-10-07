@@ -6,7 +6,12 @@ import { onMounted, ref } from 'vue';
  * and stays closed in this browser. Browser storage can be unavailable, so
  * every read and write is guarded and the note simply shows again.
  */
-const props = defineProps<{ id: string; title?: string }>();
+const props = defineProps<{
+    id: string;
+    title?: string;
+    /** Square-cornered tint on the blueprint pages. */
+    blueprint?: boolean;
+}>();
 
 const key = `lexi-note-${props.id}`;
 const visible = ref(false);
@@ -32,7 +37,33 @@ function close(): void {
 
 <template>
     <div
-        v-if="visible"
+        v-if="visible && blueprint"
+        class="flex items-start gap-2.5 rounded-[3px] border border-[var(--bp-accent-line)] bg-[var(--bp-tint)] px-3.5 py-2.5 text-[12.5px] leading-normal text-[var(--bp-ink-2)]"
+        role="note"
+    >
+        <span
+            class="ms shrink-0 text-[var(--bp-accent)]"
+            style="font-size: 17px"
+            aria-hidden="true"
+            >info</span
+        >
+        <p class="min-w-0 flex-1 text-pretty">
+            <span v-if="title" class="font-semibold">{{ title }} </span>
+            <slot />
+        </p>
+        <button
+            type="button"
+            class="shrink-0 text-[var(--bp-muted)] hover:text-[var(--bp-ink)]"
+            aria-label="Dismiss this note"
+            @click="close"
+        >
+            <span class="ms" style="font-size: 16px" aria-hidden="true"
+                >close</span
+            >
+        </button>
+    </div>
+    <div
+        v-else-if="visible"
         class="mb-3 flex items-start gap-2.5 rounded-[12px] px-3.5 py-2.5 text-[12.5px]"
         style="
             background: color-mix(in srgb, var(--hab-accent) 9%, transparent);

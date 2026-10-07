@@ -74,3 +74,19 @@ test('the today money card shows safe to spend once income or bills exist', func
         ->where('moneySummary.safeToSpend', 800_000)
         ->where('moneySummary.dueSoonCount', 1));
 });
+
+test('the today money card lists the per-day amount and the next payments due', function (): void {
+    $user = User::where('email', 'elle@example.com')->first();
+
+    IncomeSource::factory()->for($user)->create(['amount' => 1_000_000]);
+    Bill::factory()->for($user)->create(['name' => 'Meralco', 'amount' => 200_000, 'due_day' => now()->day]);
+
+    $daysLeft = (int) now()->startOfDay()->diffInDays(now()->endOfMonth()->startOfDay()) + 1;
+
+    $this->actingAs($user)->get('/today')->assertInertia(fn ($page) => $page
+        ->where('moneySummary.perDay', intdiv(800_000, $daysLeft))
+        ->has('moneySummary.dueSoon', 1)
+        ->where('moneySummary.dueSoon.0.name', 'Meralco')
+        ->where('moneySummary.dueSoon.0.amount', 200_000)
+        ->where('moneySummary.dueSoon.0.date', now()->toDateString()));
+});

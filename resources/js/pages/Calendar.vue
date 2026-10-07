@@ -1,19 +1,30 @@
 <script setup lang="ts">
 import type { FormDataConvertible } from '@inertiajs/core';
 import { Head, router } from '@inertiajs/vue3';
-import { ref, computed, watch, onMounted, nextTick } from 'vue';
+import {
+    ref,
+    computed,
+    watch,
+    onMounted,
+    onBeforeUnmount,
+    nextTick,
+} from 'vue';
 import { index as calendarIndex } from '@/actions/App/Http/Controllers/CalendarController';
 import {
     store,
     update,
     destroy,
 } from '@/actions/App/Http/Controllers/EventController';
+import BlueprintPageHead from '@/components/BlueprintPageHead.vue';
+import BlueprintTitleBlock from '@/components/BlueprintTitleBlock.vue';
+import { Button } from '@/components/ui/button';
 import {
     Dialog,
     DialogContent,
     DialogHeader,
     DialogTitle,
 } from '@/components/ui/dialog';
+import { formField, formLabel, sheetWidth } from '@/utils/blueprint';
 
 type Occurrence = {
     id: number;
@@ -54,22 +65,6 @@ function toLocalDateStr(d: Date): string {
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 }
 
-function formatTime12h(time: string): string {
-    const [h, m] = time.split(':').map(Number);
-    const period = h >= 12 ? 'PM' : 'AM';
-    const hour = h % 12 || 12;
-
-    return `${hour}:${String(m).padStart(2, '0')} ${period}`;
-}
-
-function formatHourLabel(hour: number): string {
-    if (hour === 12) {
-        return '12 PM';
-    }
-
-    return hour < 12 ? `${hour} AM` : `${hour - 12} PM`;
-}
-
 function eventTop(time: string): number {
     const [h, m] = time.split(':').map(Number);
 
@@ -92,9 +87,16 @@ function eventHeight(time: string, endTime: string | null): number {
 const today = new Date();
 const todayStr = toLocalDateStr(today);
 
-const view = ref<'month' | 'week'>(
-    (localStorage.getItem('cal-view') as 'month' | 'week') ?? 'week',
-);
+/** Browser storage can be unavailable, so the view falls back to the week. */
+function storedView(): 'month' | 'week' {
+    try {
+        return localStorage.getItem('cal-view') === 'month' ? 'month' : 'week';
+    } catch {
+        return 'week';
+    }
+}
+
+const view = ref<'month' | 'week'>(storedView());
 const urlDate = new URLSearchParams(window.location.search).get('date');
 const selectedDate = ref(urlDate ?? todayStr);
 const showModal = ref(false);
@@ -123,7 +125,11 @@ const form = ref({
 });
 
 watch(view, async (v) => {
-    localStorage.setItem('cal-view', v);
+    try {
+        localStorage.setItem('cal-view', v);
+    } catch {
+        // Nothing to do: the choice lasts until the page is left.
+    }
 
     if (v === 'week') {
         await nextTick();
@@ -240,6 +246,107 @@ const weekRangeLabel = computed(() => {
 
     return `${fmt(first)} – ${fmt(last)}`;
 });
+
+// ── blueprint drawing ─────────────────────────────────────────────────────
+
+/** Event fills by tag: Work takes the accent, the rest stay quiet paper tones. */
+const TAG_FILLS: Record<string, { bg: string; bd: string }> = {
+    Work: { bg: 'var(--bp-tint)', bd: 'var(--bp-accent-line)' },
+    Personal: { bg: '#f4ede4', bd: '#d6c3ab' },
+    Health: { bg: '#e9f0ea', bd: '#b3c9b7' },
+    Family: { bg: '#f6ecd9', bd: '#dcc08a' },
+    Other: { bg: 'var(--bp-sidebar)', bd: 'var(--bp-line)' },
+};
+
+function tagFill(tag: string): { bg: string; bd: string } {
+    return TAG_FILLS[tag] ?? TAG_FILLS.Other;
+}
+
+function shortTime(time: string): string {
+    return time.slice(0, 5);
+}
+
+function timeRange(event: Occurrence): string {
+    return event.end_time
+        ? `${shortTime(event.time)}–${shortTime(event.end_time)}`
+        : shortTime(event.time);
+}
+
+function recurrenceText(event: Occurrence): string {
+    if (!event.is_recurring || !event.recurrence_type) {
+        return '';
+    }
+
+    return ` · ${event.recurrence_type}`;
+}
+
+/** Minutes since midnight, ticking each minute, for the line across today. */
+const nowMinutes = ref(today.getHours() * 60 + today.getMinutes());
+let clock: ReturnType<typeof setInterval> | undefined;
+
+onMounted(() => {
+    clock = setInterval(() => {
+        const now = new Date();
+        nowMinutes.value = now.getHours() * 60 + now.getMinutes();
+    }, 60_000);
+});
+onBeforeUnmount(() => clearInterval(clock));
+
+/** ISO week number of the week shown (taken from its Monday). */
+const weekNumber = computed(() => {
+    const monday = new Date(weekColumns.value[1].dateStr + 'T00:00:00');
+    const thursday = new Date(monday);
+    thursday.setDate(monday.getDate() + 3);
+    const firstThursday = new Date(thursday.getFullYear(), 0, 4);
+
+    return (
+        1 +
+        Math.round(
+            ((thursday.getTime() - firstThursday.getTime()) / 86_400_000 -
+                3 +
+                ((firstThursday.getDay() + 6) % 7)) /
+                7,
+        )
+    );
+});
+
+const dimension = computed(() => {
+    if (view.value === 'month') {
+        const count = props.events.filter((event) =>
+            event.date.startsWith(props.currentMonth),
+        ).length;
+
+        return `${calendarTitle.value} · ${count} ${count === 1 ? 'event' : 'events'}`;
+    }
+
+    const cols = weekColumns.value;
+    const fmt = (dateStr: string) => {
+        const d = new Date(dateStr + 'T00:00:00');
+
+        return `${d.toLocaleDateString('en-US', { month: 'short' })} ${String(d.getDate()).padStart(2, '0')}`;
+    };
+
+    return `Week ${weekNumber.value} · ${fmt(cols[0].dateStr)} — ${fmt(cols[6].dateStr)}`;
+});
+
+const MONTH_WEEKDAYS = ['SUN', 'MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT'];
+
+/** The big month grid: each day with its events, earliest first. */
+const monthCells = computed(() =>
+    gridCells.value.map((cell) => ({
+        ...cell,
+        events: cell.blank
+            ? []
+            : props.events
+                  .filter((event) => event.date === cell.dateStr)
+                  .sort((a, b) => a.time.localeCompare(b.time)),
+    })),
+);
+
+const viewOptions = [
+    { value: 'week', label: 'Week' },
+    { value: 'month', label: 'Month' },
+] as const;
 
 // ── navigation ─────────────────────────────────────────────────────────────
 
@@ -399,1013 +506,712 @@ function deleteEvent() {
 </script>
 
 <template>
-    <div>
+    <div class="bp pb-16">
         <Head title="Calendar" />
 
+        <Teleport defer to="#page-actions">
+            <button
+                type="button"
+                class="bp flex items-center gap-1.5 rounded bg-[var(--bp-ink)] px-3 py-1.5 text-[13px] font-semibold text-[var(--bp-card)]"
+                @click="openNew"
+            >
+                <span class="ms" style="font-size: 16px" aria-hidden="true"
+                    >add</span
+                >
+                <span class="hidden sm:inline">New event</span>
+            </button>
+        </Teleport>
+
+        <BlueprintPageHead
+            raised
+            icon="calendar_month"
+            code="D-02"
+            section="Day"
+            title="Calendar"
+            :subtitle="
+                view === 'week'
+                    ? 'Your week at a glance'
+                    : 'Your month at a glance'
+            "
+            :dimension="dimension"
+        />
+
         <div
-            class="mx-auto flex w-full max-w-[1180px] flex-col gap-5 px-4 pt-6 pb-[46px] sm:px-6 lg:px-[30px]"
+            :class="sheetWidth.wide"
+            class="grid grid-cols-1 items-start gap-9 lg:grid-cols-[minmax(0,1fr)_300px]"
         >
-            <!-- Page header -->
-            <div class="flex flex-wrap items-end gap-4">
-                <div>
-                    <h1
-                        style="
-                            font-family: 'Bricolage Grotesque';
-                            font-weight: 700;
-                            font-size: 28px;
-                            letter-spacing: -0.02em;
-                            line-height: 1;
-                        "
-                    >
-                        Calendar
-                    </h1>
-                    <p style="color: #8a8172; font-size: 14px; margin-top: 4px">
-                        Your month at a glance
-                    </p>
-                </div>
-                <div class="ml-auto flex items-center gap-3">
-                    <!-- Month/Week toggle -->
-                    <div
-                        style="
-                            display: flex;
-                            gap: 4px;
-                            background: #fffdf8;
-                            border: 1px solid #e0dacd;
-                            border-radius: 13px;
-                            padding: 4px;
-                        "
-                    >
-                        <button
-                            @click="view = 'month'"
-                            :style="`padding:7px 15px;border-radius:11px;border:none;cursor:pointer;font-size:13px;font-weight:600;font-family:'Instrument Sans';color:${view === 'month' ? '#211d17' : '#8a8172'};background:${view === 'month' ? '#f1ede3' : 'transparent'}`"
-                        >
-                            Month
-                        </button>
-                        <button
-                            @click="view = 'week'"
-                            :style="`padding:7px 15px;border-radius:11px;border:none;cursor:pointer;font-size:13px;font-weight:600;font-family:'Instrument Sans';color:${view === 'week' ? '#211d17' : '#8a8172'};background:${view === 'week' ? '#f1ede3' : 'transparent'}`"
-                        >
-                            Week
-                        </button>
-                    </div>
-                    <!-- New event button -->
+            <div class="min-w-0">
+                <!-- Toolbar -->
+                <div class="mb-3.5 flex flex-wrap items-center gap-2.5">
                     <button
-                        @click="openNew"
-                        style="
-                            display: flex;
-                            align-items: center;
-                            gap: 7px;
-                            background: #211d17;
-                            color: #fdfbf5;
-                            border: none;
-                            border-radius: 12px;
-                            padding: 0 16px;
-                            height: 42px;
-                            font-family: 'Instrument Sans';
-                            font-weight: 600;
-                            font-size: 13.5px;
-                            cursor: pointer;
+                        type="button"
+                        class="flex h-7 w-7 items-center justify-center rounded-[3px] border border-[var(--bp-line)] bg-[var(--bp-card)] hover:border-[var(--bp-ink)]"
+                        :aria-label="
+                            view === 'week' ? 'Previous week' : 'Previous month'
+                        "
+                        @click="
+                            view === 'week'
+                                ? navigateWeek(-1)
+                                : navigateMonth(-1)
                         "
                     >
                         <span
-                            class="material-symbols-rounded"
+                            class="ms"
                             style="font-size: 18px"
-                            >add</span
+                            aria-hidden="true"
+                            >chevron_left</span
                         >
-                        New event
                     </button>
+                    <h2
+                        class="min-w-[150px] text-[18px] font-semibold tracking-[-0.01em]"
+                    >
+                        {{ view === 'week' ? weekRangeLabel : calendarTitle }}
+                    </h2>
+                    <button
+                        type="button"
+                        class="flex h-7 w-7 items-center justify-center rounded-[3px] border border-[var(--bp-line)] bg-[var(--bp-card)] hover:border-[var(--bp-ink)]"
+                        :aria-label="
+                            view === 'week' ? 'Next week' : 'Next month'
+                        "
+                        @click="
+                            view === 'week' ? navigateWeek(1) : navigateMonth(1)
+                        "
+                    >
+                        <span
+                            class="ms"
+                            style="font-size: 18px"
+                            aria-hidden="true"
+                            >chevron_right</span
+                        >
+                    </button>
+                    <button
+                        type="button"
+                        class="rounded-[3px] border border-[var(--bp-line)] px-2.5 py-1 text-[12.5px] hover:border-[var(--bp-ink)]"
+                        @click="goToToday"
+                    >
+                        Today
+                    </button>
+                    <div
+                        class="ml-auto flex overflow-hidden rounded-[3px] border border-[var(--bp-ink)]"
+                        role="radiogroup"
+                        aria-label="Calendar view"
+                    >
+                        <button
+                            v-for="option in viewOptions"
+                            :key="option.value"
+                            type="button"
+                            role="radio"
+                            :aria-checked="view === option.value"
+                            class="px-3.5 py-1 text-[13px]"
+                            :class="
+                                view === option.value
+                                    ? 'bg-[var(--bp-ink)] font-semibold text-[var(--bp-card)]'
+                                    : 'text-[var(--bp-ink-2)] hover:bg-[var(--bp-hover)]'
+                            "
+                            @click="view = option.value"
+                        >
+                            {{ option.label }}
+                        </button>
+                    </div>
+                </div>
+
+                <!-- ── Week view ── -->
+                <div
+                    v-if="view === 'week'"
+                    class="overflow-x-auto border border-[var(--bp-ink)] bg-[var(--bp-card)]"
+                >
+                    <div
+                        ref="timeGridRef"
+                        class="max-h-[616px] min-w-[640px] overflow-y-auto"
+                    >
+                        <div
+                            class="sticky top-0 z-10 grid grid-cols-[56px_repeat(7,minmax(0,1fr))] border-b border-[var(--bp-ink)] bg-[var(--bp-card)]"
+                        >
+                            <span></span>
+                            <button
+                                v-for="col in weekColumns"
+                                :key="col.dateStr"
+                                type="button"
+                                class="flex items-baseline gap-1.5 border-l border-[var(--bp-hair)] px-2 pt-2 pb-[7px] text-left hover:bg-[var(--bp-paper)]"
+                                :aria-pressed="selectedDate === col.dateStr"
+                                @click="selectedDate = col.dateStr"
+                            >
+                                <span
+                                    class="bp-mono text-[10px] tracking-[0.12em] text-[var(--bp-muted)] uppercase"
+                                    >{{ col.dow }}</span
+                                >
+                                <span
+                                    class="text-[16px] font-semibold"
+                                    :class="{
+                                        'bg-[var(--bp-accent)] px-[5px] text-[var(--bp-card)]':
+                                            col.isToday,
+                                        'underline decoration-2 underline-offset-4':
+                                            !col.isToday &&
+                                            selectedDate === col.dateStr,
+                                    }"
+                                    >{{ col.dateNum }}</span
+                                >
+                            </button>
+                        </div>
+
+                        <div
+                            class="grid h-[1440px] grid-cols-[56px_repeat(7,minmax(0,1fr))] bg-[linear-gradient(var(--bp-hair)_1px,transparent_1px)] bg-[length:100%_60px]"
+                        >
+                            <div class="relative" aria-hidden="true">
+                                <span
+                                    v-for="hour in 23"
+                                    :key="hour"
+                                    class="bp-mono absolute right-2 -translate-y-1/2 bg-[var(--bp-card)] px-0.5 text-[10px] text-[var(--bp-faint)]"
+                                    :style="{ top: `${hour * 60}px` }"
+                                    >{{
+                                        String(hour).padStart(2, '0')
+                                    }}:00</span
+                                >
+                            </div>
+                            <div
+                                v-for="col in weekColumns"
+                                :key="col.dateStr"
+                                class="relative border-l border-[var(--bp-hair)]"
+                                :class="{
+                                    'bg-[color-mix(in_oklch,var(--bp-accent)_4%,transparent)]':
+                                        col.isToday,
+                                }"
+                            >
+                                <button
+                                    v-for="event in col.events"
+                                    :key="event.id + event.date"
+                                    type="button"
+                                    class="absolute inset-x-[3px] z-[1] box-border overflow-hidden border text-left hover:border-[var(--bp-ink)]"
+                                    :class="
+                                        eventHeight(
+                                            event.time,
+                                            event.end_time,
+                                        ) >= 45
+                                            ? 'px-1.5 py-1'
+                                            : 'px-1.5 py-0.5'
+                                    "
+                                    :style="{
+                                        top: `${eventTop(event.time) + 1}px`,
+                                        height: `${eventHeight(event.time, event.end_time) - 2}px`,
+                                        background: tagFill(event.tag).bg,
+                                        borderColor: tagFill(event.tag).bd,
+                                    }"
+                                    :title="`${event.title}, ${timeRange(event)}`"
+                                    @click="openEdit(event)"
+                                >
+                                    <span
+                                        class="block truncate text-[11.5px] leading-tight font-semibold"
+                                        >{{ event.title }}</span
+                                    >
+                                    <span
+                                        v-if="
+                                            eventHeight(
+                                                event.time,
+                                                event.end_time,
+                                            ) >= 45
+                                        "
+                                        class="bp-mono block text-[9.5px] whitespace-nowrap text-[var(--bp-muted)]"
+                                        >{{ timeRange(event) }}</span
+                                    >
+                                </button>
+                                <div
+                                    v-if="col.isToday"
+                                    class="pointer-events-none absolute right-0 -left-1 z-[2] h-[1.5px] bg-[var(--bp-accent)]"
+                                    :style="{ top: `${nowMinutes}px` }"
+                                    aria-hidden="true"
+                                >
+                                    <span
+                                        class="absolute -top-[3.5px] left-0 h-2 w-2 rotate-45 bg-[var(--bp-accent)]"
+                                    ></span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- ── Month view ── -->
+                <div
+                    v-else
+                    class="border border-[var(--bp-ink)] bg-[var(--bp-card)]"
+                >
+                    <div
+                        class="grid grid-cols-7 border-b border-[var(--bp-ink)]"
+                        aria-hidden="true"
+                    >
+                        <span
+                            v-for="weekday in MONTH_WEEKDAYS"
+                            :key="weekday"
+                            class="bp-mono px-1 py-[7px] text-[9px] tracking-[0.12em] text-[var(--bp-muted)] sm:px-2 sm:text-[10px]"
+                            >{{ weekday }}</span
+                        >
+                    </div>
+                    <div class="grid grid-cols-7">
+                        <template
+                            v-for="(cell, i) in monthCells"
+                            :key="cell.dateStr || `blank-${i}`"
+                        >
+                            <div
+                                v-if="cell.blank"
+                                class="min-h-16 border-r border-b border-[var(--bp-hair)] bg-[repeating-linear-gradient(135deg,rgba(27,27,26,0.04)_0_1px,transparent_1px_7px)] sm:min-h-[104px]"
+                                aria-hidden="true"
+                            ></div>
+                            <button
+                                v-else
+                                type="button"
+                                class="flex min-h-16 min-w-0 flex-col gap-[3px] border-r border-b border-[var(--bp-hair)] p-1 text-left hover:bg-[var(--bp-paper)] sm:min-h-[104px] sm:p-1.5"
+                                :class="{
+                                    'opacity-50': cell.dateStr < todayStr,
+                                    'shadow-[inset_0_0_0_1.5px_var(--bp-accent)]':
+                                        selectedDate === cell.dateStr,
+                                }"
+                                :aria-pressed="selectedDate === cell.dateStr"
+                                :aria-label="`${cell.dateStr}${cell.events.length ? `, ${cell.events.length} ${cell.events.length === 1 ? 'event' : 'events'}` : ''}`"
+                                @click="selectedDate = cell.dateStr"
+                            >
+                                <span
+                                    v-if="cell.isToday"
+                                    class="bp-mono flex h-5 min-w-5 items-center justify-center self-start bg-[var(--bp-accent)] px-1 text-[11px] font-semibold text-[var(--bp-card)]"
+                                    >{{ cell.day }}</span
+                                >
+                                <span
+                                    v-else
+                                    class="bp-mono text-[11px] font-medium"
+                                    >{{ cell.day }}</span
+                                >
+                                <span
+                                    v-for="event in cell.events.slice(0, 2)"
+                                    :key="event.id + event.date"
+                                    class="hidden truncate border px-[5px] py-px text-[10.5px] leading-normal sm:block"
+                                    :style="{
+                                        background: tagFill(event.tag).bg,
+                                        borderColor: tagFill(event.tag).bd,
+                                    }"
+                                    aria-hidden="true"
+                                    >{{ shortTime(event.time) }}
+                                    {{ event.title }}</span
+                                >
+                                <span
+                                    v-if="cell.events.length > 2"
+                                    class="hidden text-[10.5px] text-[var(--bp-muted)] sm:block"
+                                    aria-hidden="true"
+                                    >+{{ cell.events.length - 2 }} more</span
+                                >
+                                <span
+                                    v-if="cell.events.length > 0"
+                                    class="mt-auto flex gap-0.5 sm:hidden"
+                                    aria-hidden="true"
+                                >
+                                    <span
+                                        v-for="event in cell.events.slice(0, 3)"
+                                        :key="`dot-${event.id}`"
+                                        class="h-1.5 w-1.5 rotate-45 border"
+                                        :style="{
+                                            background: tagFill(event.tag).bg,
+                                            borderColor: tagFill(event.tag).bd,
+                                        }"
+                                    ></span>
+                                </span>
+                            </button>
+                        </template>
+                    </div>
                 </div>
             </div>
 
-            <!-- ── Month view ── -->
-            <div
-                v-if="view === 'month'"
-                style="
-                    display: grid;
-                    grid-template-columns: 1fr 340px;
-                    gap: 20px;
-                    align-items: start;
-                "
-            >
-                <!-- Month grid -->
-                <div
-                    style="
-                        background: #fffdf8;
-                        border: 1px solid #e0dacd;
-                        border-radius: 24px;
-                        padding: 22px 24px;
-                        box-shadow: 0 8px 24px -20px rgba(60, 48, 20, 0.5);
-                    "
-                >
+            <!-- Right column -->
+            <div class="flex flex-col gap-3.5 lg:sticky lg:top-[76px]">
+                <div class="border border-[var(--bp-ink)] bg-[var(--bp-card)]">
                     <div
-                        style="
-                            display: flex;
-                            align-items: center;
-                            justify-content: space-between;
-                            margin-bottom: 16px;
-                        "
+                        class="flex items-center justify-between border-b border-[var(--bp-ink)] px-3 py-2.5"
                     >
-                        <div
-                            style="
-                                font-family: 'Bricolage Grotesque';
-                                font-weight: 700;
-                                font-size: 18px;
-                            "
+                        <button
+                            type="button"
+                            class="flex h-6 w-6 items-center justify-center rounded-[3px] hover:bg-[var(--bp-hover)]"
+                            aria-label="Previous month"
+                            @click="navigateMonth(-1)"
                         >
-                            {{ calendarTitle }}
-                        </div>
-                        <div style="display: flex; gap: 6px">
-                            <button
-                                @click="goToToday"
-                                style="
-                                    height: 32px;
-                                    padding: 0 11px;
-                                    border: none;
-                                    background: #f1ede3;
-                                    border-radius: 9px;
-                                    cursor: pointer;
-                                    color: #6b6355;
-                                    font-family: 'Instrument Sans';
-                                    font-size: 12px;
-                                    font-weight: 600;
-                                "
+                            <span
+                                class="ms"
+                                style="font-size: 17px"
+                                aria-hidden="true"
+                                >chevron_left</span
                             >
-                                Today
-                            </button>
-                            <button
-                                @click="navigateMonth(-1)"
-                                style="
-                                    width: 32px;
-                                    height: 32px;
-                                    border: none;
-                                    background: #f1ede3;
-                                    border-radius: 9px;
-                                    cursor: pointer;
-                                    color: #6b6355;
-                                    display: flex;
-                                    align-items: center;
-                                    justify-content: center;
-                                "
+                        </button>
+                        <span
+                            class="bp-mono text-[11px] font-semibold tracking-[0.12em] uppercase"
+                            >{{ calendarTitle }}</span
+                        >
+                        <button
+                            type="button"
+                            class="flex h-6 w-6 items-center justify-center rounded-[3px] hover:bg-[var(--bp-hover)]"
+                            aria-label="Next month"
+                            @click="navigateMonth(1)"
+                        >
+                            <span
+                                class="ms"
+                                style="font-size: 17px"
+                                aria-hidden="true"
+                                >chevron_right</span
                             >
-                                <span
-                                    class="material-symbols-rounded"
-                                    style="font-size: 20px"
-                                    >chevron_left</span
-                                >
-                            </button>
-                            <button
-                                @click="navigateMonth(1)"
-                                style="
-                                    width: 32px;
-                                    height: 32px;
-                                    border: none;
-                                    background: #f1ede3;
-                                    border-radius: 9px;
-                                    cursor: pointer;
-                                    color: #6b6355;
-                                    display: flex;
-                                    align-items: center;
-                                    justify-content: center;
-                                "
-                            >
-                                <span
-                                    class="material-symbols-rounded"
-                                    style="font-size: 20px"
-                                    >chevron_right</span
-                                >
-                            </button>
-                        </div>
+                        </button>
                     </div>
-
-                    <!-- Weekday headers -->
                     <div
-                        style="
-                            display: grid;
-                            grid-template-columns: repeat(7, minmax(0, 1fr));
-                            gap: 6px;
-                            margin-bottom: 6px;
-                        "
+                        class="grid grid-cols-7 gap-y-0.5 px-2.5 pt-2 pb-2.5 text-center"
                     >
-                        <div
+                        <span
                             v-for="(w, i) in WEEKDAYS_SHORT"
-                            :key="i"
-                            style="
-                                text-align: center;
-                                font-size: 11px;
-                                font-weight: 600;
-                                color: #a49b8a;
-                            "
+                            :key="`w${i}`"
+                            class="bp-mono py-1 text-[9.5px] text-[var(--bp-faint)]"
+                            aria-hidden="true"
+                            >{{ w }}</span
                         >
-                            {{ w }}
-                        </div>
-                    </div>
-
-                    <!-- Day cells -->
-                    <div
-                        style="
-                            display: grid;
-                            grid-template-columns: repeat(7, minmax(0, 1fr));
-                            gap: 6px;
-                        "
-                    >
                         <template v-for="(cell, i) in gridCells" :key="i">
-                            <div v-if="cell.blank" style="aspect-ratio: 1" />
+                            <span v-if="cell.blank"></span>
                             <button
                                 v-else
+                                type="button"
+                                class="flex h-8 flex-col items-center justify-center gap-0.5"
+                                :aria-pressed="selectedDate === cell.dateStr"
+                                :aria-label="cell.dateStr"
                                 @click="selectedDate = cell.dateStr"
-                                :style="`aspect-ratio:1;display:flex;flex-direction:column;align-items:center;justify-content:center;border:none;border-radius:10px;cursor:pointer;font-size:13.5px;font-family:'Instrument Sans';
-                            ${
-                                cell.isToday
-                                    ? 'background:var(--hab-accent);color:#fff;font-weight:700'
-                                    : cell.dateStr === selectedDate
-                                      ? 'background:#f1ede3;color:#211d17;font-weight:600'
-                                      : 'background:transparent;color:#4a4436'
-                            }`"
                             >
-                                {{ cell.day }}
                                 <span
-                                    v-if="cell.hasEvent"
-                                    :style="`width:5px;height:5px;border-radius:50%;background:${cell.dotColor};margin-top:3px`"
-                                />
+                                    class="bp-mono box-border flex h-5 w-6 items-center justify-center text-[11.5px]"
+                                    :class="
+                                        cell.isToday
+                                            ? 'bg-[var(--bp-accent)] font-semibold text-[var(--bp-card)]'
+                                            : selectedDate === cell.dateStr
+                                              ? 'border border-[var(--bp-ink)] font-semibold'
+                                              : cell.dateStr < todayStr
+                                                ? 'text-[var(--bp-faint)]'
+                                                : ''
+                                    "
+                                    >{{ cell.day }}</span
+                                >
+                                <span
+                                    class="h-1 w-1"
+                                    :class="
+                                        cell.hasEvent
+                                            ? 'bg-[var(--bp-accent)]'
+                                            : 'bg-transparent'
+                                    "
+                                    aria-hidden="true"
+                                ></span>
                             </button>
                         </template>
                     </div>
                 </div>
 
-                <!-- Agenda panel -->
-                <div
-                    style="
-                        background: #fffdf8;
-                        border: 1px solid #e0dacd;
-                        border-radius: 24px;
-                        padding: 20px 20px 8px;
-                        box-shadow: 0 8px 24px -20px rgba(60, 48, 20, 0.5);
-                    "
-                >
+                <section aria-live="polite">
                     <div
-                        style="
-                            font-family: 'Bricolage Grotesque';
-                            font-weight: 700;
-                            font-size: 16px;
-                            margin-bottom: 6px;
-                        "
+                        class="flex items-center justify-between border-b border-[var(--bp-ink)] pb-2"
                     >
-                        Agenda
+                        <h2
+                            class="bp-mono text-[11px] font-semibold tracking-[0.12em]"
+                        >
+                            {{ agendaLabel }}
+                        </h2>
+                        <span
+                            v-if="agendaEvents.length"
+                            class="bp-mono text-[10.5px] text-[var(--bp-faint)]"
+                            >{{ agendaEvents.length }}
+                            {{
+                                agendaEvents.length === 1 ? 'EVENT' : 'EVENTS'
+                            }}</span
+                        >
                     </div>
-                    <div
-                        style="
-                            font-size: 11.5px;
-                            font-weight: 600;
-                            letter-spacing: 0.03em;
-                            text-transform: uppercase;
-                            color: #a49b8a;
-                            margin-bottom: 4px;
-                        "
-                    >
-                        {{ agendaLabel }}
-                    </div>
-
-                    <div
+                    <p
                         v-if="agendaEvents.length === 0"
-                        style="
-                            padding: 24px 0;
-                            text-align: center;
-                            color: #a49b8a;
-                            font-size: 13.5px;
-                        "
+                        class="my-3 text-[13px] text-[var(--bp-muted)]"
                     >
-                        No events
-                    </div>
-
-                    <div
+                        Nothing scheduled.
+                    </p>
+                    <button
                         v-for="event in agendaEvents"
                         :key="event.id"
-                        class="group/event"
-                        style="
-                            display: flex;
-                            align-items: center;
-                            gap: 11px;
-                            padding: 10px 0;
-                            border-top: 1px solid #efe9dc;
-                        "
+                        type="button"
+                        class="grid w-full grid-cols-[84px_10px_minmax(0,1fr)] items-center gap-2.5 border-b border-[var(--bp-hair)] py-2.5 text-left hover:bg-[var(--bp-hover)]"
+                        @click="openEdit(event)"
                     >
-                        <div
-                            :style="`width:9px;height:9px;border-radius:50%;background:${event.color};flex:none`"
-                        />
-                        <div style="min-width: 0; flex: 1">
-                            <div
-                                style="
-                                    font-weight: 600;
-                                    font-size: 14px;
-                                    color: #211d17;
-                                "
-                            >
-                                {{ event.title }}
-                            </div>
-                            <div style="font-size: 12px; color: #8a8172">
-                                {{ formatTime12h(event.time)
-                                }}{{
-                                    event.end_time
-                                        ? ' – ' + formatTime12h(event.end_time)
-                                        : ''
-                                }}
-                            </div>
-                        </div>
                         <span
-                            :style="`font-size:11.5px;font-weight:600;color:${event.color};background:${event.bg};padding:2px 9px;border-radius:20px`"
+                            class="bp-mono text-[11px] text-[var(--bp-ink-2)]"
+                            >{{ timeRange(event) }}</span
                         >
-                            {{ event.tag }}
+                        <span
+                            class="box-border h-2.5 w-2.5 border"
+                            :style="{
+                                background: tagFill(event.tag).bg,
+                                borderColor: tagFill(event.tag).bd,
+                            }"
+                            aria-hidden="true"
+                        ></span>
+                        <span class="min-w-0">
+                            <span
+                                class="block truncate text-[13.5px] font-semibold"
+                                >{{ event.title }}</span
+                            >
+                            <span
+                                class="block text-[11.5px] text-[var(--bp-muted)]"
+                                >{{ event.tag
+                                }}{{ recurrenceText(event) }}</span
+                            >
                         </span>
-                        <button
-                            @click="openEdit(event)"
-                            class="opacity-0 group-hover/event:opacity-100"
-                            style="
-                                border: none;
-                                background: transparent;
-                                cursor: pointer;
-                                color: #8a8172;
-                                padding: 2px;
-                                flex: none;
-                                display: flex;
-                                align-items: center;
-                            "
-                        >
-                            <span
-                                class="material-symbols-rounded"
-                                style="font-size: 16px"
-                                >edit</span
-                            >
-                        </button>
-                    </div>
+                    </button>
+                </section>
+
+                <div
+                    class="flex flex-wrap gap-x-3.5 gap-y-2 border border-[var(--bp-line)] px-3.5 py-3 text-[12px] text-[var(--bp-ink-2)]"
+                >
+                    <span
+                        v-for="tag in TAGS"
+                        :key="tag"
+                        class="flex items-center gap-1.5"
+                        ><span
+                            class="h-2.5 w-3.5 border"
+                            :style="{
+                                background: tagFill(tag).bg,
+                                borderColor: tagFill(tag).bd,
+                            }"
+                        ></span
+                        >{{ tag }}</span
+                    >
                 </div>
             </div>
+        </div>
 
-            <!-- ── Week view ── -->
-            <div
-                v-else
-                style="
-                    background: #fffdf8;
-                    border: 1px solid #e0dacd;
-                    border-radius: 24px;
-                    overflow: hidden;
-                    box-shadow: 0 8px 24px -20px rgba(60, 48, 20, 0.5);
-                "
-            >
-                <!-- Header: title + nav only -->
-                <div
-                    style="
-                        padding: 22px 24px 18px;
-                        display: flex;
-                        align-items: center;
-                        justify-content: space-between;
-                    "
+        <div :class="sheetWidth.wide">
+            <BlueprintTitleBlock drawing="Day / Calendar" sheet="D-02" />
+        </div>
+
+        <!-- ── New / Edit event modal ── -->
+        <Dialog :open="showModal" @update:open="showModal = $event">
+            <DialogContent style="max-width: 480px">
+                <DialogHeader>
+                    <p class="bp-caption">
+                        {{ editingEvent ? 'Event' : 'New event' }} · D-02
+                    </p>
+                    <DialogTitle>{{
+                        editingEvent ? 'Edit event' : 'New event'
+                    }}</DialogTitle>
+                </DialogHeader>
+                <form
+                    class="flex flex-col gap-3.5"
+                    @submit.prevent="submitForm"
                 >
-                    <div
-                        style="
-                            font-family: 'Bricolage Grotesque';
-                            font-weight: 700;
-                            font-size: 18px;
-                        "
-                    >
-                        {{ weekRangeLabel }}
-                    </div>
-                    <div style="display: flex; gap: 6px">
-                        <button
-                            @click="goToToday"
-                            style="
-                                height: 32px;
-                                padding: 0 11px;
-                                border: none;
-                                background: #f1ede3;
-                                border-radius: 9px;
-                                cursor: pointer;
-                                color: #6b6355;
-                                font-family: 'Instrument Sans';
-                                font-size: 12px;
-                                font-weight: 600;
-                            "
+                    <div>
+                        <label for="event-title" :class="formLabel"
+                            >Title</label
                         >
-                            Today
-                        </button>
-                        <button
-                            @click="navigateWeek(-1)"
-                            style="
-                                width: 32px;
-                                height: 32px;
-                                border: none;
-                                background: #f1ede3;
-                                border-radius: 9px;
-                                cursor: pointer;
-                                color: #6b6355;
-                                display: flex;
-                                align-items: center;
-                                justify-content: center;
-                            "
-                        >
-                            <span
-                                class="material-symbols-rounded"
-                                style="font-size: 20px"
-                                >chevron_left</span
-                            >
-                        </button>
-                        <button
-                            @click="navigateWeek(1)"
-                            style="
-                                width: 32px;
-                                height: 32px;
-                                border: none;
-                                background: #f1ede3;
-                                border-radius: 9px;
-                                cursor: pointer;
-                                color: #6b6355;
-                                display: flex;
-                                align-items: center;
-                                justify-content: center;
-                            "
-                        >
-                            <span
-                                class="material-symbols-rounded"
-                                style="font-size: 20px"
-                                >chevron_right</span
-                            >
-                        </button>
-                    </div>
-                </div>
-
-                <!-- Scrollable time grid (headers inside so columns always share same width) -->
-                <div
-                    ref="timeGridRef"
-                    style="overflow-y: scroll; max-height: 580px"
-                >
-                    <!-- Sticky day column headers -->
-                    <div
-                        style="
-                            position: sticky;
-                            top: 0;
-                            z-index: 10;
-                            background: #fffdf8;
-                            display: grid;
-                            grid-template-columns: 52px repeat(
-                                    7,
-                                    minmax(0, 1fr)
-                                );
-                            border-bottom: 1px solid #e0dacd;
-                            padding: 8px 0;
-                        "
-                    >
-                        <div />
-                        <div
-                            v-for="col in weekColumns"
-                            :key="col.dateStr"
-                            style="
-                                display: flex;
-                                flex-direction: column;
-                                align-items: center;
-                                gap: 2px;
-                                padding: 5px 0;
-                                border-radius: 10px;
-                            "
-                            :style="
-                                col.isToday
-                                    ? 'background:var(--hab-accent)'
-                                    : ''
-                            "
-                        >
-                            <span
-                                style="
-                                    font-size: 11px;
-                                    font-weight: 600;
-                                    text-transform: uppercase;
-                                    letter-spacing: 0.03em;
-                                "
-                                :style="
-                                    col.isToday
-                                        ? 'color:#fff;opacity:.8'
-                                        : 'color:#a49b8a'
-                                "
-                                >{{ col.dow }}</span
-                            >
-                            <span
-                                style="
-                                    font-family: 'Bricolage Grotesque';
-                                    font-weight: 700;
-                                    font-size: 17px;
-                                "
-                                :style="
-                                    col.isToday ? 'color:#fff' : 'color:#211d17'
-                                "
-                                >{{ col.dateNum }}</span
-                            >
-                        </div>
+                        <input
+                            id="event-title"
+                            v-model="form.title"
+                            type="text"
+                            placeholder="Event title"
+                            :class="formField"
+                        />
                     </div>
 
-                    <div style="display: flex">
-                        <!-- Time labels -->
-                        <div
-                            style="
-                                width: 52px;
-                                flex: none;
-                                position: relative;
-                                height: 1440px;
-                            "
-                        >
-                            <div
-                                v-for="hour in 23"
-                                :key="hour"
-                                :style="`position:absolute;top:${hour * 60 - 8}px;right:10px;font-size:10.5px;color:#b0a898;white-space:nowrap`"
-                            >
-                                {{ formatHourLabel(hour) }}
-                            </div>
-                        </div>
-
-                        <!-- Day columns -->
-                        <div
-                            style="
-                                flex: 1;
-                                display: grid;
-                                grid-template-columns: repeat(
-                                    7,
-                                    minmax(0, 1fr)
-                                );
-                            "
-                        >
-                            <div
-                                v-for="col in weekColumns"
-                                :key="col.dateStr"
-                                style="
-                                    position: relative;
-                                    height: 1440px;
-                                    border-left: 1px solid #efe9dc;
-                                "
-                            >
-                                <!-- Hour lines -->
-                                <div
-                                    v-for="hour in 24"
-                                    :key="'hr' + hour"
-                                    :style="`position:absolute;top:${hour * 60}px;left:0;right:0;border-top:1px solid #efe9dc`"
-                                />
-                                <!-- Half-hour lines -->
-                                <div
-                                    v-for="hour in 24"
-                                    :key="'hh' + hour"
-                                    :style="`position:absolute;top:${hour * 60 + 30}px;left:0;right:0;border-top:1px dashed #f3ede3`"
-                                />
-                                <!-- Events -->
-                                <div
-                                    v-for="event in col.events"
-                                    :key="event.id + event.date"
-                                    @click="openEdit(event)"
-                                    :style="`position:absolute;top:${eventTop(event.time)}px;left:4px;right:4px;height:${eventHeight(event.time, event.end_time)}px;background:${event.bg};border-left:3px solid ${event.color};border-radius:8px;padding:5px 8px;cursor:pointer;overflow:hidden;z-index:1`"
-                                >
-                                    <div
-                                        :style="`font-size:10px;color:${event.color};font-weight:700`"
-                                    >
-                                        {{ formatTime12h(event.time)
-                                        }}{{
-                                            event.end_time
-                                                ? ' – ' +
-                                                  formatTime12h(event.end_time)
-                                                : ''
-                                        }}
-                                    </div>
-                                    <div
-                                        style="
-                                            font-size: 11.5px;
-                                            font-weight: 600;
-                                            color: #211d17;
-                                            line-height: 1.2;
-                                            margin-top: 2px;
-                                        "
-                                    >
-                                        {{ event.title }}
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-
-            <!-- ── New / Edit event modal ── -->
-            <Dialog :open="showModal" @update:open="showModal = $event">
-                <DialogContent style="max-width: 480px">
-                    <DialogHeader>
-                        <DialogTitle>{{
-                            editingEvent ? 'Edit event' : 'New event'
-                        }}</DialogTitle>
-                    </DialogHeader>
-
-                    <div
-                        style="
-                            display: flex;
-                            flex-direction: column;
-                            gap: 14px;
-                            padding-top: 4px;
-                        "
-                    >
-                        <!-- Title -->
+                    <div class="grid grid-cols-1 gap-2.5 sm:grid-cols-3">
                         <div>
-                            <label
-                                style="
-                                    font-size: 12.5px;
-                                    font-weight: 600;
-                                    color: #6b6355;
-                                    display: block;
-                                    margin-bottom: 4px;
-                                "
-                                >Title</label
+                            <label for="event-date" :class="formLabel"
+                                >Date</label
                             >
                             <input
-                                v-model="form.title"
-                                type="text"
-                                placeholder="Event title"
-                                style="
-                                    width: 100%;
-                                    padding: 9px 12px;
-                                    border: 1px solid #e0dacd;
-                                    border-radius: 11px;
-                                    font-family: 'Instrument Sans';
-                                    font-size: 14px;
-                                    color: #211d17;
-                                    background: #fffdf8;
-                                    outline: none;
-                                "
+                                id="event-date"
+                                v-model="form.date"
+                                type="date"
+                                :class="[formField, 'bp-mono']"
                             />
                         </div>
-
-                        <!-- Date + Time row -->
-                        <div
-                            style="
-                                display: grid;
-                                grid-template-columns: 1fr 1fr 1fr;
-                                gap: 10px;
-                            "
-                        >
-                            <div>
-                                <label
-                                    style="
-                                        font-size: 12.5px;
-                                        font-weight: 600;
-                                        color: #6b6355;
-                                        display: block;
-                                        margin-bottom: 4px;
-                                    "
-                                    >Date</label
-                                >
-                                <input
-                                    v-model="form.date"
-                                    type="date"
-                                    style="
-                                        width: 100%;
-                                        padding: 9px 12px;
-                                        border: 1px solid #e0dacd;
-                                        border-radius: 11px;
-                                        font-family: 'Instrument Sans';
-                                        font-size: 14px;
-                                        color: #211d17;
-                                        background: #fffdf8;
-                                        outline: none;
-                                    "
-                                />
-                            </div>
-                            <div>
-                                <label
-                                    style="
-                                        font-size: 12.5px;
-                                        font-weight: 600;
-                                        color: #6b6355;
-                                        display: block;
-                                        margin-bottom: 4px;
-                                    "
-                                    >Start</label
-                                >
-                                <input
-                                    v-model="form.time"
-                                    type="time"
-                                    style="
-                                        width: 100%;
-                                        padding: 9px 12px;
-                                        border: 1px solid #e0dacd;
-                                        border-radius: 11px;
-                                        font-family: 'Instrument Sans';
-                                        font-size: 14px;
-                                        color: #211d17;
-                                        background: #fffdf8;
-                                        outline: none;
-                                    "
-                                />
-                            </div>
-                            <div>
-                                <label
-                                    style="
-                                        font-size: 12.5px;
-                                        font-weight: 600;
-                                        color: #6b6355;
-                                        display: block;
-                                        margin-bottom: 4px;
-                                    "
-                                    >End</label
-                                >
-                                <input
-                                    v-model="form.end_time"
-                                    type="time"
-                                    style="
-                                        width: 100%;
-                                        padding: 9px 12px;
-                                        border: 1px solid #e0dacd;
-                                        border-radius: 11px;
-                                        font-family: 'Instrument Sans';
-                                        font-size: 14px;
-                                        color: #211d17;
-                                        background: #fffdf8;
-                                        outline: none;
-                                    "
-                                />
-                            </div>
-                        </div>
-
-                        <!-- Tag chips -->
                         <div>
-                            <label
-                                style="
-                                    font-size: 12.5px;
-                                    font-weight: 600;
-                                    color: #6b6355;
-                                    display: block;
-                                    margin-bottom: 6px;
+                            <label for="event-start" :class="formLabel"
+                                >Start</label
+                            >
+                            <input
+                                id="event-start"
+                                v-model="form.time"
+                                type="time"
+                                :class="[formField, 'bp-mono']"
+                            />
+                        </div>
+                        <div>
+                            <label for="event-end" :class="formLabel"
+                                >End</label
+                            >
+                            <input
+                                id="event-end"
+                                v-model="form.end_time"
+                                type="time"
+                                :class="[formField, 'bp-mono']"
+                            />
+                        </div>
+                    </div>
+
+                    <div>
+                        <span id="event-tag-label" :class="formLabel">Tag</span>
+                        <div
+                            class="flex flex-wrap gap-1.5"
+                            role="radiogroup"
+                            aria-labelledby="event-tag-label"
+                        >
+                            <button
+                                v-for="tag in TAGS"
+                                :key="tag"
+                                type="button"
+                                role="radio"
+                                :aria-checked="form.tag === tag"
+                                class="flex items-center gap-1.5 rounded-full border px-3 py-1 text-[12.5px]"
+                                :class="
+                                    form.tag === tag
+                                        ? 'border-[var(--bp-ink)] bg-[var(--bp-ink)] font-semibold text-[var(--bp-card)]'
+                                        : 'border-[var(--bp-line)] text-[var(--bp-ink-2)] hover:border-[var(--bp-ink)]'
                                 "
-                                >Tag</label
+                                @click="selectTag(tag)"
+                            >
+                                <span
+                                    class="h-2 w-2.5 border"
+                                    :style="{
+                                        background: tagFill(tag).bg,
+                                        borderColor: tagFill(tag).bd,
+                                    }"
+                                    aria-hidden="true"
+                                ></span>
+                                {{ tag }}
+                            </button>
+                        </div>
+                    </div>
+
+                    <label
+                        class="flex cursor-pointer items-center gap-2.5 text-[13.5px] font-semibold"
+                    >
+                        <input
+                            v-model="form.recurrence_enabled"
+                            type="checkbox"
+                            class="peer sr-only"
+                        />
+                        <span
+                            :class="
+                                form.recurrence_enabled
+                                    ? 'msf text-[var(--bp-accent)]'
+                                    : 'ms text-[var(--bp-muted)]'
+                            "
+                            class="rounded-sm peer-focus-visible:outline-2 peer-focus-visible:outline-[var(--bp-accent)]"
+                            style="font-size: 20px"
+                            aria-hidden="true"
+                            >{{
+                                form.recurrence_enabled
+                                    ? 'check_box'
+                                    : 'check_box_outline_blank'
+                            }}</span
+                        >
+                        Repeat
+                    </label>
+
+                    <div
+                        v-if="form.recurrence_enabled"
+                        class="bp-grid-fine flex flex-col gap-3 border border-[var(--bp-line)] p-3.5"
+                    >
+                        <div>
+                            <label for="event-frequency" :class="formLabel"
+                                >Frequency</label
+                            >
+                            <select
+                                id="event-frequency"
+                                v-model="form.recurrence_type"
+                                :class="formField"
+                            >
+                                <option value="daily">Daily</option>
+                                <option value="weekly">Weekly</option>
+                                <option value="monthly">Monthly</option>
+                                <option value="yearly">Yearly</option>
+                            </select>
+                        </div>
+                        <div class="flex items-center gap-2">
+                            <label
+                                for="event-interval"
+                                :class="formLabel"
+                                class="mb-0"
+                                >Every</label
+                            >
+                            <input
+                                id="event-interval"
+                                v-model.number="form.recurrence_interval"
+                                type="number"
+                                min="1"
+                                max="99"
+                                :class="[formField, 'bp-mono w-16 text-center']"
+                            />
+                            <span
+                                class="text-[13.5px] text-[var(--bp-muted)]"
+                                >{{ recurrenceUnit() }}</span
+                            >
+                        </div>
+                        <div v-if="form.recurrence_type === 'weekly'">
+                            <span id="event-days-label" :class="formLabel"
+                                >On</span
                             >
                             <div
-                                style="display: flex; gap: 6px; flex-wrap: wrap"
+                                class="flex flex-wrap gap-[5px]"
+                                role="group"
+                                aria-labelledby="event-days-label"
                             >
                                 <button
-                                    v-for="tag in TAGS"
-                                    :key="tag"
-                                    @click="selectTag(tag)"
-                                    :style="`padding:5px 12px;border-radius:20px;border:none;cursor:pointer;font-family:'Instrument Sans';font-size:12.5px;font-weight:600;
-                                ${
-                                    form.tag === tag
-                                        ? `background:${TAG_COLORS[tag]};color:#fff`
-                                        : 'background:#f1ede3;color:#6b6355'
-                                }`"
+                                    v-for="dow in DOW_LABELS"
+                                    :key="dow"
+                                    type="button"
+                                    :aria-pressed="
+                                        form.recurrence_days.includes(dow)
+                                    "
+                                    :aria-label="dow"
+                                    class="bp-mono flex h-9 w-9 items-center justify-center border text-[11.5px]"
+                                    :class="
+                                        form.recurrence_days.includes(dow)
+                                            ? 'border-[var(--bp-ink)] bg-[var(--bp-ink)] font-semibold text-[var(--bp-card)]'
+                                            : 'border-[var(--bp-line)] bg-[var(--bp-card)] text-[var(--bp-ink-2)] hover:border-[var(--bp-ink)]'
+                                    "
+                                    @click="toggleDay(dow)"
                                 >
-                                    {{ tag }}
+                                    {{ dow.slice(0, 2).toUpperCase() }}
                                 </button>
                             </div>
                         </div>
-
-                        <!-- Recurrence toggle -->
-                        <div
-                            style="
-                                display: flex;
-                                align-items: center;
-                                gap: 10px;
-                            "
-                        >
+                        <div>
+                            <label for="event-ends" :class="formLabel"
+                                >Ends on (optional)</label
+                            >
                             <input
-                                id="recurrence-toggle"
-                                type="checkbox"
-                                v-model="form.recurrence_enabled"
-                                style="
-                                    width: 16px;
-                                    height: 16px;
-                                    cursor: pointer;
-                                    accent-color: var(--hab-accent);
-                                "
+                                id="event-ends"
+                                v-model="form.recurrence_ends_on"
+                                type="date"
+                                :class="[formField, 'bp-mono']"
                             />
-                            <label
-                                for="recurrence-toggle"
-                                style="
-                                    font-size: 13.5px;
-                                    font-weight: 600;
-                                    color: #211d17;
-                                    cursor: pointer;
-                                "
-                                >Repeat</label
-                            >
-                        </div>
-
-                        <!-- Recurrence options -->
-                        <div
-                            v-if="form.recurrence_enabled"
-                            style="
-                                background: #f9f6ef;
-                                border-radius: 14px;
-                                padding: 14px;
-                                display: flex;
-                                flex-direction: column;
-                                gap: 12px;
-                            "
-                        >
-                            <!-- Type select -->
-                            <div>
-                                <label
-                                    style="
-                                        font-size: 12px;
-                                        font-weight: 600;
-                                        color: #6b6355;
-                                        display: block;
-                                        margin-bottom: 4px;
-                                    "
-                                    >Frequency</label
-                                >
-                                <select
-                                    v-model="form.recurrence_type"
-                                    style="
-                                        width: 100%;
-                                        padding: 8px 12px;
-                                        border: 1px solid #e0dacd;
-                                        border-radius: 10px;
-                                        font-family: 'Instrument Sans';
-                                        font-size: 13.5px;
-                                        color: #211d17;
-                                        background: #fffdf8;
-                                        outline: none;
-                                    "
-                                >
-                                    <option value="daily">Daily</option>
-                                    <option value="weekly">Weekly</option>
-                                    <option value="monthly">Monthly</option>
-                                    <option value="yearly">Yearly</option>
-                                </select>
-                            </div>
-
-                            <!-- Interval -->
-                            <div
-                                style="
-                                    display: flex;
-                                    align-items: center;
-                                    gap: 8px;
-                                "
-                            >
-                                <label
-                                    style="
-                                        font-size: 12px;
-                                        font-weight: 600;
-                                        color: #6b6355;
-                                        white-space: nowrap;
-                                    "
-                                    >Every</label
-                                >
-                                <input
-                                    v-model.number="form.recurrence_interval"
-                                    type="number"
-                                    min="1"
-                                    max="99"
-                                    style="
-                                        width: 60px;
-                                        padding: 7px 10px;
-                                        border: 1px solid #e0dacd;
-                                        border-radius: 10px;
-                                        font-family: 'Instrument Sans';
-                                        font-size: 13.5px;
-                                        color: #211d17;
-                                        background: #fffdf8;
-                                        outline: none;
-                                        text-align: center;
-                                    "
-                                />
-                                <span
-                                    style="font-size: 13.5px; color: #6b6355"
-                                    >{{ recurrenceUnit() }}</span
-                                >
-                            </div>
-
-                            <!-- Weekday picker (weekly only) -->
-                            <div v-if="form.recurrence_type === 'weekly'">
-                                <label
-                                    style="
-                                        font-size: 12px;
-                                        font-weight: 600;
-                                        color: #6b6355;
-                                        display: block;
-                                        margin-bottom: 6px;
-                                    "
-                                    >On</label
-                                >
-                                <div
-                                    style="
-                                        display: flex;
-                                        gap: 5px;
-                                        flex-wrap: wrap;
-                                    "
-                                >
-                                    <button
-                                        v-for="dow in DOW_LABELS"
-                                        :key="dow"
-                                        @click="toggleDay(dow)"
-                                        :style="`width:38px;height:38px;border-radius:50%;border:none;cursor:pointer;font-family:'Instrument Sans';font-size:12px;font-weight:600;
-                                    ${
-                                        form.recurrence_days.includes(dow)
-                                            ? 'background:var(--hab-accent);color:#fff'
-                                            : 'background:#fffdf8;color:#6b6355;border:1px solid #e0dacd'
-                                    }`"
-                                    >
-                                        {{ dow.slice(0, 2) }}
-                                    </button>
-                                </div>
-                            </div>
-
-                            <!-- Ends on -->
-                            <div>
-                                <label
-                                    style="
-                                        font-size: 12px;
-                                        font-weight: 600;
-                                        color: #6b6355;
-                                        display: block;
-                                        margin-bottom: 4px;
-                                    "
-                                    >Ends on
-                                    <span style="font-weight: 400"
-                                        >(optional)</span
-                                    ></label
-                                >
-                                <input
-                                    v-model="form.recurrence_ends_on"
-                                    type="date"
-                                    style="
-                                        width: 100%;
-                                        padding: 8px 12px;
-                                        border: 1px solid #e0dacd;
-                                        border-radius: 10px;
-                                        font-family: 'Instrument Sans';
-                                        font-size: 13.5px;
-                                        color: #211d17;
-                                        background: #fffdf8;
-                                        outline: none;
-                                    "
-                                />
-                            </div>
-                        </div>
-
-                        <!-- Actions -->
-                        <div
-                            style="
-                                display: flex;
-                                gap: 8px;
-                                justify-content: flex-end;
-                                padding-top: 4px;
-                            "
-                        >
-                            <button
-                                v-if="editingEvent"
-                                @click="deleteEvent"
-                                style="
-                                    padding: 0 14px;
-                                    height: 38px;
-                                    border: none;
-                                    border-radius: 10px;
-                                    cursor: pointer;
-                                    font-family: 'Instrument Sans';
-                                    font-weight: 600;
-                                    font-size: 13px;
-                                    background: #fbe2d6;
-                                    color: #c0512c;
-                                "
-                            >
-                                Delete
-                            </button>
-                            <button
-                                @click="showModal = false"
-                                style="
-                                    padding: 0 14px;
-                                    height: 38px;
-                                    border: 1px solid #e0dacd;
-                                    border-radius: 10px;
-                                    cursor: pointer;
-                                    font-family: 'Instrument Sans';
-                                    font-weight: 600;
-                                    font-size: 13px;
-                                    background: #fffdf8;
-                                    color: #6b6355;
-                                "
-                            >
-                                Cancel
-                            </button>
-                            <button
-                                @click="submitForm"
-                                style="
-                                    padding: 0 16px;
-                                    height: 38px;
-                                    border: none;
-                                    border-radius: 10px;
-                                    cursor: pointer;
-                                    font-family: 'Instrument Sans';
-                                    font-weight: 600;
-                                    font-size: 13px;
-                                    background: #211d17;
-                                    color: #fdfbf5;
-                                "
-                            >
-                                {{ editingEvent ? 'Save' : 'Create' }}
-                            </button>
                         </div>
                     </div>
-                </DialogContent>
-            </Dialog>
-        </div>
-        <!-- end page container -->
+
+                    <div
+                        class="-mx-6 mt-1 -mb-6 flex items-center gap-2 border-t border-[var(--bp-hair)] px-6 py-4"
+                    >
+                        <Button
+                            v-if="editingEvent"
+                            type="button"
+                            variant="ghost"
+                            class="text-[#a3311f]"
+                            @click="deleteEvent"
+                            >Delete</Button
+                        >
+                        <div class="ml-auto flex gap-2">
+                            <Button
+                                type="button"
+                                variant="outline"
+                                @click="showModal = false"
+                                >Cancel</Button
+                            >
+                            <Button type="submit">{{
+                                editingEvent ? 'Save' : 'Create'
+                            }}</Button>
+                        </div>
+                    </div>
+                </form>
+            </DialogContent>
+        </Dialog>
     </div>
 </template>

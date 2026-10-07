@@ -7,7 +7,12 @@ import {
     extraCash,
 } from '@/actions/App/Http/Controllers/Money/WhatIfController';
 import MoneyInput from '@/components/MoneyInput.vue';
-import { formatMonth, formatPeso } from '@/utils/money';
+import {
+    formatMonth,
+    formatPeso,
+    formatPesoShort,
+    monthNames,
+} from '@/utils/money';
 
 type Affordability = {
     monthlyAmount: number;
@@ -59,6 +64,29 @@ const props = defineProps<{
     cards: { id: number; name: string; revolvingBalance: number }[];
     hasPlans: boolean;
 }>();
+
+type Tab = 'afford' | 'extra' | 'conversion';
+
+const tabs: { value: Tab; label: string }[] = [
+    { value: 'afford', label: 'Afford' },
+    { value: 'extra', label: 'Extra cash' },
+    { value: 'conversion', label: 'Conversion' },
+];
+const tab = ref<Tab>('afford');
+
+const monthPresets = [3, 6, 12, 24];
+
+/** Whole pesos with a real minus sign, for the before and after columns. */
+function signedShort(centavos: number): string {
+    return (centavos < 0 ? '−' : '') + formatPesoShort(Math.abs(centavos));
+}
+
+/** "2026-11" -> "NOV 26", narrow enough for the table's first column. */
+function shortMonth(month: string): string {
+    const [year, mon] = month.split('-');
+
+    return `${monthNames[Number(mon) - 1].slice(0, 3).toUpperCase()} ${year.slice(2)}`;
+}
 
 const timers: ReturnType<typeof setTimeout>[] = [];
 
@@ -235,387 +263,457 @@ const convertVerdict = computed(() => {
         : `Staying revolving saves about ${saving} in interest.`;
 });
 
-const cardStyle =
-    'background: var(--hab-card-bg); border: 1px solid var(--hab-card-border);';
-const fieldClass =
-    'w-full rounded-[11px] border border-[var(--hab-card-border)] bg-[var(--hab-card-bg)] px-3 py-2 text-[14px] text-[var(--hab-ink)] outline-none focus:border-[var(--hab-accent)]';
-const labelClass =
-    'mb-1 block text-[12.5px] font-semibold text-[var(--hab-ink-secondary)]';
-const headingClass = "font-['Bricolage_Grotesque'] text-[18px] font-bold";
+const bigFieldClass =
+    'bp-mono min-w-0 flex-1 bg-transparent text-[24px] font-medium outline-none placeholder:text-[var(--bp-fainter)]';
 </script>
 
 <template>
-    <div class="mt-10">
-        <h2
-            class="font-['Bricolage_Grotesque'] text-[24px] font-extrabold"
-            style="color: var(--hab-ink)"
+    <aside
+        class="flex flex-col border border-[var(--bp-ink)] bg-[var(--bp-card)]"
+        aria-label="What if"
+    >
+        <div
+            class="bp-mono flex items-center justify-between border-b border-[var(--bp-ink)] px-4 py-2.5 text-[10.5px] tracking-[0.12em]"
         >
-            What if
-        </h2>
-        <p class="mt-1 mb-4 text-[14px]" style="color: var(--hab-muted)">
-            Try a change before you make it. Nothing here is saved.
-        </p>
+            <span>WHAT IF</span>
+            <span class="text-[var(--bp-faint)]">NOTHING IS SAVED</span>
+        </div>
+        <div
+            class="grid grid-cols-3 border-b border-[var(--bp-line)]"
+            role="tablist"
+        >
+            <button
+                v-for="option in tabs"
+                :key="option.value"
+                type="button"
+                role="tab"
+                :aria-selected="tab === option.value"
+                class="py-[9px] text-center text-[12.5px]"
+                :class="
+                    tab === option.value
+                        ? 'font-semibold text-[var(--bp-accent)] shadow-[inset_0_-2px_0_var(--bp-accent)]'
+                        : 'text-[var(--bp-muted)] hover:text-[var(--bp-ink)]'
+                "
+                @click="tab = option.value"
+            >
+                {{ option.label }}
+            </button>
+        </div>
 
-        <section class="mb-6 rounded-[22px] p-6" :style="cardStyle">
-            <h3 :class="headingClass" style="color: var(--hab-ink)">
-                Can I afford this?
-            </h3>
-            <p class="mt-1 mb-4 text-[13px]" style="color: var(--hab-muted)">
-                A new 0% installment, split evenly. On a card it starts with the
-                next statement.
-            </p>
-
-            <div class="grid grid-cols-1 gap-3 sm:grid-cols-4">
-                <div>
-                    <label :class="labelClass">Price</label>
+        <!-- Can I afford this? -->
+        <div
+            v-show="tab === 'afford'"
+            class="flex flex-col gap-3.5 px-4 py-[18px]"
+            role="tabpanel"
+        >
+            <div>
+                <p class="text-[14px] font-semibold">Can I afford this?</p>
+                <p class="mt-0.5 text-[12px] text-[var(--bp-muted)]">
+                    A new 0% installment, split evenly. On a card it starts with
+                    the next statement.
+                </p>
+            </div>
+            <label class="flex flex-col gap-1.5">
+                <span class="bp-caption">Price</span>
+                <span
+                    class="flex items-baseline gap-1.5 border-b-2 border-[var(--bp-ink)] pb-1"
+                >
+                    <span class="text-[20px] text-[var(--bp-faint)]">₱</span>
                     <MoneyInput
                         v-model="price"
                         :empty-value="null"
-                        adorn
-                        :class="fieldClass"
+                        placeholder="0.00"
+                        :class="bigFieldClass"
                     />
-                </div>
-                <div>
-                    <label :class="labelClass">Months</label>
+                </span>
+            </label>
+            <div
+                class="flex items-center justify-between gap-2 border-b border-[var(--bp-hair)] pb-2.5 text-[13px]"
+            >
+                <span class="text-[var(--bp-muted)]">Over</span>
+                <div class="flex items-center gap-1.5">
+                    <div
+                        class="flex overflow-hidden rounded-[3px] border border-[var(--bp-ink)]"
+                    >
+                        <button
+                            v-for="preset in monthPresets"
+                            :key="preset"
+                            type="button"
+                            class="px-2 py-[3px] text-[12px]"
+                            :class="
+                                months === preset
+                                    ? 'bg-[var(--bp-ink)] font-semibold text-[var(--bp-card)]'
+                                    : 'hover:bg-[var(--bp-hover)]'
+                            "
+                            :aria-pressed="months === preset"
+                            @click="months = preset"
+                        >
+                            {{ preset }}
+                        </button>
+                    </div>
                     <input
                         v-model.number="months"
                         type="number"
                         min="1"
                         max="60"
-                        :class="fieldClass"
+                        aria-label="Months"
+                        class="bp-mono w-11 border-b border-[var(--bp-line)] bg-transparent text-right text-[12px] outline-none focus:border-[var(--bp-ink)]"
                     />
-                </div>
-                <div>
-                    <label :class="labelClass">Paid with</label>
-                    <select v-model="paidWith" :class="fieldClass">
-                        <option
-                            v-for="card in cards"
-                            :key="card.id"
-                            :value="card.id"
-                        >
-                            {{ card.name }}
-                        </option>
-                        <option value="">Not on a card</option>
-                    </select>
-                </div>
-                <div v-if="paidWith === ''">
-                    <label :class="labelClass">First payment</label>
-                    <input
-                        v-model="startMonth"
-                        type="month"
-                        :class="fieldClass"
-                    />
+                    <span class="text-[12px] text-[var(--bp-muted)]">mo</span>
                 </div>
             </div>
+            <label
+                class="flex items-center justify-between gap-3 border-b border-[var(--bp-hair)] pb-2.5 text-[13px]"
+            >
+                <span class="shrink-0 text-[var(--bp-muted)]">Paid with</span>
+                <select
+                    v-model="paidWith"
+                    class="min-w-0 bg-transparent text-right font-medium outline-none"
+                >
+                    <option
+                        v-for="card in cards"
+                        :key="card.id"
+                        :value="card.id"
+                    >
+                        {{ card.name }}
+                    </option>
+                    <option value="">Not on a card</option>
+                </select>
+            </label>
+            <label
+                v-if="paidWith === ''"
+                class="flex items-center justify-between gap-3 border-b border-[var(--bp-hair)] pb-2.5 text-[13px]"
+            >
+                <span class="shrink-0 text-[var(--bp-muted)]"
+                    >First payment</span
+                >
+                <input
+                    v-model="startMonth"
+                    type="month"
+                    class="bg-transparent text-right font-medium outline-none"
+                />
+            </label>
 
-            <div v-if="affordResult" class="mt-4">
+            <template v-if="affordResult">
+                <div>
+                    <div
+                        class="bp-mono grid grid-cols-[56px_minmax(0,1fr)_minmax(0,1fr)] gap-2 border-b border-[var(--bp-ink)] pb-1.5 text-[9.5px] tracking-[0.1em] text-[var(--bp-muted)]"
+                    >
+                        <span></span>
+                        <span class="text-right">BEFORE</span>
+                        <span class="text-right">AFTER</span>
+                    </div>
+                    <div
+                        v-for="row in affordResult.rows"
+                        :key="row.month"
+                        class="bp-mono grid grid-cols-[56px_minmax(0,1fr)_minmax(0,1fr)] gap-2 border-b border-[var(--bp-hair)] py-[5px] text-[11.5px]"
+                    >
+                        <span class="text-[var(--bp-muted)]">{{
+                            shortMonth(row.month)
+                        }}</span>
+                        <span class="text-right text-[var(--bp-faint)]">{{
+                            signedShort(row.before)
+                        }}</span>
+                        <span
+                            class="text-right font-semibold"
+                            :class="{
+                                'bg-[repeating-linear-gradient(135deg,rgba(27,27,26,0.09)_0_1px,transparent_1px_5px)]':
+                                    row.short,
+                            }"
+                        >
+                            <span v-if="row.short" class="sr-only"
+                                >Short:
+                            </span>
+                            {{ signedShort(row.after) }}
+                        </span>
+                    </div>
+                </div>
                 <p
-                    class="mb-3 text-[14px] font-semibold"
-                    :style="{
-                        color: affordResult.shortMonths.length
-                            ? '#c0392b'
-                            : 'var(--hab-ink)',
-                    }"
+                    class="border-t-[3px] border-double border-[var(--bp-ink)] pt-2.5 text-[13px] leading-normal font-semibold text-pretty"
                     role="status"
                 >
                     {{ formatPeso(affordResult.monthlyAmount) }} a month from
                     {{ formatMonth(affordResult.firstMonth) }} to
                     {{ formatMonth(affordResult.lastMonth) }}. {{ verdict }}
                 </p>
-                <div class="overflow-x-auto">
-                    <table class="w-full text-left text-[13px]">
-                        <thead>
-                            <tr style="color: var(--hab-muted)">
-                                <th class="py-1.5 pr-3 font-semibold">Month</th>
-                                <th
-                                    class="py-1.5 pr-3 text-right font-semibold"
-                                >
-                                    Now
-                                </th>
-                                <th class="py-1.5 text-right font-semibold">
-                                    With this
-                                </th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            <tr
-                                v-for="row in affordResult.rows"
-                                :key="row.month"
-                                style="
-                                    border-top: 1px solid var(--hab-hairline);
-                                "
-                            >
-                                <td
-                                    class="py-1.5 pr-3"
-                                    style="color: var(--hab-ink)"
-                                >
-                                    {{ formatMonth(row.month) }}
-                                </td>
-                                <td
-                                    class="py-1.5 pr-3 text-right tabular-nums"
-                                    style="color: var(--hab-muted)"
-                                >
-                                    {{ formatPeso(row.before) }}
-                                </td>
-                                <td
-                                    class="py-1.5 text-right font-semibold tabular-nums"
-                                    :style="{
-                                        color: row.short
-                                            ? '#c0392b'
-                                            : 'var(--hab-ink)',
-                                    }"
-                                >
-                                    {{ formatPeso(row.after) }}
-                                </td>
-                            </tr>
-                        </tbody>
-                    </table>
-                </div>
-                <p class="mt-2 text-[12px]" style="color: var(--hab-muted)">
+                <p class="text-[11.5px] text-[var(--bp-muted)]">
                     This month uses your real minimums. Later months only know
                     the installments your cards bill, so they look better than
                     they will if you carry a balance.
                 </p>
+            </template>
+        </div>
+
+        <!-- Where should extra cash go? -->
+        <div
+            v-show="tab === 'extra'"
+            class="flex flex-col gap-3.5 px-4 py-[18px]"
+            role="tabpanel"
+        >
+            <div>
+                <p class="text-[14px] font-semibold">
+                    Where should extra cash go?
+                </p>
+                <p class="mt-0.5 text-[12px] text-[var(--bp-muted)]">
+                    Your payment plans, fastest to finish first, paid off while
+                    the money lasts.
+                </p>
             </div>
-        </section>
-
-        <section class="mb-6 rounded-[22px] p-6" :style="cardStyle">
-            <h3 :class="headingClass" style="color: var(--hab-ink)">
-                Where should extra cash go?
-            </h3>
-            <p class="mt-1 mb-4 text-[13px]" style="color: var(--hab-muted)">
-                Your payment plans, fastest to finish first, paid off while the
-                money lasts.
-            </p>
-
-            <p
-                v-if="!hasPlans"
-                class="text-[14px]"
-                style="color: var(--hab-muted)"
-            >
+            <p v-if="!hasPlans" class="text-[13px] text-[var(--bp-muted)]">
                 You have no payment plans to pay off.
             </p>
             <template v-else>
-                <div class="max-w-[260px]">
-                    <label :class="labelClass">Spare cash</label>
-                    <MoneyInput
-                        v-model="extra"
-                        :empty-value="null"
-                        adorn
-                        :class="fieldClass"
-                    />
-                </div>
-
-                <div v-if="extraResult" class="mt-4">
-                    <p
-                        class="mb-2 text-[14px] font-semibold"
-                        style="color: var(--hab-ink)"
+                <label class="flex flex-col gap-1.5">
+                    <span class="bp-caption">Spare cash</span>
+                    <span
+                        class="flex items-baseline gap-1.5 border-b-2 border-[var(--bp-ink)] pb-1"
                     >
-                        <template v-if="extraResult.freedMonthly > 0">
-                            Uses {{ formatPeso(extraResult.spent) }} and frees
-                            {{ formatPeso(extraResult.freedMonthly) }} a month.
-                            {{ formatPeso(extraResult.leftover) }} is left over.
-                        </template>
-                        <template v-else
-                            >That is not enough to finish any plan
-                            yet.</template
+                        <span class="text-[20px] text-[var(--bp-faint)]"
+                            >₱</span
                         >
-                    </p>
-                    <ul>
-                        <li
-                            v-for="(plan, index) in extraResult.plans"
+                        <MoneyInput
+                            v-model="extra"
+                            :empty-value="null"
+                            placeholder="0.00"
+                            :class="bigFieldClass"
+                        />
+                    </span>
+                </label>
+                <template v-if="extraResult">
+                    <div class="border-t border-[var(--bp-ink)]">
+                        <div
+                            v-for="plan in extraResult.plans"
                             :key="plan.planId"
-                            class="flex items-center justify-between gap-3 py-2"
-                            :style="
-                                index > 0
-                                    ? 'border-top: 1px solid var(--hab-hairline)'
-                                    : ''
-                            "
+                            class="border-b border-[var(--bp-hair)] py-[9px]"
                         >
-                            <span class="min-w-0">
-                                <span
-                                    class="block truncate text-[14px] font-semibold"
-                                    style="color: var(--hab-ink)"
-                                >
-                                    {{ index + 1 }}. {{ plan.description }}
+                            <div class="flex justify-between gap-3 text-[13px]">
+                                <span class="min-w-0 truncate font-semibold"
+                                    >{{ plan.description }}
                                     <span
-                                        class="text-[12px] font-normal"
-                                        style="color: var(--hab-muted)"
-                                        >{{ plan.debtName }}</span
-                                    >
-                                </span>
-                                <span
-                                    class="block text-[12px]"
-                                    style="color: var(--hab-muted)"
+                                        class="font-normal text-[var(--bp-muted)]"
+                                        >· {{ plan.debtName }}</span
+                                    ></span
                                 >
-                                    {{ formatPeso(plan.remaining) }} left,
-                                    {{ formatPeso(plan.monthlyAmount) }} a
-                                    month, {{ plan.monthsLeft }}
+                                <span class="bp-mono shrink-0">{{
+                                    formatPeso(plan.remaining)
+                                }}</span>
+                            </div>
+                            <p class="text-[11.5px] text-[var(--bp-muted)]">
+                                <template v-if="plan.paysOff"
+                                    >Pays it off · frees
+                                    {{ formatPesoShort(plan.monthlyAmount) }} a
+                                    month</template
+                                >
+                                <template v-else
+                                    >Not enough · {{ plan.monthsLeft }}
                                     {{
                                         plan.monthsLeft === 1
                                             ? 'month'
                                             : 'months'
                                     }}
-                                    to go<template
-                                        v-if="plan.interestType === 'add_on'"
-                                        >. Paying early will not save interest,
-                                        it is already fixed</template
-                                    >
-                                </span>
-                            </span>
-                            <span
-                                class="shrink-0 rounded-full px-2.5 py-0.5 text-[11.5px] font-semibold"
-                                :style="
-                                    plan.paysOff
-                                        ? 'background: color-mix(in srgb, var(--hab-accent) 16%, transparent); color: var(--hab-accent)'
-                                        : 'background: var(--hab-hairline); color: var(--hab-muted)'
-                                "
-                            >
-                                {{ plan.paysOff ? 'Paid off' : 'Not enough' }}
-                            </span>
-                        </li>
-                    </ul>
-                </div>
+                                    left</template
+                                >
+                                <template v-if="plan.interestType === 'add_on'">
+                                    · fixed interest, no saving</template
+                                >
+                            </p>
+                        </div>
+                    </div>
+                    <div
+                        v-if="extraResult.freedMonthly > 0"
+                        class="flex justify-between border-t-[3px] border-double border-[var(--bp-ink)] pt-2.5 text-[13px]"
+                        role="status"
+                    >
+                        <span class="font-semibold">Frees each month</span>
+                        <span
+                            class="bp-mono font-semibold text-[var(--bp-accent)]"
+                            >{{ formatPeso(extraResult.freedMonthly) }}</span
+                        >
+                    </div>
+                    <p
+                        v-else
+                        class="border-t-[3px] border-double border-[var(--bp-ink)] pt-2.5 text-[13px] font-semibold"
+                        role="status"
+                    >
+                        That is not enough to finish any plan yet.
+                    </p>
+                    <span
+                        v-if="extraResult.freedMonthly > 0"
+                        class="text-[12px] text-[var(--bp-muted)]"
+                        >Uses {{ formatPeso(extraResult.spent) }}.
+                        {{ formatPeso(extraResult.leftover) }} is left
+                        over.</span
+                    >
+                </template>
             </template>
-        </section>
+        </div>
 
-        <section class="rounded-[22px] p-6" :style="cardStyle">
-            <h3 :class="headingClass" style="color: var(--hab-ink)">
-                Revolving or balance conversion?
-            </h3>
-            <p class="mt-1 mb-4 text-[13px]" style="color: var(--hab-muted)">
-                Convert the balance a card carries into a fixed installment, or
-                keep paying it revolving. Both use the same monthly payment.
-            </p>
-
+        <!-- Revolving or balance conversion? -->
+        <div
+            v-show="tab === 'conversion'"
+            class="flex flex-col gap-3.5 px-4 py-[18px]"
+            role="tabpanel"
+        >
+            <div>
+                <p class="text-[14px] font-semibold">Convert a card balance?</p>
+                <p class="mt-0.5 text-[12px] text-[var(--bp-muted)]">
+                    Turn the balance a card carries into a fixed installment, or
+                    keep paying it revolving. Both use the same monthly payment.
+                </p>
+            </div>
             <p
                 v-if="carrying.length === 0"
-                class="text-[14px]"
-                style="color: var(--hab-muted)"
+                class="text-[13px] text-[var(--bp-muted)]"
             >
                 None of your cards carries a balance over.
             </p>
             <template v-else>
-                <div class="grid grid-cols-1 gap-3 sm:grid-cols-3">
-                    <div>
-                        <label :class="labelClass">Card</label>
-                        <select v-model="convertCard" :class="fieldClass">
-                            <option
-                                v-for="card in carrying"
-                                :key="card.id"
-                                :value="card.id"
-                            >
-                                {{ card.name }} ({{
-                                    formatPeso(card.revolvingBalance)
-                                }})
-                            </option>
-                        </select>
-                    </div>
-                    <div>
-                        <label :class="labelClass"
-                            >Conversion term (months)</label
+                <label
+                    class="flex items-center justify-between gap-3 border-b border-[var(--bp-hair)] pb-2.5 text-[13px]"
+                >
+                    <span class="shrink-0 text-[var(--bp-muted)]">Card</span>
+                    <select
+                        v-model="convertCard"
+                        class="min-w-0 bg-transparent text-right font-medium outline-none"
+                    >
+                        <option
+                            v-for="card in carrying"
+                            :key="card.id"
+                            :value="card.id"
                         >
+                            {{ card.name }} ({{
+                                formatPeso(card.revolvingBalance)
+                            }})
+                        </option>
+                    </select>
+                </label>
+                <label
+                    class="flex items-center justify-between gap-3 border-b border-[var(--bp-hair)] pb-2.5 text-[13px]"
+                >
+                    <span class="text-[var(--bp-muted)]">Conversion term</span>
+                    <span class="flex items-baseline gap-1">
                         <input
                             v-model.number="convertMonths"
                             type="number"
                             min="2"
                             max="60"
-                            :class="fieldClass"
+                            class="bp-mono w-12 bg-transparent text-right outline-none"
                         />
-                    </div>
-                    <div>
-                        <label :class="labelClass"
-                            >Bank interest a month (%)</label
+                        <span class="text-[12px] text-[var(--bp-muted)]"
+                            >months</span
                         >
+                    </span>
+                </label>
+                <label
+                    class="flex items-center justify-between gap-3 border-b border-[var(--bp-hair)] pb-2.5 text-[13px]"
+                >
+                    <span class="text-[var(--bp-muted)]"
+                        >Bank interest a month</span
+                    >
+                    <span class="flex items-baseline gap-1">
                         <MoneyInput
                             v-model="convertRate"
                             :empty-value="null"
                             unit="%"
-                            adorn
-                            :class="fieldClass"
+                            placeholder="0.00"
+                            class="bp-mono w-16 bg-transparent text-right outline-none"
                         />
-                    </div>
-                </div>
+                        <span class="text-[12px] text-[var(--bp-muted)]"
+                            >%</span
+                        >
+                    </span>
+                </label>
 
-                <div v-if="convertResult" class="mt-4">
-                    <p
-                        class="mb-3 text-[14px] font-semibold"
-                        style="color: var(--hab-ink)"
-                        role="status"
-                    >
-                        {{ formatPeso(convertResult.monthlyPayment) }} a month
-                        either way. {{ convertVerdict }}
-                    </p>
-                    <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                <template v-if="convertResult">
+                    <div class="grid grid-cols-2 border border-[var(--bp-ink)]">
                         <div
-                            class="rounded-[14px] p-4"
-                            style="border: 1px solid var(--hab-hairline)"
+                            class="px-3 py-2.5"
+                            :class="{
+                                'bg-[var(--bp-tint)]':
+                                    convertResult.cheaper === 'conversion',
+                            }"
                         >
                             <p
-                                class="text-[12.5px] font-semibold"
-                                style="color: var(--hab-muted)"
+                                class="bp-mono text-[9.5px] tracking-[0.1em]"
+                                :class="
+                                    convertResult.cheaper === 'conversion'
+                                        ? 'text-[var(--bp-accent)]'
+                                        : 'text-[var(--bp-muted)]'
+                                "
                             >
-                                Balance conversion
+                                CONVERSION
                             </p>
-                            <p
-                                class="text-[13.5px]"
-                                style="color: var(--hab-ink)"
-                            >
-                                {{ convertResult.conversion.months }} payments,
+                            <p class="bp-mono mt-1 text-[14px] font-semibold">
                                 {{
                                     formatPeso(
                                         convertResult.conversion.totalInterest,
                                     )
                                 }}
-                                interest,
-                                {{
-                                    formatPeso(
-                                        convertResult.conversion.totalPaid,
-                                    )
-                                }}
-                                paid in all
+                            </p>
+                            <p class="text-[11.5px] text-[var(--bp-muted)]">
+                                interest over
+                                {{ convertResult.conversion.months }} months
                             </p>
                         </div>
                         <div
-                            class="rounded-[14px] p-4"
-                            style="border: 1px solid var(--hab-hairline)"
+                            class="border-l border-[var(--bp-ink)] px-3 py-2.5"
+                            :class="{
+                                'bg-[var(--bp-tint)]':
+                                    convertResult.cheaper === 'revolving',
+                            }"
                         >
                             <p
-                                class="text-[12.5px] font-semibold"
-                                style="color: var(--hab-muted)"
+                                class="bp-mono text-[9.5px] tracking-[0.1em]"
+                                :class="
+                                    convertResult.cheaper === 'revolving'
+                                        ? 'text-[var(--bp-accent)]'
+                                        : 'text-[var(--bp-muted)]'
+                                "
                             >
-                                Staying revolving
+                                KEEP REVOLVING
                             </p>
-                            <p
+                            <template
                                 v-if="convertResult.revolving.neverClears"
-                                class="text-[13.5px]"
-                                style="color: #c0392b"
                             >
-                                Never clears at this payment
-                            </p>
-                            <p
-                                v-else
-                                class="text-[13.5px]"
-                                style="color: var(--hab-ink)"
-                            >
-                                {{ convertResult.revolving.months }} payments,
-                                {{
-                                    formatPeso(
-                                        convertResult.revolving.totalInterest,
-                                    )
-                                }}
-                                interest,
-                                {{
-                                    formatPeso(
-                                        convertResult.revolving.totalPaid,
-                                    )
-                                }}
-                                paid in all
-                            </p>
+                                <p
+                                    class="bp-mono mt-1 text-[14px] font-semibold"
+                                >
+                                    Never clears
+                                </p>
+                                <p class="text-[11.5px] text-[var(--bp-muted)]">
+                                    at this payment
+                                </p>
+                            </template>
+                            <template v-else>
+                                <p
+                                    class="bp-mono mt-1 text-[14px] font-semibold"
+                                >
+                                    {{
+                                        formatPeso(
+                                            convertResult.revolving
+                                                .totalInterest,
+                                        )
+                                    }}
+                                </p>
+                                <p class="text-[11.5px] text-[var(--bp-muted)]">
+                                    interest over
+                                    {{ convertResult.revolving.months }} months
+                                </p>
+                            </template>
                         </div>
                     </div>
-                </div>
+                    <p
+                        class="border-t-[3px] border-double border-[var(--bp-ink)] pt-2.5 text-[13px] leading-normal"
+                        role="status"
+                    >
+                        <span class="bp-mono">{{
+                            formatPeso(convertResult.monthlyPayment)
+                        }}</span>
+                        a month either way.
+                        <span class="font-semibold">{{ convertVerdict }}</span>
+                    </p>
+                </template>
             </template>
-        </section>
-    </div>
+        </div>
+    </aside>
 </template>

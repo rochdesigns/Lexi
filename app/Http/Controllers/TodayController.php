@@ -93,10 +93,26 @@ class TodayController extends Controller
         $bills = $user->bills()->get();
         $sources = $user->incomeSources()->with('receipts')->get();
         $contributions = $projection->goalContributions($user->goals()->with('account')->get(), $debts, $bills, $today);
-        $moneySummary = $sources->isEmpty() && $bills->isEmpty() ? null : [
-            'safeToSpend' => $projection->overview($debts, $bills, $sources, $today, $contributions['buffer'], $user->setting?->recovery_months, $contributions['sinking'])['safeToSpend'],
-            'dueSoonCount' => collect($projection->upcoming($debts, $bills, $sources, $today))->where('kind', '!=', 'income')->where('received', false)->count(),
-        ];
+        $moneySummary = null;
+
+        if ($sources->isNotEmpty() || $bills->isNotEmpty()) {
+            $numbers = $projection->overview($debts, $bills, $sources, $today, $contributions['buffer'], $user->setting?->recovery_months, $contributions['sinking']);
+            $dueSoon = collect($projection->upcoming($debts, $bills, $sources, $today))
+                ->where('kind', '!=', 'income')
+                ->where('received', false)
+                ->values();
+
+            $moneySummary = [
+                'safeToSpend' => $numbers['safeToSpend'],
+                'perDay' => $numbers['perDay'],
+                'dueSoonCount' => $dueSoon->count(),
+                'dueSoon' => $dueSoon->take(3)->map(fn (array $item): array => [
+                    'date' => $item['date'],
+                    'name' => $item['name'],
+                    'amount' => $item['amount'],
+                ])->all(),
+            ];
+        }
 
         return Inertia::render('Today', [
             'user' => [

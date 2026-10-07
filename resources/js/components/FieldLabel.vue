@@ -11,9 +11,9 @@ defineProps<{ hint: string }>();
 </script>
 
 <template>
-    <div class="mb-1 flex items-center gap-1">
+    <div class="mb-1.5 flex items-center gap-1">
         <label
-            class="text-[12.5px] font-semibold text-[var(--hab-ink-secondary)]"
+            class="bp-mono text-[10px] tracking-[0.12em] text-[var(--bp-muted)] uppercase"
         >
             <slot />
         </label>
@@ -22,7 +22,7 @@ defineProps<{ hint: string }>();
                 <TooltipTrigger as-child>
                     <button
                         type="button"
-                        class="rounded-full text-[var(--hab-muted)] outline-none hover:text-[var(--hab-ink)] focus-visible:ring-2 focus-visible:ring-[var(--hab-accent)]"
+                        class="rounded-full text-[var(--bp-muted)] outline-none hover:text-[var(--bp-ink)] focus-visible:ring-2 focus-visible:ring-[var(--bp-accent)]"
                         :aria-label="`About this field: ${hint}`"
                     >
                         <CircleHelp class="size-3.5" aria-hidden="true" />

@@ -15,6 +15,7 @@ import {
     DialogHeader,
     DialogTitle,
 } from '@/components/ui/dialog';
+import { formError, formField } from '@/utils/blueprint';
 import { debtTypes, formatPeso, toPesos } from '@/utils/money';
 import type { InterestValue } from '@/utils/money';
 
@@ -327,9 +328,8 @@ function submit(): void {
     }
 }
 
-const fieldClass =
-    'w-full rounded-[11px] border border-[var(--hab-card-border)] bg-[var(--hab-card-bg)] px-3 py-2 text-[14px] text-[var(--hab-ink)] outline-none focus:border-[var(--hab-accent)]';
-const errorClass = 'mt-1 text-[12px] text-red-600';
+const fieldClass = formField;
+const errorClass = formError;
 </script>
 
 <template>
@@ -479,7 +479,7 @@ const errorClass = 'mt-1 text-[12px] text-red-600';
                     >
                         {{ form.errors.monthly_interest_rate }}
                     </p>
-                    <p class="mt-1 text-[12px]" style="color: var(--hab-muted)">
+                    <p class="mt-1 text-[12px]" style="color: var(--bp-muted)">
                         A monthly rate, not yearly. If your contract says per
                         year, divide it by 12.
                     </p>
@@ -618,8 +618,8 @@ const errorClass = 'mt-1 text-[12px] text-red-600';
                         <div
                             v-for="(row, index) in form.installments"
                             :key="index"
-                            class="grid grid-cols-[1fr_8rem_auto] items-start gap-2 rounded-[11px] border p-2.5"
-                            style="border-color: var(--hab-card-border)"
+                            class="grid grid-cols-[1fr_8rem_auto] items-start gap-2 rounded-[3px] border border-[var(--bp-line)] p-2.5"
+                            style="border-color: var(--bp-line)"
                         >
                             <div>
                                 <FieldLabel
@@ -679,7 +679,7 @@ const errorClass = 'mt-1 text-[12px] text-red-600';
                                 <button
                                     type="button"
                                     class="mt-1 text-[12px] underline"
-                                    style="color: var(--hab-muted)"
+                                    style="color: var(--bp-muted)"
                                     @click="
                                         row.mode =
                                             row.mode === 'monthly'
@@ -814,13 +814,13 @@ const errorClass = 'mt-1 text-[12px] text-red-600';
                             <p
                                 v-if="installmentSummary(row)"
                                 class="col-span-full text-[12px] tabular-nums"
-                                style="color: var(--hab-muted)"
+                                style="color: var(--bp-muted)"
                             >
                                 {{ installmentSummary(row) }}
                             </p>
                             <label
                                 class="col-span-full flex items-center gap-2 text-[12.5px]"
-                                style="color: var(--hab-ink-secondary)"
+                                style="color: var(--bp-ink-2)"
                             >
                                 <input
                                     v-model="row.in_minimum"
@@ -832,7 +832,7 @@ const errorClass = 'mt-1 text-[12px] text-red-600';
                         <p
                             v-if="form.installments.length > 0"
                             class="text-[12px]"
-                            style="color: var(--hab-muted)"
+                            style="color: var(--bp-muted)"
                         >
                             Only installments running on your next statement are
                             taken out of the total due.
@@ -924,7 +924,7 @@ const errorClass = 'mt-1 text-[12px] text-red-600';
                     <p
                         v-if="isAmortized"
                         class="-mt-2 text-[12px]"
-                        style="color: var(--hab-muted)"
+                        style="color: var(--bp-muted)"
                     >
                         Leave per month empty to work it out from the amount,
                         rate and months.
@@ -951,7 +951,7 @@ const errorClass = 'mt-1 text-[12px] text-red-600';
                 <p
                     v-if="debt && !isInformal"
                     class="text-[12.5px]"
-                    style="color: var(--hab-muted)"
+                    style="color: var(--bp-muted)"
                 >
                     {{
                         isCard
@@ -1007,7 +1007,7 @@ const errorClass = 'mt-1 text-[12px] text-red-600';
                 <label
                     v-if="debt"
                     class="flex items-center gap-2 text-[13.5px]"
-                    style="color: var(--hab-ink)"
+                    style="color: var(--bp-ink)"
                 >
                     <input
                         type="checkbox"

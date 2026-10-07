@@ -6,13 +6,16 @@ import {
     store as storeCategory,
 } from '@/actions/App/Http/Controllers/Money/CustomCategoryController';
 import { store } from '@/actions/App/Http/Controllers/Money/TransactionsController';
+import BlueprintPageHead from '@/components/BlueprintPageHead.vue';
+import BlueprintSectionHeading from '@/components/BlueprintSectionHeading.vue';
+import BlueprintTitleBlock from '@/components/BlueprintTitleBlock.vue';
 import InfoNote from '@/components/InfoNote.vue';
 import MoneyInput from '@/components/MoneyInput.vue';
 import StatementImportDialog from '@/components/StatementImportDialog.vue';
 import TransactionDialog from '@/components/TransactionDialog.vue';
 import type { TransactionRow } from '@/components/TransactionDialog.vue';
-import { Button } from '@/components/ui/button';
 import { transactions as transactionsRoute } from '@/routes/money';
+import { sheetWidth } from '@/utils/blueprint';
 import {
     categoryLabel,
     formatDay,
@@ -362,8 +365,6 @@ function edit(transaction: TransactionRow): void {
     editOpen.value = true;
 }
 
-const cardStyle =
-    'background: var(--hab-card-bg); border: 1px solid var(--hab-card-border);';
 /** The server reports a missing or invalid payer under the column it checks. */
 const methodError = computed(() => {
     const errors = form.errors as Record<string, string | undefined>;
@@ -377,611 +378,940 @@ const toAccountError = computed(
     () => (form.errors as Record<string, string | undefined>).to_account_id,
 );
 
-const fieldClass =
-    'w-full rounded-[11px] border border-[var(--hab-card-border)] bg-[var(--hab-card-bg)] px-3 py-2 text-[14px] text-[var(--hab-ink)] outline-none focus:border-[var(--hab-accent)]';
-const errorClass = 'mt-1 text-[12px] text-red-600';
+const kindOptions = [
+    { value: 'expense', label: 'Expense' },
+    { value: 'income', label: 'Income' },
+    { value: 'transfer', label: 'Transfer' },
+] as const;
+
+/** Accounts and, for spending, cards: the rows of the "paid with" picker. */
+const payers = computed(() => [
+    ...props.accounts.map((account) => ({
+        value: `account:${account.id}`,
+        name: account.name,
+        detail: formatPeso(account.balance),
+    })),
+    ...(kind.value === 'expense'
+        ? props.cards.map((card) => ({
+              value: `card:${card.id}`,
+              name: card.name,
+              detail: 'card',
+          }))
+        : []),
+]);
+
+const categoryIcons: Record<string, string> = {
+    food: 'restaurant',
+    groceries: 'shopping_cart',
+    transport: 'directions_car',
+    shopping: 'shopping_bag',
+    health: 'medication',
+    fun: 'movie',
+    home: 'home',
+    other: 'sell',
+};
+
+function entryIcon(row: TransactionRow): string {
+    if (row.kind === 'income') {
+        return 'payments';
+    }
+
+    if (row.kind === 'transfer') {
+        return 'swap_horiz';
+    }
+
+    return row.billId
+        ? 'receipt_long'
+        : (categoryIcons[row.category] ?? 'sell');
+}
+
+function entryName(row: TransactionRow): string {
+    return (
+        row.note ||
+        (row.kind === 'income'
+            ? 'Income'
+            : (row.categoryName ?? categoryLabel(row.category)))
+    );
+}
+
+function entryMeta(row: TransactionRow): string {
+    if (row.kind === 'income') {
+        return `Income · into ${row.paidWith}`;
+    }
+
+    if (row.kind === 'transfer') {
+        return `Transfer · ${row.paidWith} → ${row.toAccountName}`;
+    }
+
+    const parts = [
+        row.categoryName ?? categoryLabel(row.category),
+        row.paidWith,
+    ];
+
+    if (row.billName) {
+        parts.push(`bill: ${row.billName}`);
+    }
+
+    return parts.filter(Boolean).join(' · ');
+}
+
+/** What a day spent: expenses only, the same as Spent at the top. */
+function daySpent(items: DayItem[]): number {
+    return items.reduce(
+        (sum, item) =>
+            item.type === 'transaction' && item.row.kind === 'expense'
+                ? sum + item.row.amount
+                : sum,
+        0,
+    );
+}
+
+function dayParts(date: string): { day: string; weekday: string } {
+    const [year, month, day] = date.split('-').map(Number);
+
+    return {
+        day: String(day).padStart(2, '0'),
+        weekday: new Date(year, month - 1, day)
+            .toLocaleDateString('en-US', { weekday: 'short' })
+            .toUpperCase(),
+    };
+}
+
+const entryCount = computed(
+    () => props.transactions.length + props.debtPayments.length,
+);
+
+/** "OCT 01 — OCT 06 · 14 entries": the month so far, or all of a past month. */
+const dimension = computed(() => {
+    const [year, month] = props.month.split('-').map(Number);
+    const monthShort = new Date(year, month - 1, 1)
+        .toLocaleDateString('en-US', { month: 'short' })
+        .toUpperCase();
+    const lastDay =
+        props.month === props.currentMonth
+            ? Number(props.today.slice(8, 10))
+            : new Date(year, month, 0).getDate();
+
+    return `${monthShort} 01 — ${monthShort} ${String(lastDay).padStart(2, '0')} · ${entryCount.value} ${entryCount.value === 1 ? 'entry' : 'entries'}`;
+});
+
+/** Category bars, largest first, shaded from the accent down. */
+const categoryBars = computed(() => {
+    const sorted = [...props.categoryTotals].sort((a, b) => b.total - a.total);
+    const largest = sorted[0]?.total ?? 0;
+    const shades = [100, 78, 60, 45, 32, 22, 14];
+
+    return sorted.map((item, index) => ({
+        ...item,
+        width: largest > 0 ? (item.total / largest) * 100 : 0,
+        fill: `color-mix(in oklch, var(--bp-accent) ${shades[Math.min(index, shades.length - 1)]}%, var(--bp-card))`,
+    }));
+});
+
+const rowClass =
+    'flex items-center justify-between gap-3 border-b border-[var(--bp-hair)] pb-2 text-[13.5px]';
+const selectClass =
+    'min-w-0 bg-transparent text-right font-medium outline-none';
+const errorClass = 'text-[12px] text-[#a3311f]';
+const chipClass = 'rounded-full border px-2.5 py-[3px] text-[12.5px]';
+const chipOn =
+    'border-[var(--bp-ink)] bg-[var(--bp-ink)] font-semibold text-[var(--bp-card)]';
+const chipOff =
+    'border-[var(--bp-line)] text-[var(--bp-ink-2)] hover:border-[var(--bp-ink)]';
 </script>
 
 <template>
     <Head title="Transactions" />
 
-    <div
-        class="mx-auto w-full max-w-[1180px] px-4 pt-6 pb-[46px] sm:px-6 lg:px-[30px]"
-    >
-        <div class="mb-6">
-            <h1
-                class="font-['Bricolage_Grotesque'] text-[32px] font-extrabold"
-                style="color: var(--hab-ink)"
+    <Teleport defer to="#page-actions">
+        <!-- Always an element here, so the default "New entry" stays hidden: the blueprint has only the import. -->
+        <span class="contents">
+            <button
+                v-if="cards.length > 0"
+                type="button"
+                class="bp flex items-center gap-1.5 rounded border border-[var(--bp-line)] bg-[var(--bp-card)] px-3 py-1.5 text-[13px] font-medium hover:border-[var(--bp-ink)]"
+                @click="importOpen = true"
             >
-                Transactions
-            </h1>
-            <p class="mt-1 text-[14px]" style="color: var(--hab-muted)">
-                Log what you spend and what you receive. Everything else works
-                without it.
-            </p>
-        </div>
+                <span class="ms" style="font-size: 16px" aria-hidden="true"
+                    >upload_file</span
+                >
+                <span class="hidden sm:inline">Import statement</span>
+            </button>
+        </span>
+    </Teleport>
 
-        <form
-            class="mb-6 rounded-[22px] p-5"
-            :style="cardStyle"
-            @submit.prevent="submit"
+    <div class="bp pb-16">
+        <BlueprintPageHead
+            icon="receipt_long"
+            code="M-04"
+            section="Money"
+            title="Transactions"
+            subtitle="Log what you spend and what you receive. Everything else works without it."
+            :dimension="dimension"
+        />
+
+        <div
+            :class="sheetWidth.wide"
+            class="grid grid-cols-1 items-start gap-10 lg:grid-cols-[minmax(0,1fr)_340px]"
         >
-            <InfoNote
-                id="transactions-income"
-                title="Income here is what actually arrived."
-            >
-                It goes into the account you pick and adds to its balance. The
-                income you set up on the Overview is the forecast, and a pay day
-                you mark as received here is not counted in it again.
-            </InfoNote>
-
+            <!-- Entry slip first on phones, pinned right on wide screens -->
             <div
-                class="mb-3 inline-flex rounded-full p-0.5"
-                style="background: var(--hab-hairline)"
-                role="radiogroup"
-                aria-label="Entry type"
+                class="flex flex-col gap-3.5 lg:sticky lg:top-[76px] lg:order-2"
             >
-                <button
-                    v-for="option in ['expense', 'income', 'transfer'] as const"
-                    :key="option"
-                    type="button"
-                    role="radio"
-                    :aria-checked="kind === option"
-                    class="rounded-full px-4 py-1 text-[13px] font-semibold"
-                    :style="
-                        kind === option
-                            ? 'background: var(--hab-card-bg); color: var(--hab-ink)'
-                            : 'background: transparent; color: var(--hab-muted)'
-                    "
-                    @click="chooseKind(option)"
-                >
-                    {{
-                        option === 'expense'
-                            ? 'Expense'
-                            : option === 'income'
-                              ? 'Income'
-                              : 'Transfer'
-                    }}
-                </button>
-            </div>
-
-            <p
-                v-if="!hasMethods"
-                class="text-[14px]"
-                style="color: var(--hab-muted)"
-            >
-                {{
-                    kind === 'transfer'
-                        ? 'Add a second account on the Overview to move money between accounts.'
-                        : kind === 'income'
-                          ? 'Add an account on the Overview to record income.'
-                          : 'Add an account on the Overview, or a card on Debts, to log what you spend.'
-                }}
-            </p>
-            <template v-else>
                 <div
-                    class="grid grid-cols-1 gap-3"
-                    :class="
-                        kind === 'transfer'
-                            ? 'sm:grid-cols-[1fr_1fr_1fr_1fr]'
-                            : 'sm:grid-cols-[1fr_1fr_1fr]'
-                    "
-                >
-                    <div ref="amountBox">
-                        <label
-                            class="mb-1 block text-[12.5px] font-semibold text-[var(--hab-ink-secondary)]"
-                            >Amount</label
-                        >
-                        <MoneyInput
-                            v-model="form.amount"
-                            :empty-value="null"
-                            adorn
-                            :class="fieldClass"
-                        />
-                        <p v-if="form.errors.amount" :class="errorClass">
-                            {{ form.errors.amount }}
-                        </p>
-                    </div>
-                    <div>
-                        <label
-                            class="mb-1 block text-[12.5px] font-semibold text-[var(--hab-ink-secondary)]"
-                            >{{
-                                kind === 'transfer'
-                                    ? 'From'
-                                    : kind === 'income'
-                                      ? 'Paid into'
-                                      : 'Paid with'
-                            }}</label
-                        >
-                        <select v-model="form.paidWith" :class="fieldClass">
-                            <optgroup v-if="accounts.length" label="Accounts">
-                                <option
-                                    v-for="account in accounts"
-                                    :key="`a${account.id}`"
-                                    :value="`account:${account.id}`"
-                                >
-                                    {{ account.name }}
-                                </option>
-                            </optgroup>
-                            <optgroup
-                                v-if="kind === 'expense' && cards.length"
-                                label="Cards"
-                            >
-                                <option
-                                    v-for="card in cards"
-                                    :key="`c${card.id}`"
-                                    :value="`card:${card.id}`"
-                                >
-                                    {{ card.name }}
-                                </option>
-                            </optgroup>
-                        </select>
-                        <p v-if="methodError" :class="errorClass">
-                            {{ methodError }}
-                        </p>
-                    </div>
-                    <div v-if="kind === 'transfer'">
-                        <label
-                            class="mb-1 block text-[12.5px] font-semibold text-[var(--hab-ink-secondary)]"
-                            >To</label
-                        >
-                        <select v-model="form.toAccount" :class="fieldClass">
-                            <option value="" disabled>Choose an account</option>
-                            <option
-                                v-for="account in accounts"
-                                :key="`to${account.id}`"
-                                :value="`account:${account.id}`"
-                                :disabled="
-                                    form.paidWith === `account:${account.id}`
-                                "
-                            >
-                                {{ account.name }}
-                            </option>
-                        </select>
-                        <p v-if="toAccountError" :class="errorClass">
-                            {{ toAccountError }}
-                        </p>
-                    </div>
-                    <div>
-                        <label
-                            class="mb-1 block text-[12.5px] font-semibold text-[var(--hab-ink-secondary)]"
-                            >Date</label
-                        >
-                        <input
-                            v-model="form.date"
-                            type="date"
-                            :class="fieldClass"
-                        />
-                        <p v-if="form.errors.date" :class="errorClass">
-                            {{ form.errors.date }}
-                        </p>
-                    </div>
-                </div>
-
-                <div v-if="kind === 'expense' && bills.length" class="mt-3">
-                    <label
-                        class="mb-1 block text-[12.5px] font-semibold text-[var(--hab-ink-secondary)]"
-                        >Pays a bill</label
-                    >
-                    <select
-                        v-model="form.bill"
-                        :class="fieldClass"
-                        @change="chooseBill"
-                    >
-                        <option value="">Not a bill</option>
-                        <option
-                            v-for="bill in bills"
-                            :key="bill.id"
-                            :value="String(bill.id)"
-                        >
-                            {{ bill.name }}
-                        </option>
-                    </select>
-                    <p v-if="billError" :class="errorClass">
-                        {{ billError }}
-                    </p>
-                </div>
-
-                <div
-                    v-if="kind === 'income' && incomeSources.length"
-                    class="mt-3"
-                >
-                    <label
-                        class="mb-1 block text-[12.5px] font-semibold text-[var(--hab-ink-secondary)]"
-                        >From</label
-                    >
-                    <select
-                        v-model="incomeSourceId"
-                        :class="fieldClass"
-                        @change="chooseSource"
-                    >
-                        <option value="">Something else</option>
-                        <option
-                            v-for="source in incomeSources"
-                            :key="source.id"
-                            :value="source.id"
-                        >
-                            {{ source.name }}
-                        </option>
-                    </select>
-                </div>
-
-                <div
-                    v-if="guard"
-                    class="mt-3 rounded-[12px] px-4 py-3 text-[13.5px]"
-                    style="
-                        background: #fff4e0;
-                        border: 1px solid #f2d9a6;
-                        color: #7a5200;
-                    "
-                    role="status"
-                >
-                    {{ guard.name }} already carries
-                    {{ formatPeso(guard.revolving) }}, which costs
-                    {{ guard.monthlyRate }}% a month. A new charge adds to what
-                    is charging interest.
-                    <template v-if="guard.suggestedAccount">
-                        <button
-                            type="button"
-                            class="ml-1 font-semibold underline"
-                            @click="
-                                form.paidWith = `account:${guard.suggestedAccount.id}`
-                            "
-                        >
-                            Use {{ guard.suggestedAccount.name }} instead
-                        </button>
-                        ({{ formatPeso(guard.suggestedAccount.balance) }}
-                        available).
-                    </template>
-                </div>
-
-                <div
-                    v-if="kind === 'expense'"
-                    class="mt-3 flex flex-wrap gap-2"
-                    role="radiogroup"
-                    aria-label="Category"
+                    class="flex items-center justify-between border border-[var(--bp-ink)] bg-[var(--bp-card)] px-2.5 py-2"
                 >
                     <button
-                        v-for="category in transactionCategories"
-                        :key="category.value"
                         type="button"
-                        role="radio"
-                        :aria-checked="
-                            form.category === category.value &&
-                            form.custom_category_id === null
-                        "
-                        class="rounded-full px-3.5 py-1.5 text-[13px] font-semibold"
-                        :style="
-                            form.category === category.value &&
-                            form.custom_category_id === null
-                                ? 'background: var(--hab-accent); color: #fff; border: 1px solid var(--hab-accent)'
-                                : 'background: transparent; color: var(--hab-ink); border: 1px solid var(--hab-card-border)'
-                        "
-                        @click="chooseCategory(category.value)"
+                        class="flex h-[26px] w-[26px] items-center justify-center rounded-[3px] border border-[var(--bp-line)] hover:border-[var(--bp-ink)]"
+                        aria-label="Previous month"
+                        @click="goTo(shiftMonth(-1))"
                     >
-                        {{ category.label }}
+                        <span
+                            class="ms"
+                            style="font-size: 17px"
+                            aria-hidden="true"
+                            >chevron_left</span
+                        >
                     </button>
-                    <span
-                        v-for="custom in customCategories"
-                        :key="`custom-${custom.id}`"
-                        class="inline-flex items-center rounded-full text-[13px] font-semibold"
-                        :style="
-                            form.custom_category_id === custom.id
-                                ? 'background: var(--hab-accent); color: #fff; border: 1px solid var(--hab-accent)'
-                                : 'background: transparent; color: var(--hab-ink); border: 1px solid var(--hab-card-border)'
-                        "
-                    >
-                        <button
-                            type="button"
-                            role="radio"
-                            :aria-checked="
-                                form.custom_category_id === custom.id
-                            "
-                            class="py-1.5 pr-1.5 pl-3.5"
-                            @click="chooseCustomCategory(custom.id)"
+                    <span class="flex flex-col items-center">
+                        <span
+                            class="bp-mono text-[9.5px] tracking-[0.12em] text-[var(--bp-faint)]"
+                            >MONTH</span
                         >
-                            {{ custom.name }}
-                        </button>
+                        <span class="text-[14.5px] font-semibold">{{
+                            title
+                        }}</span>
                         <button
+                            v-if="month !== currentMonth"
                             type="button"
-                            class="py-1.5 pr-3 pl-1 opacity-60 hover:opacity-100"
-                            :aria-label="`Remove ${custom.name}`"
-                            @click="removeCategory(custom.id)"
+                            class="text-[11.5px] text-[var(--bp-muted)] underline underline-offset-2 hover:text-[var(--bp-ink)]"
+                            @click="goTo(currentMonth)"
                         >
-                            ×
+                            Back to this month
                         </button>
                     </span>
                     <button
-                        v-if="!addingCategory"
                         type="button"
-                        class="rounded-full px-3.5 py-1.5 text-[13px] font-semibold"
-                        style="
-                            background: transparent;
-                            color: var(--hab-muted);
-                            border: 1px dashed var(--hab-card-border);
-                        "
-                        @click="addingCategory = true"
+                        class="flex h-[26px] w-[26px] items-center justify-center rounded-[3px] border border-[var(--bp-line)] enabled:hover:border-[var(--bp-ink)] disabled:border-[var(--bp-hair)] disabled:text-[var(--bp-fainter)]"
+                        aria-label="Next month"
+                        :disabled="month >= currentMonth"
+                        @click="goTo(shiftMonth(1))"
                     >
-                        + New
+                        <span
+                            class="ms"
+                            style="font-size: 17px"
+                            aria-hidden="true"
+                            >chevron_right</span
+                        >
                     </button>
-                    <form
-                        v-else
-                        class="inline-flex items-center gap-2"
-                        @submit.prevent="addCategory"
+                </div>
+
+                <form
+                    class="border border-[var(--bp-ink)] bg-[var(--bp-card)]"
+                    aria-label="New entry"
+                    @submit.prevent="submit"
+                >
+                    <div
+                        class="bp-mono flex items-center justify-between border-b border-[var(--bp-ink)] px-4 py-2.5 text-[10.5px] tracking-[0.12em]"
                     >
-                        <input
-                            v-model="categoryForm.name"
-                            type="text"
-                            maxlength="30"
-                            placeholder="Category name"
-                            aria-label="New category name"
-                            autofocus
-                            class="w-36 rounded-full px-3.5 py-1.5 text-[13px]"
-                            style="
-                                background: transparent;
-                                color: var(--hab-ink);
-                                border: 1px solid var(--hab-card-border);
-                            "
-                        />
+                        <span>NEW ENTRY</span>
+                        <span class="text-[var(--bp-faint)]">{{
+                            kind.toUpperCase()
+                        }}</span>
+                    </div>
+                    <div
+                        class="grid grid-cols-3 border-b border-[var(--bp-line)]"
+                        role="radiogroup"
+                        aria-label="Entry type"
+                    >
                         <button
-                            type="submit"
-                            class="text-[13px] font-semibold"
-                            style="color: var(--hab-accent)"
-                            :disabled="categoryForm.processing"
-                        >
-                            Add
-                        </button>
-                        <button
+                            v-for="option in kindOptions"
+                            :key="option.value"
                             type="button"
-                            class="text-[13px]"
-                            style="color: var(--hab-muted)"
-                            @click="
-                                addingCategory = false;
-                                categoryForm.reset();
-                                categoryForm.clearErrors();
+                            role="radio"
+                            :aria-checked="kind === option.value"
+                            class="py-[9px] text-center text-[13px]"
+                            :class="
+                                kind === option.value
+                                    ? 'font-semibold text-[var(--bp-accent)] shadow-[inset_0_-2px_0_var(--bp-accent)]'
+                                    : 'text-[var(--bp-muted)] hover:text-[var(--bp-ink)]'
                             "
+                            @click="chooseKind(option.value)"
                         >
-                            Cancel
+                            {{ option.label }}
                         </button>
-                    </form>
-                </div>
-                <p
-                    v-if="kind === 'expense' && form.errors.category"
-                    :class="errorClass"
-                >
-                    {{ form.errors.category }}
-                </p>
-                <p v-if="categoryForm.errors.name" :class="errorClass">
-                    {{ categoryForm.errors.name }}
-                </p>
+                    </div>
 
-                <div class="mt-3 flex flex-col gap-3 sm:flex-row">
-                    <input
-                        v-model="form.note"
-                        type="text"
-                        maxlength="200"
-                        placeholder="Note (optional)"
-                        :class="fieldClass"
-                    />
-                    <Button type="submit" :disabled="form.processing">{{
-                        kind === 'transfer'
-                            ? 'Add transfer'
-                            : kind === 'income'
-                              ? 'Add income'
-                              : 'Add expense'
-                    }}</Button>
-                </div>
-            </template>
-        </form>
-
-        <div class="mb-4 flex flex-wrap items-center justify-between gap-3">
-            <div class="flex items-center gap-2">
-                <Button
-                    variant="outline"
-                    size="sm"
-                    aria-label="Previous month"
-                    @click="goTo(shiftMonth(-1))"
-                    >‹</Button
-                >
-                <span
-                    class="min-w-[130px] text-center text-[15px] font-semibold"
-                    style="color: var(--hab-ink)"
-                    >{{ title }}</span
-                >
-                <Button
-                    variant="outline"
-                    size="sm"
-                    aria-label="Next month"
-                    :disabled="month >= currentMonth"
-                    @click="goTo(shiftMonth(1))"
-                    >›</Button
-                >
-                <Button
-                    v-if="month !== currentMonth"
-                    variant="ghost"
-                    size="sm"
-                    @click="goTo(currentMonth)"
-                    >This month</Button
-                >
-            </div>
-            <div class="flex flex-wrap items-center gap-3">
-                <select
-                    v-if="accounts.length > 1"
-                    :value="accountFilter ?? ''"
-                    aria-label="Filter by account"
-                    class="rounded-[11px] border border-[var(--hab-card-border)] bg-[var(--hab-card-bg)] px-3 py-1.5 text-[13.5px] text-[var(--hab-ink)] outline-none focus:border-[var(--hab-accent)]"
-                    @change="
-                        goTo(
-                            month,
-                            Number(
-                                ($event.target as HTMLSelectElement).value,
-                            ) || null,
-                        )
-                    "
-                >
-                    <option value="">All accounts</option>
-                    <option
-                        v-for="account in accounts"
-                        :key="account.id"
-                        :value="account.id"
+                    <p
+                        v-if="!hasMethods"
+                        class="px-4 py-[18px] text-[13px] text-[var(--bp-muted)]"
                     >
-                        {{ account.name }}
-                    </option>
-                </select>
-                <p class="text-[14px]" style="color: var(--hab-muted)">
-                    Spent
-                    <span
-                        class="font-semibold tabular-nums"
-                        style="color: var(--hab-ink)"
-                        >{{ formatPeso(total) }}</span
-                    >
-                </p>
-                <p
-                    v-if="received > 0"
-                    class="text-[14px]"
-                    style="color: var(--hab-muted)"
-                >
-                    Received
-                    <span
-                        class="font-semibold tabular-nums"
-                        style="color: var(--hab-accent)"
-                        >{{ formatPeso(received) }}</span
-                    >
-                </p>
-                <Button
-                    v-if="cards.length > 0"
-                    variant="outline"
-                    size="sm"
-                    @click="importOpen = true"
-                    >Import statement</Button
-                >
-            </div>
-        </div>
+                        {{
+                            kind === 'transfer'
+                                ? 'Add a second account on the Overview to move money between accounts.'
+                                : kind === 'income'
+                                  ? 'Add an account on the Overview to record income.'
+                                  : 'Add an account on the Overview, or a card on Debts, to log what you spend.'
+                        }}
+                    </p>
+                    <div v-else class="flex flex-col gap-4 px-4 py-[18px]">
+                        <div ref="amountBox">
+                            <label class="sr-only" for="entry-amount"
+                                >Amount</label
+                            >
+                            <div
+                                class="flex items-baseline gap-1.5 border-b-2 border-[var(--bp-ink)] pb-1"
+                            >
+                                <span class="text-[22px] text-[var(--bp-faint)]"
+                                    >₱</span
+                                >
+                                <MoneyInput
+                                    id="entry-amount"
+                                    v-model="form.amount"
+                                    :empty-value="null"
+                                    placeholder="0.00"
+                                    class="bp-mono w-full min-w-0 bg-transparent text-[28px] font-medium outline-none placeholder:text-[var(--bp-fainter)]"
+                                />
+                            </div>
+                            <p
+                                v-if="form.errors.amount"
+                                :class="errorClass"
+                                class="mt-1"
+                            >
+                                {{ form.errors.amount }}
+                            </p>
+                        </div>
 
-        <div v-if="categoryTotals.length > 0" class="mb-4 flex flex-wrap gap-2">
-            <span
-                v-for="item in categoryTotals"
-                :key="item.category"
-                class="rounded-full px-3 py-1 text-[12.5px]"
-                style="background: var(--hab-hairline); color: var(--hab-ink)"
-            >
-                {{ categoryLabel(item.category) }} {{ formatPeso(item.total) }}
-            </span>
-        </div>
+                        <fieldset class="flex flex-col gap-1.5">
+                            <legend class="bp-caption mb-1.5">
+                                {{
+                                    kind === 'transfer'
+                                        ? 'From'
+                                        : kind === 'income'
+                                          ? 'Paid into'
+                                          : 'Paid with'
+                                }}
+                            </legend>
+                            <div
+                                class="flex max-h-[232px] flex-col overflow-y-auto border-t border-[var(--bp-hair)]"
+                            >
+                                <label
+                                    v-for="payer in payers"
+                                    :key="payer.value"
+                                    class="grid cursor-pointer grid-cols-[20px_minmax(0,1fr)_auto] items-center gap-2 border-b border-[var(--bp-hair)] py-[7px] text-[13.5px]"
+                                >
+                                    <input
+                                        v-model="form.paidWith"
+                                        type="radio"
+                                        name="paid-with"
+                                        :value="payer.value"
+                                        class="sr-only"
+                                    />
+                                    <span
+                                        :class="
+                                            form.paidWith === payer.value
+                                                ? 'msf text-[var(--bp-accent)]'
+                                                : 'ms text-[var(--bp-faint)]'
+                                        "
+                                        style="font-size: 17px"
+                                        aria-hidden="true"
+                                        >{{
+                                            form.paidWith === payer.value
+                                                ? 'radio_button_checked'
+                                                : 'radio_button_unchecked'
+                                        }}</span
+                                    >
+                                    <span
+                                        class="truncate"
+                                        :class="{
+                                            'font-semibold':
+                                                form.paidWith === payer.value,
+                                        }"
+                                        >{{ payer.name }}</span
+                                    >
+                                    <span
+                                        class="bp-mono text-[11.5px]"
+                                        :class="
+                                            form.paidWith === payer.value
+                                                ? 'text-[var(--bp-muted)]'
+                                                : 'text-[var(--bp-faint)]'
+                                        "
+                                        >{{ payer.detail }}</span
+                                    >
+                                </label>
+                            </div>
+                            <p v-if="methodError" :class="errorClass">
+                                {{ methodError }}
+                            </p>
+                        </fieldset>
 
-        <p
-            v-if="transactions.length === 0 && debtPayments.length === 0"
-            class="rounded-[22px] p-8 text-center text-[14px]"
-            :style="cardStyle + 'color: var(--hab-muted)'"
-        >
-            Nothing logged in {{ title }}.
-        </p>
-
-        <div v-else class="flex flex-col gap-4">
-            <section
-                v-for="day in days"
-                :key="day.date"
-                class="rounded-[22px] p-5"
-                :style="cardStyle"
-            >
-                <h2
-                    class="mb-2 text-[13px] font-semibold"
-                    style="color: var(--hab-muted)"
-                >
-                    {{ formatDay(day.date) }}
-                </h2>
-                <ul>
-                    <li
-                        v-for="(item, index) in day.items"
-                        :key="item.key"
-                        :style="
-                            index > 0
-                                ? 'border-top: 1px solid var(--hab-hairline)'
-                                : ''
-                        "
-                    >
                         <div
-                            v-if="item.type === 'payment'"
-                            class="flex w-full items-center justify-between gap-3 py-2.5"
+                            v-if="guard"
+                            class="border border-[var(--bp-ink)] bg-[repeating-linear-gradient(135deg,rgba(27,27,26,0.055)_0_1px,transparent_1px_8px)] px-3 py-2.5 text-[12.5px] leading-normal text-pretty"
+                            role="status"
                         >
-                            <span class="min-w-0">
-                                <span
-                                    class="block truncate text-[14px] font-semibold"
-                                    style="color: var(--hab-ink)"
-                                >
-                                    Payment to {{ item.row.debtName }}
-                                </span>
-                                <span
-                                    class="block text-[12px]"
-                                    style="color: var(--hab-muted)"
-                                >
-                                    Debt payment · {{ item.row.paidWith }}
-                                </span>
-                            </span>
+                            {{ guard.name }} carries
+                            <span class="bp-mono">{{
+                                formatPeso(guard.revolving)
+                            }}</span>
+                            at {{ guard.monthlyRate }}% a month. A new charge
+                            adds to it.
+                            <button
+                                v-if="guard.suggestedAccount"
+                                type="button"
+                                class="font-semibold underline underline-offset-[3px]"
+                                @click="
+                                    form.paidWith = `account:${guard.suggestedAccount.id}`
+                                "
+                            >
+                                Use {{ guard.suggestedAccount.name }}
+                            </button>
                             <span
-                                class="shrink-0 text-[14px] font-semibold tabular-nums"
-                                style="color: var(--hab-ink)"
-                                >{{ formatPeso(item.row.amount) }}</span
+                                v-if="guard.suggestedAccount"
+                                class="text-[var(--bp-muted)]"
+                            >
+                                ({{
+                                    formatPeso(guard.suggestedAccount.balance)
+                                }}
+                                available)</span
                             >
                         </div>
-                        <button
-                            v-else
-                            type="button"
-                            class="flex w-full items-center justify-between gap-3 py-2.5 text-left"
-                            @click="edit(item.row)"
-                        >
-                            <span class="min-w-0">
-                                <span
-                                    class="block truncate text-[14px] font-semibold"
-                                    style="color: var(--hab-ink)"
+
+                        <div v-if="kind === 'transfer'">
+                            <label :class="rowClass">
+                                <span class="shrink-0 text-[var(--bp-muted)]"
+                                    >To</span
                                 >
-                                    {{
-                                        item.row.note ||
-                                        (item.row.kind === 'income'
-                                            ? 'Income'
-                                            : (item.row.categoryName ??
-                                              categoryLabel(item.row.category)))
-                                    }}
-                                </span>
-                                <span
-                                    class="block text-[12px]"
-                                    style="color: var(--hab-muted)"
+                                <select
+                                    v-model="form.toAccount"
+                                    :class="selectClass"
                                 >
-                                    {{
-                                        item.row.kind === 'income'
-                                            ? 'Income'
-                                            : (item.row.categoryName ??
-                                              categoryLabel(item.row.category))
-                                    }}
-                                    ·
-                                    {{ item.row.paidWith
-                                    }}<template v-if="item.row.billName">
-                                        · bill:
-                                        {{ item.row.billName }}</template
-                                    ><template
-                                        v-if="item.row.kind === 'transfer'"
+                                    <option value="" disabled>
+                                        Choose an account
+                                    </option>
+                                    <option
+                                        v-for="account in accounts"
+                                        :key="`to${account.id}`"
+                                        :value="`account:${account.id}`"
+                                        :disabled="
+                                            form.paidWith ===
+                                            `account:${account.id}`
+                                        "
                                     >
-                                        → {{ item.row.toAccountName }}</template
-                                    ><template v-if="item.row.onStatement">
-                                        · on statement</template
-                                    >
-                                </span>
-                            </span>
-                            <span
-                                class="shrink-0 text-[14px] font-semibold tabular-nums"
-                                :style="{
-                                    color:
-                                        item.row.kind === 'income'
-                                            ? 'var(--hab-accent)'
-                                            : 'var(--hab-ink)',
-                                }"
-                                >{{ item.row.kind === 'income' ? '+' : ''
-                                }}{{ formatPeso(item.row.amount) }}</span
+                                        {{ account.name }}
+                                    </option>
+                                </select>
+                            </label>
+                            <p
+                                v-if="toAccountError"
+                                :class="errorClass"
+                                class="mt-1"
                             >
+                                {{ toAccountError }}
+                            </p>
+                        </div>
+
+                        <label
+                            v-if="kind === 'income' && incomeSources.length"
+                            :class="rowClass"
+                        >
+                            <span class="shrink-0 text-[var(--bp-muted)]"
+                                >From</span
+                            >
+                            <select
+                                v-model="incomeSourceId"
+                                :class="selectClass"
+                                @change="chooseSource"
+                            >
+                                <option value="">Something else</option>
+                                <option
+                                    v-for="source in incomeSources"
+                                    :key="source.id"
+                                    :value="source.id"
+                                >
+                                    {{ source.name }}
+                                </option>
+                            </select>
+                        </label>
+
+                        <template v-if="kind === 'expense'">
+                            <div v-if="bills.length">
+                                <label :class="rowClass">
+                                    <span
+                                        class="shrink-0 text-[var(--bp-muted)]"
+                                        >Pays a bill</span
+                                    >
+                                    <select
+                                        v-model="form.bill"
+                                        :class="selectClass"
+                                        @change="chooseBill"
+                                    >
+                                        <option value="">Not a bill</option>
+                                        <option
+                                            v-for="bill in bills"
+                                            :key="bill.id"
+                                            :value="String(bill.id)"
+                                        >
+                                            {{ bill.name }}
+                                        </option>
+                                    </select>
+                                </label>
+                                <p
+                                    v-if="billError"
+                                    :class="errorClass"
+                                    class="mt-1"
+                                >
+                                    {{ billError }}
+                                </p>
+                            </div>
+
+                            <div class="flex flex-col gap-1.5">
+                                <span class="bp-caption" id="category-label"
+                                    >Category</span
+                                >
+                                <div
+                                    class="flex flex-wrap gap-[5px]"
+                                    role="radiogroup"
+                                    aria-labelledby="category-label"
+                                >
+                                    <button
+                                        v-for="category in transactionCategories"
+                                        :key="category.value"
+                                        type="button"
+                                        role="radio"
+                                        :aria-checked="
+                                            form.category === category.value &&
+                                            form.custom_category_id === null
+                                        "
+                                        :class="[
+                                            chipClass,
+                                            form.category === category.value &&
+                                            form.custom_category_id === null
+                                                ? chipOn
+                                                : chipOff,
+                                        ]"
+                                        @click="chooseCategory(category.value)"
+                                    >
+                                        {{ category.label }}
+                                    </button>
+                                    <span
+                                        v-for="custom in customCategories"
+                                        :key="`custom-${custom.id}`"
+                                        class="inline-flex items-center"
+                                        :class="[
+                                            chipClass,
+                                            'px-0',
+                                            form.custom_category_id ===
+                                            custom.id
+                                                ? chipOn
+                                                : chipOff,
+                                        ]"
+                                    >
+                                        <button
+                                            type="button"
+                                            role="radio"
+                                            :aria-checked="
+                                                form.custom_category_id ===
+                                                custom.id
+                                            "
+                                            class="pr-1 pl-2.5"
+                                            @click="
+                                                chooseCustomCategory(custom.id)
+                                            "
+                                        >
+                                            {{ custom.name }}
+                                        </button>
+                                        <button
+                                            type="button"
+                                            class="pr-2 pl-0.5 opacity-60 hover:opacity-100"
+                                            :aria-label="`Remove ${custom.name}`"
+                                            @click="removeCategory(custom.id)"
+                                        >
+                                            ×
+                                        </button>
+                                    </span>
+                                    <button
+                                        v-if="!addingCategory"
+                                        type="button"
+                                        :class="chipClass"
+                                        class="border-dashed border-[var(--bp-faint)] text-[var(--bp-muted)] hover:text-[var(--bp-ink)]"
+                                        @click="addingCategory = true"
+                                    >
+                                        + New
+                                    </button>
+                                </div>
+                                <!-- Not a nested form: Enter here adds the category, not the entry. -->
+                                <div
+                                    v-if="addingCategory"
+                                    class="mt-1 flex items-center gap-2"
+                                >
+                                    <input
+                                        v-model="categoryForm.name"
+                                        type="text"
+                                        maxlength="30"
+                                        placeholder="Category name"
+                                        aria-label="New category name"
+                                        autofocus
+                                        @keydown.enter.prevent="addCategory"
+                                        class="min-w-0 flex-1 border-b border-[var(--bp-line)] bg-transparent py-1 text-[13px] outline-none focus:border-[var(--bp-ink)]"
+                                    />
+                                    <button
+                                        type="button"
+                                        class="text-[13px] font-semibold text-[var(--bp-accent)]"
+                                        :disabled="categoryForm.processing"
+                                        @click="addCategory"
+                                    >
+                                        Add
+                                    </button>
+                                    <button
+                                        type="button"
+                                        class="text-[13px] text-[var(--bp-muted)]"
+                                        @click="
+                                            addingCategory = false;
+                                            categoryForm.reset();
+                                            categoryForm.clearErrors();
+                                        "
+                                    >
+                                        Cancel
+                                    </button>
+                                </div>
+                                <p
+                                    v-if="form.errors.category"
+                                    :class="errorClass"
+                                >
+                                    {{ form.errors.category }}
+                                </p>
+                                <p
+                                    v-if="categoryForm.errors.name"
+                                    :class="errorClass"
+                                >
+                                    {{ categoryForm.errors.name }}
+                                </p>
+                            </div>
+                        </template>
+
+                        <div>
+                            <label :class="rowClass">
+                                <span class="shrink-0 text-[var(--bp-muted)]"
+                                    >Date</span
+                                >
+                                <input
+                                    v-model="form.date"
+                                    type="date"
+                                    class="bp-mono bg-transparent text-right outline-none"
+                                />
+                            </label>
+                            <p
+                                v-if="form.errors.date"
+                                :class="errorClass"
+                                class="mt-1"
+                            >
+                                {{ form.errors.date }}
+                            </p>
+                        </div>
+
+                        <input
+                            v-model="form.note"
+                            type="text"
+                            maxlength="200"
+                            placeholder="Note (optional)"
+                            aria-label="Note"
+                            class="border-b border-[var(--bp-line)] bg-transparent py-1.5 text-[13.5px] outline-none placeholder:text-[var(--bp-faint)] focus:border-[var(--bp-ink)]"
+                        />
+
+                        <button
+                            type="submit"
+                            class="flex items-center justify-center gap-1.5 rounded bg-[var(--bp-ink)] px-4 py-2.5 text-[13.5px] font-semibold text-[var(--bp-card)] disabled:opacity-60"
+                            :disabled="form.processing"
+                        >
+                            <span
+                                class="ms"
+                                style="font-size: 16px"
+                                aria-hidden="true"
+                                >add</span
+                            >
+                            {{
+                                kind === 'transfer'
+                                    ? 'Add transfer'
+                                    : kind === 'income'
+                                      ? 'Add income'
+                                      : 'Add expense'
+                            }}
                         </button>
-                    </li>
-                </ul>
-            </section>
+                    </div>
+                </form>
+
+                <div v-if="categoryBars.length" class="mt-1">
+                    <div
+                        class="flex items-center justify-between border-b border-[var(--bp-ink)] pb-2"
+                    >
+                        <span class="text-[15px] font-semibold"
+                            >By category</span
+                        >
+                        <span
+                            class="bp-mono text-[10.5px] tracking-[0.12em] text-[var(--bp-faint)]"
+                            aria-hidden="true"
+                            >FIG. 1</span
+                        >
+                    </div>
+                    <div
+                        v-for="bar in categoryBars"
+                        :key="bar.category"
+                        class="border-b border-[var(--bp-hair)] py-2"
+                    >
+                        <div class="flex justify-between text-[13px]">
+                            <span>{{ categoryLabel(bar.category) }}</span>
+                            <span class="bp-mono text-[12px]">{{
+                                formatPeso(bar.total)
+                            }}</span>
+                        </div>
+                        <div
+                            class="mt-[5px] h-1.5 bg-[var(--bp-paper)] bg-[linear-gradient(90deg,var(--bp-line)_1px,transparent_1px)] bg-[length:10%_100%]"
+                            aria-hidden="true"
+                        >
+                            <div
+                                class="box-border h-full border border-[var(--bp-ink)]"
+                                :style="{
+                                    width: bar.width + '%',
+                                    background: bar.fill,
+                                }"
+                            ></div>
+                        </div>
+                    </div>
+                </div>
+
+                <InfoNote id="transactions-income" blueprint>
+                    Income here is what actually arrived and adds to the
+                    account's balance. The Overview income is only the forecast,
+                    and a pay day you mark as received here is not counted in it
+                    again.
+                </InfoNote>
+            </div>
+
+            <div class="min-w-0 lg:order-1">
+                <!-- Summary strip -->
+                <div
+                    class="mb-8 grid grid-cols-1 border border-[var(--bp-ink)] bg-[var(--bp-card)] sm:grid-cols-3"
+                >
+                    <div class="px-[18px] py-3.5">
+                        <p class="bp-caption">Spent</p>
+                        <p
+                            class="mt-1 text-[26px] font-semibold tracking-[-0.02em] tabular-nums"
+                        >
+                            {{ formatPeso(total) }}
+                        </p>
+                    </div>
+                    <div
+                        class="border-t border-[var(--bp-ink)] px-[18px] py-3.5 sm:border-t-0 sm:border-l"
+                    >
+                        <p class="bp-caption">Received</p>
+                        <p
+                            class="mt-1 text-[26px] font-semibold tracking-[-0.02em] text-[var(--bp-accent)] tabular-nums"
+                        >
+                            +{{ formatPeso(received) }}
+                        </p>
+                    </div>
+                    <label
+                        class="bp-grid-fine border-t border-[var(--bp-ink)] px-[18px] py-3.5 sm:border-t-0 sm:border-l"
+                    >
+                        <span class="bp-caption block">Account</span>
+                        <span class="relative mt-1.5 flex items-center">
+                            <select
+                                :value="accountFilter ?? ''"
+                                class="w-full appearance-none bg-transparent pr-6 text-[15px] font-medium outline-none disabled:opacity-100"
+                                :disabled="accounts.length < 2"
+                                @change="
+                                    goTo(
+                                        month,
+                                        Number(
+                                            ($event.target as HTMLSelectElement)
+                                                .value,
+                                        ) || null,
+                                    )
+                                "
+                            >
+                                <option value="">All accounts</option>
+                                <option
+                                    v-for="account in accounts"
+                                    :key="account.id"
+                                    :value="account.id"
+                                >
+                                    {{ account.name }}
+                                </option>
+                            </select>
+                            <span
+                                v-if="accounts.length > 1"
+                                class="ms pointer-events-none absolute right-0 text-[var(--bp-muted)]"
+                                style="font-size: 18px"
+                                aria-hidden="true"
+                                >expand_more</span
+                            >
+                        </span>
+                    </label>
+                </div>
+
+                <!-- A. Entries -->
+                <BlueprintSectionHeading letter="A" title="Entries">
+                    <span
+                        v-if="entryCount"
+                        class="bp-mono hidden text-[11px] tracking-[0.1em] text-[var(--bp-faint)] sm:inline"
+                        >NEWEST FIRST</span
+                    >
+                </BlueprintSectionHeading>
+                <div class="mt-3.5 border-t border-[var(--bp-ink)]">
+                    <p
+                        v-if="entryCount === 0"
+                        class="border-b border-[var(--bp-line)] py-10 text-center text-[14px] text-[var(--bp-muted)]"
+                    >
+                        Nothing logged in {{ title }}.
+                    </p>
+                    <section
+                        v-for="day in days"
+                        :key="day.date"
+                        class="grid grid-cols-[64px_minmax(0,1fr)] border-b border-[var(--bp-line)] sm:grid-cols-[96px_minmax(0,1fr)]"
+                        :aria-label="formatDay(day.date)"
+                    >
+                        <div class="flex flex-col gap-0.5 py-4">
+                            <span
+                                class="text-[26px] leading-none font-semibold tracking-[-0.02em] tabular-nums"
+                                >{{ dayParts(day.date).day }}</span
+                            >
+                            <span
+                                class="bp-mono text-[10.5px] tracking-[0.12em] text-[var(--bp-muted)]"
+                                >{{ dayParts(day.date).weekday }}</span
+                            >
+                            <span
+                                v-if="daySpent(day.items) > 0"
+                                class="bp-mono mt-2 text-[11px] text-[var(--bp-faint)]"
+                                >{{ formatPeso(daySpent(day.items)) }}</span
+                            >
+                        </div>
+                        <div class="flex flex-col py-1.5">
+                            <template v-for="item in day.items" :key="item.key">
+                                <div
+                                    v-if="item.type === 'payment'"
+                                    class="-mx-2 grid min-h-[54px] grid-cols-[32px_minmax(0,1fr)_auto] items-center gap-3 px-2 sm:grid-cols-[40px_minmax(0,1fr)_auto]"
+                                >
+                                    <span
+                                        class="flex h-8 w-8 items-center justify-center rounded-full border border-dashed border-[var(--bp-faint)]"
+                                        aria-hidden="true"
+                                    >
+                                        <span
+                                            class="ms text-[var(--bp-muted)]"
+                                            style="font-size: 17px"
+                                            >credit_card</span
+                                        >
+                                    </span>
+                                    <span class="min-w-0">
+                                        <span
+                                            class="block truncate text-[14px] font-semibold"
+                                            >Payment to
+                                            {{ item.row.debtName }}</span
+                                        >
+                                        <span
+                                            class="block text-[12px] text-[var(--bp-muted)]"
+                                            >Debt payment<template
+                                                v-if="item.row.paidWith"
+                                            >
+                                                ·
+                                                {{
+                                                    item.row.paidWith
+                                                }}</template
+                                            ></span
+                                        >
+                                    </span>
+                                    <span class="flex items-center gap-3">
+                                        <span
+                                            class="bp-mono hidden rounded-sm border border-[var(--bp-line)] px-1.5 py-0.5 text-[10px] tracking-[0.08em] text-[var(--bp-muted)] sm:inline"
+                                            >NOT COUNTED</span
+                                        >
+                                        <span
+                                            class="bp-mono text-right text-[13.5px] text-[var(--bp-faint)] sm:min-w-[110px]"
+                                            >{{
+                                                formatPeso(item.row.amount)
+                                            }}</span
+                                        >
+                                    </span>
+                                </div>
+                                <button
+                                    v-else
+                                    type="button"
+                                    class="-mx-2 grid min-h-[54px] grid-cols-[32px_minmax(0,1fr)_auto] items-center gap-3 rounded px-2 text-left hover:bg-[rgba(27,27,26,0.035)] sm:grid-cols-[40px_minmax(0,1fr)_auto]"
+                                    @click="edit(item.row)"
+                                >
+                                    <span
+                                        class="flex h-8 w-8 items-center justify-center rounded-full border"
+                                        :class="
+                                            item.row.kind === 'transfer'
+                                                ? 'border-dashed border-[var(--bp-faint)] text-[var(--bp-muted)]'
+                                                : 'border-[var(--bp-line)] bg-[var(--bp-card)]'
+                                        "
+                                        aria-hidden="true"
+                                    >
+                                        <span
+                                            class="ms"
+                                            style="font-size: 17px"
+                                            >{{ entryIcon(item.row) }}</span
+                                        >
+                                    </span>
+                                    <span class="min-w-0">
+                                        <span
+                                            class="block truncate text-[14px] font-semibold"
+                                            >{{ entryName(item.row) }}</span
+                                        >
+                                        <span
+                                            class="block truncate text-[12px] text-[var(--bp-muted)]"
+                                            >{{ entryMeta(item.row) }}</span
+                                        >
+                                    </span>
+                                    <span class="flex items-center gap-3">
+                                        <span
+                                            v-if="item.row.onStatement"
+                                            class="bp-mono hidden rounded-sm border border-[var(--bp-line)] px-1.5 py-0.5 text-[10px] tracking-[0.08em] text-[var(--bp-muted)] sm:inline"
+                                            >ON STATEMENT</span
+                                        >
+                                        <span
+                                            class="bp-mono text-right text-[13.5px] sm:min-w-[110px]"
+                                            :class="{
+                                                'font-semibold text-[var(--bp-accent)]':
+                                                    item.row.kind === 'income',
+                                                'text-[var(--bp-faint)]':
+                                                    item.row.kind ===
+                                                    'transfer',
+                                                'font-semibold':
+                                                    item.row.kind === 'expense',
+                                            }"
+                                            >{{
+                                                item.row.kind === 'income'
+                                                    ? '+'
+                                                    : ''
+                                            }}{{
+                                                formatPeso(item.row.amount)
+                                            }}</span
+                                        >
+                                    </span>
+                                </button>
+                            </template>
+                        </div>
+                    </section>
+                </div>
+                <p
+                    v-if="entryCount > 0"
+                    class="mt-3 flex items-center gap-2 text-[12.5px] text-[var(--bp-muted)]"
+                >
+                    <span
+                        class="h-3.5 w-3.5 shrink-0 rounded-full border border-dashed border-[var(--bp-faint)]"
+                        aria-hidden="true"
+                    ></span>
+                    Debt payments and transfers are shown for reference and are
+                    not counted in Spent.
+                </p>
+            </div>
+        </div>
+
+        <div :class="sheetWidth.wide">
+            <BlueprintTitleBlock drawing="Money / Transactions" sheet="M-04" />
         </div>
 
         <StatementImportDialog v-model:open="importOpen" :cards="cards" />

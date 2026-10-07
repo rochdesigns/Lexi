@@ -15,6 +15,7 @@ import {
     DialogHeader,
     DialogTitle,
 } from '@/components/ui/dialog';
+import { formError, formField } from '@/utils/blueprint';
 import { toPesos } from '@/utils/money';
 
 export type IncomeSourceRow = {
@@ -83,9 +84,8 @@ function remove(): void {
     });
 }
 
-const fieldClass =
-    'w-full rounded-[11px] border border-[var(--hab-card-border)] bg-[var(--hab-card-bg)] px-3 py-2 text-[14px] text-[var(--hab-ink)] outline-none focus:border-[var(--hab-accent)]';
-const errorClass = 'mt-1 text-[12px] text-red-600';
+const fieldClass = formField;
+const errorClass = formError;
 </script>
 
 <template>
@@ -187,7 +187,7 @@ const errorClass = 'mt-1 text-[12px] text-red-600';
                         v-if="source"
                         type="button"
                         variant="ghost"
-                        class="text-red-600"
+                        class="text-[#a3311f]"
                         :disabled="form.processing"
                         @click="remove"
                         >Delete</Button

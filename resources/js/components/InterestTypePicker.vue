@@ -45,11 +45,11 @@ const choices = computed(() => [
         <label
             v-for="choice in choices"
             :key="choice.value"
-            class="flex cursor-pointer items-start gap-2.5 rounded-[11px] border px-3 py-2"
+            class="flex cursor-pointer items-start gap-2.5 rounded-[3px] border px-3 py-2"
             :style="
                 modelValue === choice.value
-                    ? 'border-color: var(--hab-accent); background: var(--hab-surface)'
-                    : 'border-color: var(--hab-card-border)'
+                    ? 'border-color: var(--bp-accent); background: var(--bp-tint)'
+                    : 'border-color: var(--bp-line)'
             "
         >
             <input
@@ -62,13 +62,13 @@ const choices = computed(() => [
             <span>
                 <span
                     class="block text-[13.5px] font-semibold"
-                    style="color: var(--hab-ink)"
+                    style="color: var(--bp-ink)"
                     >{{ choice.label }}</span
                 >
                 <span
                     v-if="choice.description"
                     class="block text-[12px]"
-                    style="color: var(--hab-muted)"
+                    style="color: var(--bp-muted)"
                     >{{ choice.description }}</span
                 >
             </span>
