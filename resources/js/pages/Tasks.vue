@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import { Head, router } from '@inertiajs/vue3';
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue';
+import BlueprintPageHead from '@/components/BlueprintPageHead.vue';
+import BlueprintTitleBlock from '@/components/BlueprintTitleBlock.vue';
 import { Button } from '@/components/ui/button';
 import {
     Dialog,
@@ -9,6 +11,7 @@ import {
     DialogTitle,
     DialogDescription,
 } from '@/components/ui/dialog';
+import { sheetWidth } from '@/utils/blueprint';
 
 type Task = { id: number; label: string; section_id: number; done: boolean };
 type Section = {
@@ -315,14 +318,55 @@ function onDrop(): void {
 // ── View mode ────────────────────────────────────────────────────────────────
 
 type ViewMode = 'list' | 'grid';
-const viewMode = ref<ViewMode>(
-    (localStorage.getItem('tasks-view') as ViewMode) ?? 'list',
-);
+/** Browser storage can be unavailable, so the view simply falls back to a list. */
+function storedView(): ViewMode {
+    try {
+        return localStorage.getItem('tasks-view') === 'grid' ? 'grid' : 'list';
+    } catch {
+        return 'list';
+    }
+}
+
+const viewMode = ref<ViewMode>(storedView());
 
 function setView(mode: ViewMode): void {
     viewMode.value = mode;
-    localStorage.setItem('tasks-view', mode);
+
+    try {
+        localStorage.setItem('tasks-view', mode);
+    } catch {
+        // Nothing to do: the choice lasts until the page is left.
+    }
 }
+
+const viewOptions = [
+    { mode: 'list', label: 'List', icon: 'view_agenda' },
+    { mode: 'grid', label: 'Grid', icon: 'grid_view' },
+] as const;
+
+/**
+ * Sections keep their pastel colours; on the sheet they become a thin rule,
+ * deepened a little so a pale colour still reads at that size.
+ */
+function ruleColor(color: string | null): string {
+    return color
+        ? `color-mix(in oklch, ${color} 72%, #6f6e69)`
+        : 'var(--bp-line)';
+}
+
+function sectionLetter(index: number): string {
+    return index < 26 ? String.fromCharCode(65 + index) : String(index + 1);
+}
+
+function leftIn(section: Section): number {
+    return section.tasks.filter((task) => !task.done).length;
+}
+
+const dimension = computed(() => {
+    const sections = localGroups.value.length;
+
+    return `${doneTasks.value} of ${totalTasks.value} done · ${sections} ${sections === 1 ? 'section' : 'sections'}`;
+});
 
 // ── Add section ───────────────────────────────────────────────────────────────
 
@@ -354,359 +398,370 @@ function submitNewSection(): void {
 <template>
     <Head title="Tasks" />
 
-    <div
-        class="mx-auto w-full max-w-[1180px] px-4 pt-6 pb-[46px] sm:px-6 lg:px-[30px]"
-    >
-        <!-- Page header -->
-        <div class="mb-6 flex items-end justify-between">
-            <div>
-                <h1
-                    class="font-['Bricolage_Grotesque'] text-[32px] font-extrabold"
-                    style="color: var(--hab-ink)"
-                >
-                    Tasks
-                </h1>
-                <p class="mt-1 text-[14px]" style="color: var(--hab-muted)">
-                    Everything on your plate, sorted by when
-                </p>
-            </div>
+    <Teleport defer to="#page-actions">
+        <button
+            type="button"
+            class="bp flex items-center gap-1.5 rounded bg-[var(--bp-ink)] px-3 py-1.5 text-[13px] font-semibold text-[var(--bp-card)]"
+            @click.stop="startAddSection"
+        >
+            <span class="ms" style="font-size: 16px" aria-hidden="true"
+                >add</span
+            >
+            <span class="hidden sm:inline">Add section</span>
+        </button>
+    </Teleport>
 
-            <div class="flex items-center gap-3">
-                <!-- Progress widget -->
-                <div v-if="totalTasks > 0" class="flex items-center gap-3">
-                    <span
-                        class="text-[13px] font-medium tabular-nums"
-                        style="color: var(--hab-muted)"
-                    >
-                        {{ doneTasks }} of {{ totalTasks }} done
-                    </span>
+    <div class="bp pb-16">
+        <BlueprintPageHead
+            raised
+            icon="check_circle"
+            code="D-03"
+            section="Day"
+            title="Tasks"
+            subtitle="Everything on your plate, sorted by when"
+            :dimension="dimension"
+        />
+
+        <div :class="sheetWidth.wide">
+            <!-- Summary strip and view switch -->
+            <div
+                class="mb-8 grid grid-cols-1 items-stretch gap-5 md:grid-cols-[minmax(0,1fr)_auto]"
+            >
+                <div
+                    class="grid grid-cols-2 border border-[var(--bp-ink)] bg-[var(--bp-card)] sm:grid-cols-3"
+                >
+                    <div class="px-[18px] py-3.5">
+                        <p class="bp-caption">Done</p>
+                        <p
+                            class="mt-1 text-[26px] font-semibold tracking-[-0.02em] tabular-nums"
+                        >
+                            {{ doneTasks }} of {{ totalTasks }}
+                        </p>
+                    </div>
                     <div
-                        class="h-2 w-32 overflow-hidden rounded-full"
-                        style="background: var(--hab-progress-track)"
+                        class="border-l border-[var(--bp-ink)] px-[18px] py-3.5"
                     >
+                        <p class="bp-caption">Left</p>
+                        <p
+                            class="mt-1 text-[26px] font-semibold tracking-[-0.02em] tabular-nums"
+                        >
+                            {{ totalTasks - doneTasks }}
+                        </p>
+                    </div>
+                    <div
+                        class="bp-grid-fine col-span-2 border-t border-[var(--bp-ink)] px-[18px] py-3.5 sm:col-span-1 sm:border-t-0 sm:border-l"
+                    >
+                        <p class="bp-caption flex justify-between">
+                            <span>Progress</span>
+                            <span class="font-semibold text-[var(--bp-accent)]"
+                                >{{ progressPct }}%</span
+                            >
+                        </p>
                         <div
-                            class="h-full rounded-full transition-all duration-300"
-                            style="background: var(--hab-accent)"
-                            :style="{ width: progressPct + '%' }"
-                        ></div>
+                            class="mt-3 h-3 border border-[var(--bp-ink)] bg-[var(--bp-card)] bg-[linear-gradient(90deg,var(--bp-line)_1px,transparent_1px)] bg-[length:10%_100%]"
+                            role="progressbar"
+                            :aria-valuenow="progressPct"
+                            aria-valuemin="0"
+                            aria-valuemax="100"
+                            aria-label="Tasks done"
+                        >
+                            <div
+                                class="h-full bg-[var(--bp-accent)] transition-[width] duration-300"
+                                :style="{ width: progressPct + '%' }"
+                            ></div>
+                        </div>
                     </div>
                 </div>
-
-                <!-- View toggle -->
-                <div
-                    class="flex items-center gap-0.5 rounded-xl p-1"
-                    style="
-                        background: var(--hab-surface);
-                        border: 1px solid var(--hab-card-border);
-                    "
-                >
-                    <button
-                        v-for="{ mode, icon } in [
-                            { mode: 'list', icon: 'view_agenda' },
-                            { mode: 'grid', icon: 'grid_view' },
-                        ] as const"
-                        :key="mode"
-                        class="flex h-8 w-8 items-center justify-center rounded-lg transition-colors"
-                        :style="
-                            viewMode === mode
-                                ? 'background: var(--hab-card-bg); color: var(--hab-ink); box-shadow: 0 1px 3px rgba(0,0,0,.08)'
-                                : 'color: var(--hab-muted)'
-                        "
-                        :title="mode === 'list' ? 'List view' : 'Grid view'"
-                        @click="setView(mode)"
+                <div class="flex flex-col justify-center gap-1.5">
+                    <span class="bp-caption" id="tasks-view-label">View</span>
+                    <div
+                        class="flex self-start overflow-hidden rounded-[3px] border border-[var(--bp-ink)]"
+                        role="radiogroup"
+                        aria-labelledby="tasks-view-label"
                     >
-                        <span
-                            class="material-symbols-rounded"
-                            style="font-size: 18px"
-                            >{{ icon }}</span
-                        >
-                    </button>
-                </div>
-            </div>
-        </div>
-
-        <!-- Section cards -->
-        <div
-            :class="
-                viewMode === 'grid'
-                    ? 'grid grid-cols-1 gap-5 sm:grid-cols-2'
-                    : 'flex flex-col gap-5'
-            "
-        >
-            <div
-                v-for="group in localGroups"
-                :key="group.id"
-                class="rounded-[22px] p-6"
-                :style="`background: ${group.color ?? 'var(--hab-card-bg)'}; border: 1px solid var(--hab-card-border); box-shadow: 0 8px 24px -20px var(--hab-card-shadow)`"
-                :draggable="editingSection !== group.id"
-                @dragstart="onDragStart(group)"
-                @dragover="onDragOver($event, group)"
-                @drop="onDrop"
-            >
-                <!-- Section header -->
-                <div class="group mb-4 flex items-center gap-2">
-                    <!-- Drag handle -->
-                    <span
-                        class="material-symbols-rounded cursor-grab opacity-0 transition-opacity group-hover:opacity-40"
-                        style="font-size: 18px; color: var(--hab-muted)"
-                        >drag_indicator</span
-                    >
-
-                    <!-- Editable label -->
-                    <input
-                        v-if="editingSection === group.id"
-                        ref="editInputRef"
-                        v-model="editLabel"
-                        class="flex-1 rounded-md px-2 py-0.5 font-['Bricolage_Grotesque'] text-[18px] font-bold ring-1 outline-none"
-                        style="
-                            color: var(--hab-ink);
-                            background: var(--hab-surface);
-                            ring-color: var(--hab-accent);
-                        "
-                        @click.stop
-                        @keydown.enter.prevent="submitRename(group)"
-                        @keydown.escape.prevent="cancelRename(group)"
-                        @blur="submitRename(group)"
-                    />
-                    <h2
-                        v-else
-                        class="flex-1 font-['Bricolage_Grotesque'] text-[18px] font-bold"
-                        style="color: var(--hab-ink)"
-                        @click="startRename(group)"
-                    >
-                        {{ group.label }}
-                    </h2>
-
-                    <!-- Task count -->
-                    <span
-                        v-if="
-                            group.tasks.filter((t) => !t.done).length > 0 &&
-                            editingSection !== group.id
-                        "
-                        class="rounded-full px-2.5 py-0.5 text-[12px] font-semibold"
-                        style="
-                            background: var(--hab-surface);
-                            color: var(--hab-muted);
-                        "
-                    >
-                        {{ group.tasks.filter((t) => !t.done).length }} left
-                    </span>
-
-                    <!-- Color picker + delete -->
-                    <div class="flex items-center gap-1">
-                        <div class="relative">
-                            <button
-                                class="flex h-7 w-7 items-center justify-center rounded-lg"
-                                title="Section color"
-                                @click.stop="toggleColorPicker(group.id)"
-                            >
-                                <span
-                                    class="h-4 w-4 rounded-full border-2"
-                                    :style="`background: ${group.color ?? 'var(--hab-surface)'}; border-color: var(--hab-card-border)`"
-                                />
-                            </button>
-                            <div
-                                v-if="colorPickerOpen === group.id"
-                                class="absolute top-8 right-0 z-10 w-[130px] rounded-xl p-2 shadow-lg"
-                                style="
-                                    background: var(--hab-card-bg);
-                                    border: 1px solid var(--hab-card-border);
-                                "
-                            >
-                                <div class="grid grid-cols-4 gap-1.5">
-                                    <button
-                                        v-for="hex in PALETTE"
-                                        :key="hex"
-                                        class="h-6 w-6 rounded-full border-2 transition-transform hover:scale-110"
-                                        :style="`background: ${hex}; border-color: ${group.color === hex ? 'var(--hab-accent)' : 'transparent'}`"
-                                        @click="pickColor(group, hex)"
-                                    />
-                                    <button
-                                        class="flex h-6 w-6 items-center justify-center rounded-full border-2 transition-transform hover:scale-110"
-                                        style="
-                                            border-color: var(
-                                                --hab-card-border
-                                            );
-                                        "
-                                        title="No color"
-                                        @click="pickColor(group, null)"
-                                    >
-                                        <span
-                                            class="material-symbols-rounded"
-                                            style="
-                                                font-size: 13px;
-                                                color: var(--hab-muted);
-                                            "
-                                            >block</span
-                                        >
-                                    </button>
-                                </div>
-                            </div>
-                        </div>
                         <button
-                            class="flex h-7 w-7 items-center justify-center rounded-lg transition-colors"
-                            style="color: var(--hab-muted)"
-                            title="Delete section"
-                            @click="confirmDelete(group)"
+                            v-for="option in viewOptions"
+                            :key="option.mode"
+                            type="button"
+                            role="radio"
+                            :aria-checked="viewMode === option.mode"
+                            class="flex items-center gap-1.5 px-3 py-1.5 text-[13px]"
+                            :class="
+                                viewMode === option.mode
+                                    ? 'bg-[var(--bp-ink)] font-semibold text-[var(--bp-card)]'
+                                    : 'text-[var(--bp-ink-2)] hover:bg-[var(--bp-hover)]'
+                            "
+                            @click="setView(option.mode)"
                         >
                             <span
-                                class="material-symbols-rounded"
-                                style="font-size: 16px"
-                                >delete</span
+                                class="ms"
+                                style="font-size: 17px"
+                                aria-hidden="true"
+                                >{{ option.icon }}</span
                             >
+                            {{ option.label }}
                         </button>
                     </div>
                 </div>
+            </div>
 
-                <!-- Task rows -->
-                <template v-if="group.tasks.length > 0">
-                    <div v-for="(task, i) in group.tasks" :key="task.id">
-                        <div
-                            v-if="i > 0"
-                            style="
-                                height: 1px;
-                                background: var(--hab-card-border);
-                            "
-                        />
-                        <div
-                            class="group/task flex w-full items-center gap-3 py-3"
+            <!-- Section cards -->
+            <div
+                class="grid grid-cols-1 items-start gap-5"
+                :class="{ 'md:grid-cols-2': viewMode === 'grid' }"
+            >
+                <section
+                    v-for="(group, index) in localGroups"
+                    :key="group.id"
+                    class="relative border border-[var(--bp-line)] bg-[var(--bp-card)]"
+                    :class="{ 'opacity-60': draggedId === group.id }"
+                    :draggable="editingSection !== group.id"
+                    :aria-label="group.label"
+                    @dragstart="onDragStart(group)"
+                    @dragover="onDragOver($event, group)"
+                    @drop="onDrop"
+                >
+                    <div
+                        class="absolute inset-x-0 top-0 h-1"
+                        :style="{ background: ruleColor(group.color) }"
+                        aria-hidden="true"
+                    ></div>
+
+                    <div class="flex items-center gap-2.5 px-[18px] pt-4 pb-3">
+                        <span
+                            class="ms cursor-grab text-[#c9c7c0]"
+                            style="font-size: 18px"
+                            aria-hidden="true"
+                            title="Drag to reorder"
+                            >drag_indicator</span
                         >
-                            <button
-                                class="flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-[5px] border-2 transition-colors"
-                                :style="
-                                    task.done
-                                        ? 'background: var(--hab-accent); border-color: var(--hab-accent)'
-                                        : 'background: transparent; border-color: var(--hab-muted)'
-                                "
-                                @click="toggleTask(task)"
-                            >
-                                <span
-                                    v-if="task.done"
-                                    class="material-symbols-rounded text-white"
-                                    style="font-size: 14px"
-                                    >check</span
+                        <span
+                            class="bp-mono flex h-6 w-6 shrink-0 items-center justify-center rounded-full border border-[var(--bp-ink)] text-[11px] font-semibold"
+                            aria-hidden="true"
+                            >{{ sectionLetter(index) }}</span
+                        >
+                        <input
+                            v-if="editingSection === group.id"
+                            ref="editInputRef"
+                            v-model="editLabel"
+                            aria-label="Section name"
+                            class="min-w-0 flex-1 border-b-2 border-[var(--bp-ink)] bg-transparent text-[19px] font-semibold tracking-[-0.015em] outline-none"
+                            @click.stop
+                            @keydown.enter.prevent="submitRename(group)"
+                            @keydown.escape.prevent="cancelRename(group)"
+                            @blur="submitRename(group)"
+                        />
+                        <h2
+                            v-else
+                            class="min-w-0 cursor-text truncate text-[19px] font-semibold tracking-[-0.015em]"
+                            title="Click to rename"
+                            @click.stop="startRename(group)"
+                        >
+                            {{ group.label }}
+                        </h2>
+                        <span
+                            v-if="
+                                leftIn(group) > 0 && editingSection !== group.id
+                            "
+                            class="bp-mono shrink-0 rounded-sm border border-[var(--bp-line)] px-[7px] py-0.5 text-[10.5px] tracking-[0.08em] text-[var(--bp-muted)]"
+                            >{{ leftIn(group) }} LEFT</span
+                        >
+
+                        <div
+                            class="ml-auto flex shrink-0 gap-0.5 text-[var(--bp-faint)]"
+                        >
+                            <div class="relative">
+                                <button
+                                    type="button"
+                                    class="flex h-7 w-7 items-center justify-center rounded-[3px] hover:bg-[var(--bp-hover)]"
+                                    :aria-label="`Colour for ${group.label}`"
+                                    :aria-expanded="
+                                        colorPickerOpen === group.id
+                                    "
+                                    @click.stop="toggleColorPicker(group.id)"
                                 >
-                            </button>
-                            <span
-                                class="flex-1 text-left text-[14px]"
-                                :style="
-                                    task.done
-                                        ? 'text-decoration: line-through; color: var(--hab-muted)'
-                                        : 'color: var(--hab-ink)'
-                                "
-                                @click="toggleTask(task)"
-                                >{{ task.label }}</span
-                            >
-                            <div
-                                class="max-w-0 flex-shrink-0 overflow-hidden transition-[max-width] duration-200 ease-out group-hover/task:max-w-[32px]"
-                            >
-                                <div class="flex items-center pl-2">
-                                    <button
-                                        class="flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-md"
-                                        style="color: var(--hab-muted)"
-                                        title="Delete task"
-                                        @click="deleteTask(group, task)"
-                                    >
-                                        <span
-                                            class="material-symbols-rounded"
-                                            style="font-size: 16px"
-                                            >delete</span
+                                    <span
+                                        class="box-border h-[13px] w-[13px] border border-[var(--bp-ink)]"
+                                        :style="{
+                                            background: ruleColor(group.color),
+                                        }"
+                                    ></span>
+                                </button>
+                                <div
+                                    v-if="colorPickerOpen === group.id"
+                                    class="absolute top-8 right-0 z-10 w-[138px] border border-[var(--bp-ink)] bg-[var(--bp-card)] p-2"
+                                    @click.stop
+                                >
+                                    <div class="grid grid-cols-4 gap-1.5">
+                                        <button
+                                            v-for="hex in PALETTE"
+                                            :key="hex"
+                                            type="button"
+                                            class="box-border h-6 w-6 border"
+                                            :class="
+                                                group.color === hex
+                                                    ? 'border-2 border-[var(--bp-ink)]'
+                                                    : 'border-[var(--bp-line)] hover:border-[var(--bp-ink)]'
+                                            "
+                                            :style="{
+                                                background: ruleColor(hex),
+                                            }"
+                                            :aria-label="`Use colour ${hex}`"
+                                            @click="pickColor(group, hex)"
+                                        ></button>
+                                        <button
+                                            type="button"
+                                            class="flex h-6 w-6 items-center justify-center border border-[var(--bp-line)] hover:border-[var(--bp-ink)]"
+                                            aria-label="No colour"
+                                            @click="pickColor(group, null)"
                                         >
-                                    </button>
+                                            <span
+                                                class="ms text-[var(--bp-muted)]"
+                                                style="font-size: 13px"
+                                                aria-hidden="true"
+                                                >block</span
+                                            >
+                                        </button>
+                                    </div>
                                 </div>
                             </div>
+                            <button
+                                type="button"
+                                class="flex h-7 w-7 items-center justify-center rounded-[3px] hover:bg-[var(--bp-hover)] hover:text-[var(--bp-ink)]"
+                                :aria-label="`Delete ${group.label}`"
+                                @click.stop="confirmDelete(group)"
+                            >
+                                <span
+                                    class="ms"
+                                    style="font-size: 17px"
+                                    aria-hidden="true"
+                                    >delete</span
+                                >
+                            </button>
                         </div>
                     </div>
-                </template>
 
-                <!-- Separator before add-task row -->
-                <div
-                    v-if="
-                        group.tasks.length > 0 && addingInSection !== group.id
-                    "
-                    style="height: 1px; background: var(--hab-card-border)"
-                />
+                    <div class="px-[18px] pb-1.5">
+                        <div
+                            v-for="task in group.tasks"
+                            :key="task.id"
+                            class="grid grid-cols-[22px_minmax(0,1fr)_24px] items-center gap-2.5 border-t border-[var(--bp-hair)] py-2.5"
+                        >
+                            <label class="contents cursor-pointer">
+                                <input
+                                    type="checkbox"
+                                    class="peer sr-only"
+                                    :checked="task.done"
+                                    @change="toggleTask(task)"
+                                />
+                                <span
+                                    :class="
+                                        task.done
+                                            ? 'msf text-[var(--bp-accent)]'
+                                            : 'ms text-[var(--bp-muted)]'
+                                    "
+                                    class="rounded-sm peer-focus-visible:outline-2 peer-focus-visible:outline-[var(--bp-accent)]"
+                                    style="font-size: 20px"
+                                    aria-hidden="true"
+                                    >{{
+                                        task.done
+                                            ? 'check_box'
+                                            : 'check_box_outline_blank'
+                                    }}</span
+                                >
+                                <span
+                                    class="text-[14px]"
+                                    :class="{
+                                        'text-[var(--bp-faint)] line-through':
+                                            task.done,
+                                    }"
+                                    >{{ task.label }}</span
+                                >
+                            </label>
+                            <button
+                                type="button"
+                                class="flex h-6 w-6 items-center justify-center rounded-[3px] text-[#c9c7c0] hover:text-[var(--bp-ink)]"
+                                :aria-label="`Delete ${task.label}`"
+                                @click="deleteTask(group, task)"
+                            >
+                                <span
+                                    class="ms"
+                                    style="font-size: 16px"
+                                    aria-hidden="true"
+                                    >close</span
+                                >
+                            </button>
+                        </div>
 
-                <!-- Inline add-task input -->
-                <div v-if="addingInSection === group.id" class="pt-2">
-                    <div
-                        v-if="group.tasks.length > 0"
-                        style="
-                            height: 1px;
-                            background: var(--hab-card-border);
-                            margin-bottom: 8px;
-                        "
-                    />
-                    <div class="flex items-center gap-3 py-2">
-                        <span
-                            class="flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-[5px] border-2"
-                            style="border-color: var(--hab-muted); opacity: 0.4"
-                        />
-                        <input
-                            ref="newTaskInputRef"
-                            v-model="newTaskLabel"
-                            class="flex-1 bg-transparent text-[14px] outline-none"
-                            style="color: var(--hab-ink)"
-                            placeholder="New task…"
-                            @keydown.enter.prevent="submitNewTask(group)"
-                            @keydown.escape.prevent="cancelAddTask"
-                            @blur="submitNewTask(group)"
-                        />
+                        <div
+                            v-if="addingInSection === group.id"
+                            class="grid grid-cols-[22px_minmax(0,1fr)] items-center gap-2.5 border-t border-[var(--bp-hair)] py-2.5"
+                        >
+                            <span
+                                class="ms text-[var(--bp-fainter)]"
+                                style="font-size: 20px"
+                                aria-hidden="true"
+                                >check_box_outline_blank</span
+                            >
+                            <input
+                                ref="newTaskInputRef"
+                                v-model="newTaskLabel"
+                                aria-label="New task"
+                                class="min-w-0 bg-transparent text-[14px] outline-none placeholder:text-[var(--bp-faint)]"
+                                placeholder="New task…"
+                                @keydown.enter.prevent="submitNewTask(group)"
+                                @keydown.escape.prevent="cancelAddTask"
+                                @blur="submitNewTask(group)"
+                            />
+                        </div>
+                        <button
+                            v-else
+                            type="button"
+                            class="flex w-full items-center gap-1.5 border-t border-[var(--bp-hair)] pt-2.5 pb-3 text-[13.5px] text-[var(--bp-faint)] hover:text-[var(--bp-ink)]"
+                            @click="startAddTask(group.id)"
+                        >
+                            <span
+                                class="ms"
+                                style="font-size: 17px"
+                                aria-hidden="true"
+                                >add</span
+                            >
+                            Add task
+                        </button>
                     </div>
-                </div>
+                </section>
 
-                <!-- + Add task button -->
+                <!-- Add section -->
+                <div
+                    v-if="addingSectionInput"
+                    class="border border-[var(--bp-ink)] bg-[var(--bp-card)] px-[18px] py-4"
+                >
+                    <input
+                        ref="newSectionInputRef"
+                        v-model="newSectionLabel"
+                        aria-label="Section name"
+                        class="w-full border-b-2 border-[var(--bp-ink)] bg-transparent text-[19px] font-semibold tracking-[-0.015em] outline-none placeholder:text-[var(--bp-faint)]"
+                        placeholder="Section name…"
+                        @click.stop
+                        @keydown.enter.prevent="submitNewSection"
+                        @keydown.escape.prevent="addingSectionInput = false"
+                        @blur="submitNewSection"
+                    />
+                </div>
                 <button
                     v-else
-                    class="mt-2 flex items-center gap-1.5 py-1.5 text-[13px] font-medium transition-opacity"
-                    style="color: var(--hab-muted)"
-                    @click="startAddTask(group.id)"
+                    type="button"
+                    class="flex min-h-[72px] items-center justify-center gap-1.5 border border-dashed border-[var(--bp-fainter)] text-[14px] text-[var(--bp-muted)] hover:border-[var(--bp-ink)] hover:text-[var(--bp-ink)]"
+                    @click.stop="startAddSection"
                 >
-                    <span
-                        class="material-symbols-rounded"
-                        style="font-size: 16px"
+                    <span class="ms" style="font-size: 18px" aria-hidden="true"
                         >add</span
                     >
-                    Add task
+                    Add section
                 </button>
             </div>
-        </div>
 
-        <!-- + Add section -->
-        <div class="mt-5">
-            <div
-                v-if="addingSectionInput"
-                class="rounded-[22px] p-6"
-                style="
-                    background: var(--hab-card-bg);
-                    border: 1px solid var(--hab-card-border);
-                "
-            >
-                <input
-                    ref="newSectionInputRef"
-                    v-model="newSectionLabel"
-                    class="w-full bg-transparent font-['Bricolage_Grotesque'] text-[18px] font-bold outline-none"
-                    style="color: var(--hab-ink)"
-                    placeholder="Section name…"
-                    @keydown.enter.prevent="submitNewSection"
-                    @keydown.escape.prevent="addingSectionInput = false"
-                    @blur="submitNewSection"
-                />
-            </div>
-            <button
-                v-else
-                class="flex items-center gap-1.5 rounded-full px-4 py-2 text-[14px] font-semibold transition-colors"
-                style="
-                    color: var(--hab-muted);
-                    border: 1.5px dashed var(--hab-card-border);
-                "
-                @click="startAddSection"
-            >
-                <span class="material-symbols-rounded" style="font-size: 18px"
-                    >add</span
-                >
-                Add section
-            </button>
+            <BlueprintTitleBlock drawing="Day / Tasks" sheet="D-03" />
         </div>
     </div>
 
