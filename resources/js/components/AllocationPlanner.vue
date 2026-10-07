@@ -63,123 +63,132 @@ watch(amount, refresh);
 onMounted(refresh);
 onBeforeUnmount(() => clearTimeout(timer));
 
-const fieldClass =
-    'w-full rounded-[11px] border border-[var(--hab-card-border)] bg-[var(--hab-card-bg)] px-3 py-2 text-[14px] text-[var(--hab-ink)] outline-none focus:border-[var(--hab-accent)]';
+const bigFieldClass =
+    'bp-mono min-w-0 flex-1 bg-transparent text-[28px] font-medium outline-none placeholder:text-[var(--bp-fainter)]';
 </script>
 
 <template>
-    <div
-        class="mb-6 rounded-[22px] p-6"
-        style="
-            background: var(--hab-card-bg);
-            border: 1px solid var(--hab-card-border);
-            box-shadow: 0 8px 24px -20px var(--hab-card-shadow);
-        "
+    <aside
+        class="border border-[var(--bp-ink)] bg-[var(--bp-card)]"
+        aria-label="Card payments"
     >
-        <h2
-            class="font-['Bricolage_Grotesque'] text-[18px] font-bold"
-            style="color: var(--hab-ink)"
+        <div
+            class="bp-mono flex items-center justify-between border-b border-[var(--bp-ink)] px-4 py-2.5 text-[10.5px] tracking-[0.12em]"
         >
-            Where should this month's card payments go?
-        </h2>
-        <p class="mt-1 mb-4 text-[13px]" style="color: var(--hab-muted)">
-            Enter what you can pay across your cards. Minimums are covered
-            first, then the rest goes to the card with the highest interest.
-        </p>
-
-        <div class="mb-4 max-w-[260px]">
-            <label
-                class="mb-1 block text-[12.5px] font-semibold text-[var(--hab-ink-secondary)]"
-                >I can pay</label
-            >
-            <MoneyInput
-                v-model="amount"
-                :empty-value="null"
-                adorn
-                :class="fieldClass"
-            />
-            <p class="mt-1 text-[12px]" style="color: var(--hab-muted)">
-                Your minimums add up to {{ formatPeso(minimumsTotal) }}.
-            </p>
+            <span>CARD PAYMENTS</span>
+            <span class="text-[var(--bp-faint)]">THIS MONTH</span>
         </div>
-
-        <template v-if="plan">
+        <div class="flex flex-col gap-4 px-4 py-[18px]">
             <p
-                v-if="plan.shortBy > 0"
-                class="mb-3 rounded-[12px] px-4 py-3 text-[13.5px]"
-                style="
-                    background: #fdecea;
-                    border: 1px solid #f5c6c0;
-                    color: #8f2a1f;
-                "
-                role="alert"
+                class="text-[13px] leading-normal text-pretty text-[var(--bp-ink-2)]"
             >
-                This is {{ formatPeso(plan.shortBy) }} short of all the
-                minimums. The card with the lowest interest goes unpaid, so
-                expect a late fee there.
+                Enter what you can pay across your cards. Minimums are covered
+                first, then the rest goes to the card with the highest interest.
             </p>
-
-            <ul class="flex flex-col">
-                <li
-                    v-for="(card, index) in plan.cards"
-                    :key="card.debtId"
-                    class="py-3"
-                    :style="
-                        index > 0
-                            ? 'border-top: 1px solid var(--hab-hairline)'
-                            : ''
-                    "
+            <div class="flex flex-col gap-1.5">
+                <label for="allocation-amount" class="bp-caption"
+                    >I can pay</label
                 >
-                    <div class="flex items-baseline justify-between gap-3">
-                        <p
-                            class="text-[14px] font-semibold"
-                            style="color: var(--hab-ink)"
+                <div
+                    class="flex items-baseline gap-1.5 border-b-2 border-[var(--bp-ink)] pb-1"
+                >
+                    <span class="text-[22px] text-[var(--bp-faint)]">₱</span>
+                    <MoneyInput
+                        id="allocation-amount"
+                        v-model="amount"
+                        :empty-value="null"
+                        placeholder="0.00"
+                        :class="bigFieldClass"
+                    />
+                </div>
+                <div class="mt-1 flex flex-wrap gap-[5px]">
+                    <button
+                        type="button"
+                        class="bp-mono rounded-full border px-2.5 py-[3px] text-[12px]"
+                        :class="
+                            amount === toPesos(minimumsTotal)
+                                ? 'border-[var(--bp-ink)] bg-[var(--bp-ink)] text-[var(--bp-card)]'
+                                : 'border-[var(--bp-line)] text-[var(--bp-ink-2)] hover:border-[var(--bp-ink)]'
+                        "
+                        @click="amount = toPesos(minimumsTotal)"
+                    >
+                        Just the minimums
+                    </button>
+                </div>
+                <span class="text-[12px] text-[var(--bp-muted)]"
+                    >Your minimums add up to
+                    {{ formatPeso(minimumsTotal) }}.</span
+                >
+            </div>
+
+            <template v-if="plan">
+                <div
+                    v-if="plan.shortBy > 0"
+                    class="border border-[var(--bp-ink)] bg-[repeating-linear-gradient(135deg,rgba(27,27,26,0.055)_0_1px,transparent_1px_8px)] px-3 py-2.5 text-[12.5px] leading-normal"
+                    role="alert"
+                >
+                    This is {{ formatPeso(plan.shortBy) }} short of all the
+                    minimums. The card with the lowest interest goes unpaid, so
+                    expect a late fee there.
+                </div>
+
+                <div class="flex flex-col border-t border-[var(--bp-ink)]">
+                    <div
+                        v-for="card in plan.cards"
+                        :key="card.debtId"
+                        class="border-b border-[var(--bp-hair)] py-2.5"
+                    >
+                        <div
+                            class="flex items-baseline justify-between gap-2.5"
                         >
-                            {{ card.name }}
-                            <span
-                                class="text-[12px] font-normal"
-                                style="color: var(--hab-muted)"
-                                >{{ card.rate }}% a month</span
+                            <span class="text-[13.5px] font-semibold"
+                                >{{ card.name }}
+                                <span
+                                    class="text-[11.5px] font-normal text-[var(--bp-muted)]"
+                                    >{{ card.rate }}% a month</span
+                                ></span
                             >
-                        </p>
+                            <span class="bp-mono text-[14px] font-semibold">{{
+                                formatPeso(card.paid)
+                            }}</span>
+                        </div>
                         <p
-                            class="text-[15px] font-bold tabular-nums"
-                            style="color: var(--hab-ink)"
+                            class="mt-[3px] text-[12px] leading-normal text-[var(--bp-muted)]"
                         >
-                            {{ formatPeso(card.paid) }}
+                            Minimum {{ formatPeso(card.minimumPaid)
+                            }}<template v-if="card.missedMinimum > 0">
+                                (short
+                                {{ formatPeso(card.missedMinimum) }})</template
+                            ><template v-if="card.extra > 0">
+                                + {{ formatPeso(card.extra) }} extra</template
+                            >
+                            · balance after
+                            {{ formatPeso(card.revolvingAfter) }}, about
+                            {{ formatPeso(card.interest) }} interest
                         </p>
                     </div>
-                    <p class="text-[12.5px]" style="color: var(--hab-muted)">
-                        Minimum {{ formatPeso(card.minimumPaid) }}
-                        <template v-if="card.missedMinimum > 0">
-                            (short {{ formatPeso(card.missedMinimum) }})
-                        </template>
-                        <template v-if="card.extra > 0">
-                            + {{ formatPeso(card.extra) }} extra
-                        </template>
-                        · Interest-bearing balance after:
-                        {{ formatPeso(card.revolvingAfter) }}, about
-                        {{ formatPeso(card.interest) }} interest next month
-                    </p>
-                </li>
-            </ul>
+                </div>
 
-            <p
-                v-if="plan.leftover > 0"
-                class="mt-2 text-[13px]"
-                style="color: var(--hab-muted)"
-            >
-                {{ formatPeso(plan.leftover) }} is more than the cards need, so
-                it is not used.
-            </p>
+                <span
+                    v-if="plan.leftover > 0"
+                    class="text-[12.5px] text-[var(--bp-muted)]"
+                    >{{ formatPeso(plan.leftover) }} is more than the cards
+                    need, so it is not used.</span
+                >
 
-            <p
-                class="mt-3 border-t pt-3 text-[14px] font-semibold"
-                style="border-color: var(--hab-hairline); color: var(--hab-ink)"
-            >
-                Estimated interest next month:
-                {{ formatPeso(plan.totalInterest) }}
-            </p>
-        </template>
-    </div>
+                <div
+                    class="-mt-1 flex items-baseline justify-between gap-2.5 border-t-[3px] border-double border-[var(--bp-ink)] pt-2.5"
+                    role="status"
+                >
+                    <span class="text-[13px] font-semibold"
+                        >Interest next month</span
+                    >
+                    <span
+                        class="bp-mono text-[18px] font-semibold text-[var(--bp-accent)]"
+                        >{{ formatPeso(plan.totalInterest) }}</span
+                    >
+                </div>
+            </template>
+        </div>
+    </aside>
 </template>

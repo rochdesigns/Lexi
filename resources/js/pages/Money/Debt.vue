@@ -7,9 +7,13 @@ import {
 } from '@/actions/App/Http/Controllers/Money/DebtController';
 import { destroy as destroyPayment } from '@/actions/App/Http/Controllers/Money/DebtPaymentController';
 import { destroy as destroyPlan } from '@/actions/App/Http/Controllers/Money/PaymentPlanController';
+import BlueprintPageHead from '@/components/BlueprintPageHead.vue';
+import BlueprintSectionHeading from '@/components/BlueprintSectionHeading.vue';
+import BlueprintTitleBlock from '@/components/BlueprintTitleBlock.vue';
 import ClearingEstimate from '@/components/ClearingEstimate.vue';
 import DebtFormDialog from '@/components/DebtFormDialog.vue';
 import type { DebtFormDebt } from '@/components/DebtFormDialog.vue';
+import InfoNote from '@/components/InfoNote.vue';
 import PaymentFormDialog from '@/components/PaymentFormDialog.vue';
 import PaymentPlanFormDialog from '@/components/PaymentPlanFormDialog.vue';
 import type { PaymentPlanItem } from '@/components/PaymentPlanFormDialog.vue';
@@ -22,7 +26,9 @@ import {
     DialogHeader,
     DialogTitle,
 } from '@/components/ui/dialog';
+import { sheetWidth } from '@/utils/blueprint';
 import {
+    debtTypes,
     formatDay,
     formatMonth,
     formatPeso,
@@ -111,6 +117,106 @@ const utilizationPct = computed(() =>
     Math.round((card.value?.utilization ?? 0) * 100),
 );
 
+const showsClearing = computed(
+    () =>
+        card.value !== null &&
+        card.value.revolvingBalance > 0 &&
+        props.clearingDefault !== null,
+);
+
+const typeLabel = computed(
+    () =>
+        debtTypes.find((type) => type.value === props.debt.type)?.single ??
+        'Debt',
+);
+
+const typeIcons: Record<string, string> = {
+    credit_card: 'credit_card',
+    loan: 'account_balance',
+    bnpl: 'shopping_bag',
+    informal: 'handshake',
+};
+
+const subtitle = computed(() => {
+    const parts = [
+        props.debt.lender,
+        interestLabel(props.debt.interestType) +
+            (props.debt.monthlyInterestRate !== null
+                ? ` at ${props.debt.monthlyInterestRate}% a month`
+                : ''),
+    ];
+
+    if (props.debt.nextDueDate) {
+        parts.push(`Next due ${formatDay(props.debt.nextDueDate)}`);
+    }
+
+    if (card.value) {
+        parts.push(`Closes ${formatDay(card.value.closesOn)}`);
+    }
+
+    return parts.filter(Boolean).join(' · ');
+});
+
+const dimension = computed(() => {
+    if (props.debt.status === 'paid_off') {
+        return 'Paid off';
+    }
+
+    const parts: string[] = [];
+
+    if (props.debt.nextDueDate) {
+        parts.push(`Next due ${formatDay(props.debt.nextDueDate)}`);
+    }
+
+    if (card.value) {
+        parts.push(`Statement closes ${formatDay(card.value.closesOn)}`);
+    } else if (isInformal.value && props.debt.targetPayoffDate) {
+        parts.push(`Aim to clear by ${formatDay(props.debt.targetPayoffDate)}`);
+    }
+
+    return parts.length ? parts.join(' · ') : null;
+});
+
+function utilizationColor(pct: number): string {
+    return pct >= 80 ? '#a3311f' : pct >= 50 ? '#b4532a' : 'var(--bp-accent)';
+}
+
+/** The second line under a plan: its interest, and whether paying early helps. */
+function planSub(plan: Plan): string {
+    if (plan.interestType === 'none') {
+        return `No interest · ${plan.totalMonths} months`;
+    }
+
+    const parts = [
+        `${interestLabel(plan.interestType)}, ${formatPeso(plan.totalInterest)} interest in total`,
+    ];
+
+    if (
+        plan.status !== 'paid_off' &&
+        plan.interestThisMonth !== null &&
+        plan.interestType === 'amortized'
+    ) {
+        parts.push(
+            `this month ${formatPeso(plan.interestThisMonth)} interest and ${formatPeso(plan.principalThisMonth ?? 0)} principal`,
+        );
+    }
+
+    if (
+        plan.status !== 'paid_off' &&
+        !plan.earlyPayoffSavesInterest &&
+        plan.interestType === 'add_on'
+    ) {
+        parts.push('paying early may not reduce the interest');
+    }
+
+    return parts.join(' · ');
+}
+
+const iconButtonClass =
+    'rounded-[3px] p-[3px] text-[var(--bp-faint)] hover:bg-[var(--bp-hover)] hover:text-[var(--bp-ink)]';
+const headerButtonClass =
+    'flex items-center gap-1.5 rounded px-2.5 py-1.5 text-[13px] text-[var(--bp-ink-2)] hover:bg-[var(--bp-hover)]';
+
 const stats = computed(() => {
     const list = [
         { label: 'Still owed', value: formatPeso(props.debt.totalRemaining) },
@@ -126,7 +232,7 @@ const stats = computed(() => {
 
     if (card.value) {
         list.push({
-            label: 'Projected next statement',
+            label: 'Projected statement',
             value: formatPeso(card.value.projectedStatement),
         });
 
@@ -150,314 +256,371 @@ const stats = computed(() => {
 <template>
     <Head :title="debt.name" />
 
-    <div
-        class="mx-auto w-full max-w-[1180px] px-4 pt-6 pb-[46px] sm:px-6 lg:px-[30px]"
-    >
-        <Link
-            :href="index().url"
-            class="mb-3 inline-flex items-center gap-1 text-[13px]"
-            style="color: var(--hab-muted)"
-        >
-            <span class="material-symbols-rounded" style="font-size: 16px"
-                >arrow_back</span
+    <Teleport defer to="#page-crumb">
+        <span class="text-[var(--bp-faint)]">/</span>
+        <span class="truncate font-medium text-[var(--bp-ink)]">{{
+            debt.name
+        }}</span>
+    </Teleport>
+    <Teleport defer to="#page-actions">
+        <div class="bp flex items-center gap-1.5">
+            <Link
+                :href="index().url"
+                :class="headerButtonClass"
+                class="md:hidden"
+                aria-label="Back to debts"
             >
-            Debts
-        </Link>
-
-        <div class="mb-6 flex items-end justify-between gap-3">
-            <div>
-                <h1
-                    class="font-['Bricolage_Grotesque'] text-[32px] font-extrabold"
-                    style="color: var(--hab-ink)"
+                <span class="ms" style="font-size: 16px" aria-hidden="true"
+                    >arrow_back</span
                 >
-                    {{ debt.name }}
-                </h1>
-                <p class="mt-1 text-[14px]" style="color: var(--hab-muted)">
-                    {{ debt.lender ? debt.lender + ' · ' : ''
-                    }}{{ interestLabel(debt.interestType)
-                    }}<template v-if="debt.monthlyInterestRate !== null">
-                        at {{ debt.monthlyInterestRate }}% a month</template
-                    ><template v-if="debt.nextDueDate">
-                        · Next due {{ formatDay(debt.nextDueDate) }}</template
-                    ><template v-if="card">
-                        · Closes {{ formatDay(card.closesOn) }}</template
+            </Link>
+            <button
+                type="button"
+                :class="headerButtonClass"
+                @click="editingDebt = true"
+            >
+                <span class="ms" style="font-size: 16px" aria-hidden="true"
+                    >edit</span
+                >
+                <span class="hidden sm:inline">Edit</span>
+            </button>
+            <button
+                type="button"
+                :class="headerButtonClass"
+                @click="deletingDebt = true"
+            >
+                <span class="ms" style="font-size: 16px" aria-hidden="true"
+                    >delete</span
+                >
+                <span class="hidden sm:inline">Delete</span>
+            </button>
+            <button
+                type="button"
+                class="ml-1.5 flex items-center gap-1.5 rounded bg-[var(--bp-ink)] px-3 py-1.5 text-[13px] font-semibold text-[var(--bp-card)]"
+                @click="paymentDialog = true"
+            >
+                <span class="ms" style="font-size: 16px" aria-hidden="true"
+                    >add</span
+                >
+                <span class="hidden sm:inline">Record payment</span>
+            </button>
+        </div>
+    </Teleport>
+
+    <div class="bp pb-16">
+        <BlueprintPageHead
+            :icon="typeIcons[debt.type] ?? 'credit_card'"
+            code="M-02.1"
+            :section="typeLabel"
+            :title="debt.name"
+            :subtitle="subtitle"
+            :dimension="dimension"
+        >
+            <p
+                v-if="debt.notes"
+                class="mt-1.5 text-[13.5px] text-[var(--bp-faint)] italic"
+            >
+                {{ debt.notes }}
+            </p>
+        </BlueprintPageHead>
+
+        <div
+            class="grid grid-cols-1 items-start gap-10"
+            :class="[
+                sheetWidth.wide,
+                { 'lg:grid-cols-[minmax(0,1fr)_340px]': showsClearing },
+            ]"
+        >
+            <div class="min-w-0">
+                <!-- Figures -->
+                <div
+                    class="grid grid-cols-2 border border-[var(--bp-ink)] bg-[var(--bp-card)] sm:grid-cols-3"
+                >
+                    <div
+                        v-for="(stat, index) in stats"
+                        :key="stat.label"
+                        class="border-[var(--bp-ink)] px-[18px] py-3.5"
+                        :class="{
+                            'max-sm:border-l': index % 2 === 1,
+                            'max-sm:border-t': index >= 2,
+                            'sm:border-l': index % 3 !== 0,
+                            'sm:border-t': index >= 3,
+                        }"
                     >
-                </p>
-                <p
-                    v-if="debt.notes"
-                    class="mt-1 text-[13px]"
-                    style="color: var(--hab-faint)"
-                >
-                    {{ debt.notes }}
-                </p>
-            </div>
-            <div class="flex gap-2">
-                <Button variant="outline" @click="editingDebt = true"
-                    >Edit</Button
-                >
-                <Button variant="outline" @click="deletingDebt = true"
-                    >Delete</Button
-                >
-            </div>
-        </div>
-
-        <div class="mb-3 grid grid-cols-2 gap-4 lg:grid-cols-5">
-            <div
-                v-for="stat in stats"
-                :key="stat.label"
-                class="rounded-[22px] p-5"
-                style="
-                    background: var(--hab-card-bg);
-                    border: 1px solid var(--hab-card-border);
-                "
-            >
-                <p class="text-[12px]" style="color: var(--hab-muted)">
-                    {{ stat.label }}
-                </p>
-                <p
-                    class="font-['Bricolage_Grotesque'] text-[20px] font-extrabold tabular-nums"
-                    style="color: var(--hab-ink)"
-                >
-                    {{ stat.value }}
-                </p>
-            </div>
-        </div>
-        <p
-            v-if="card && card.creditLimit > 0"
-            class="mb-6 text-[12.5px]"
-            style="color: var(--hab-muted)"
-        >
-            {{ utilizationPct }}% of the {{ formatPeso(card.creditLimit) }}
-            limit is in use.
-        </p>
-        <p
-            v-else-if="isInformal && debt.targetPayoffDate"
-            class="mb-6 text-[12.5px]"
-            style="color: var(--hab-muted)"
-        >
-            Aiming to clear this by {{ formatDay(debt.targetPayoffDate) }}.
-        </p>
-        <div v-else class="mb-6"></div>
-
-        <div
-            class="mb-6 rounded-[22px] p-6"
-            style="
-                background: var(--hab-card-bg);
-                border: 1px solid var(--hab-card-border);
-                box-shadow: 0 8px 24px -20px var(--hab-card-shadow);
-            "
-        >
-            <h2
-                class="mb-3 font-['Bricolage_Grotesque'] text-[18px] font-bold"
-                style="color: var(--hab-ink)"
-            >
-                Payments rolling off
-            </h2>
-            <RolloffChart :series="rollOff" />
-        </div>
-
-        <ClearingEstimate
-            v-if="card && card.revolvingBalance > 0 && clearingDefault !== null"
-            :debt-id="debt.id"
-            :default-payment="clearingDefault"
-            :revolving-balance="card.revolvingBalance"
-            :monthly-rate="debt.monthlyInterestRate"
-        />
-
-        <div
-            v-if="hasPlans"
-            class="mb-6 rounded-[22px] p-6"
-            style="
-                background: var(--hab-card-bg);
-                border: 1px solid var(--hab-card-border);
-                box-shadow: 0 8px 24px -20px var(--hab-card-shadow);
-            "
-        >
-            <div class="mb-4 flex items-center justify-between">
-                <h2
-                    class="font-['Bricolage_Grotesque'] text-[18px] font-bold"
-                    style="color: var(--hab-ink)"
-                >
-                    {{ card ? 'Installments' : 'Payment plans' }}
-                </h2>
-                <Button size="sm" @click="addPlan">{{
-                    card ? 'Add installment' : 'Add payment plan'
-                }}</Button>
-            </div>
-
-            <p
-                v-if="plans.length === 0"
-                class="py-6 text-center text-[14px]"
-                style="color: var(--hab-muted)"
-            >
-                Nothing scheduled yet.
-            </p>
-
-            <div v-else class="overflow-x-auto">
-                <table
-                    class="w-full text-left text-[13.5px]"
-                    style="color: var(--hab-ink)"
-                >
-                    <thead>
-                        <tr class="text-[12px]" style="color: var(--hab-muted)">
-                            <th class="pb-2 font-semibold">What</th>
-                            <th class="pb-2 text-right font-semibold">
-                                Per month
-                            </th>
-                            <th class="pb-2 text-right font-semibold">Left</th>
-                            <th class="pb-2 text-right font-semibold">
-                                Remaining
-                            </th>
-                            <th class="pb-2 font-semibold">Ends</th>
-                            <th class="pb-2"></th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        <tr
-                            v-for="plan in plans"
-                            :key="plan.id"
-                            class="border-t align-top"
-                            :class="{
-                                'opacity-50': plan.status === 'paid_off',
-                            }"
-                            style="border-color: var(--hab-hairline)"
+                        <p class="bp-caption">{{ stat.label }}</p>
+                        <p
+                            class="mt-1 text-[18px] font-semibold tracking-[-0.02em] [overflow-wrap:anywhere] tabular-nums sm:text-[22px]"
                         >
-                            <td class="py-2.5">
-                                {{ plan.description }}
-                                <span
-                                    v-if="plan.status === 'paid_off'"
-                                    class="ml-1 text-[11.5px]"
-                                    style="color: var(--hab-muted)"
-                                    >paid off</span
-                                >
-                                <p
-                                    v-else-if="plan.interestType !== 'none'"
-                                    class="text-[11.5px]"
-                                    style="color: var(--hab-muted)"
-                                >
-                                    {{ interestLabel(plan.interestType) }},
-                                    {{ formatPeso(plan.totalInterest) }}
-                                    interest in total
-                                    <template
-                                        v-if="
-                                            plan.interestThisMonth !== null &&
-                                            plan.interestType === 'amortized'
-                                        "
-                                        >, this month
-                                        {{ formatPeso(plan.interestThisMonth) }}
-                                        interest and
-                                        {{
-                                            formatPeso(
-                                                plan.principalThisMonth ?? 0,
-                                            )
-                                        }}
-                                        principal</template
+                            {{ stat.value }}
+                        </p>
+                    </div>
+                </div>
+
+                <div v-if="card && card.creditLimit > 0" class="mt-3.5">
+                    <div
+                        class="flex flex-wrap justify-between gap-x-3 text-[12.5px] text-[var(--bp-muted)]"
+                    >
+                        <span
+                            ><span
+                                class="font-semibold"
+                                :style="{
+                                    color: utilizationColor(utilizationPct),
+                                }"
+                                >{{ utilizationPct }}%</span
+                            >
+                            of the limit is in use</span
+                        >
+                        <span class="bp-mono"
+                            >{{
+                                formatPeso(
+                                    Math.round(
+                                        (card.utilization ?? 0) *
+                                            card.creditLimit,
+                                    ),
+                                )
+                            }}
+                            / {{ formatPeso(card.creditLimit) }}</span
+                        >
+                    </div>
+                    <div
+                        class="relative mt-1.5 h-2.5 border border-[var(--bp-ink)] bg-[var(--bp-card)] bg-[linear-gradient(90deg,var(--bp-line)_1px,transparent_1px)] bg-[length:10%_100%]"
+                        role="progressbar"
+                        :aria-valuenow="utilizationPct"
+                        aria-valuemin="0"
+                        aria-valuemax="100"
+                        aria-label="Limit used"
+                    >
+                        <div
+                            class="h-full"
+                            :style="{
+                                width: Math.min(utilizationPct, 100) + '%',
+                                background: utilizationColor(utilizationPct),
+                            }"
+                        ></div>
+                        <div
+                            class="absolute -top-1 -bottom-1 left-1/2 w-px bg-[var(--bp-ink)]"
+                        ></div>
+                    </div>
+                    <div
+                        class="bp-mono relative mt-1 h-3 text-[9.5px] text-[var(--bp-faint)]"
+                        aria-hidden="true"
+                    >
+                        <span class="absolute left-0">0</span>
+                        <span class="absolute left-1/2 -translate-x-1/2"
+                            >50%</span
+                        >
+                        <span class="absolute right-0">100%</span>
+                    </div>
+                </div>
+
+                <!-- A. Installments or payment plans -->
+                <template v-if="hasPlans">
+                    <BlueprintSectionHeading
+                        letter="A"
+                        :title="card ? 'Installments' : 'Payment plans'"
+                        class="mt-11"
+                    >
+                        <button
+                            type="button"
+                            class="flex items-center gap-1.5 rounded border border-[var(--bp-line)] bg-[var(--bp-card)] px-2.5 py-[5px] text-[13px] font-medium hover:border-[var(--bp-ink)]"
+                            @click="addPlan"
+                        >
+                            <span
+                                class="ms"
+                                style="font-size: 16px"
+                                aria-hidden="true"
+                                >add</span
+                            >
+                            <span class="hidden sm:inline">{{
+                                card ? 'Add installment' : 'Add payment plan'
+                            }}</span>
+                        </button>
+                    </BlueprintSectionHeading>
+
+                    <p
+                        v-if="plans.length === 0"
+                        class="mt-3.5 border-y border-[var(--bp-hair)] py-6 text-center text-[14px] text-[var(--bp-muted)]"
+                    >
+                        Nothing scheduled yet.
+                    </p>
+                    <div v-else class="mt-3.5 overflow-x-auto">
+                        <div class="min-w-[620px]">
+                            <div
+                                class="bp-mono grid grid-cols-[minmax(0,1fr)_110px_70px_120px_80px_56px] gap-4 border-b-2 border-[var(--bp-ink)] px-1 pb-2 text-[10px] tracking-[0.12em] text-[var(--bp-muted)]"
+                            >
+                                <span>WHAT</span>
+                                <span class="text-right">PER MONTH</span>
+                                <span class="text-right">LEFT</span>
+                                <span class="text-right">REMAINING</span>
+                                <span>ENDS</span>
+                                <span></span>
+                            </div>
+                            <div
+                                v-for="plan in plans"
+                                :key="plan.id"
+                                class="grid grid-cols-[minmax(0,1fr)_110px_70px_120px_80px_56px] items-start gap-4 border-b border-[var(--bp-hair)] px-1 py-3 text-[13.5px]"
+                                :class="{
+                                    'opacity-50': plan.status === 'paid_off',
+                                }"
+                            >
+                                <div class="min-w-0">
+                                    <p class="font-medium">
+                                        {{ plan.description }}
+                                        <span
+                                            v-if="plan.status === 'paid_off'"
+                                            class="bp-mono ml-1 rounded-sm border border-[var(--bp-line)] px-1.5 py-px text-[10px] tracking-[0.08em] text-[var(--bp-muted)]"
+                                            >PAID OFF</span
+                                        >
+                                    </p>
+                                    <p
+                                        class="text-[12px] text-[var(--bp-muted)]"
                                     >
-                                </p>
-                                <p
-                                    v-if="
-                                        plan.status !== 'paid_off' &&
-                                        !plan.earlyPayoffSavesInterest &&
-                                        plan.interestType === 'add_on'
-                                    "
-                                    class="text-[11.5px]"
-                                    style="color: var(--hab-muted)"
+                                        {{ planSub(plan) }}
+                                    </p>
+                                </div>
+                                <span class="bp-mono text-right">{{
+                                    formatPeso(plan.monthlyAmount)
+                                }}</span>
+                                <span class="bp-mono text-right"
+                                    >{{ plan.monthsLeft }} of
+                                    {{ plan.totalMonths }}</span
                                 >
-                                    Paying this off early may not reduce the
-                                    interest.
-                                </p>
-                            </td>
-                            <td class="py-2.5 text-right tabular-nums">
-                                {{ formatPeso(plan.monthlyAmount) }}
-                            </td>
-                            <td class="py-2.5 text-right tabular-nums">
-                                {{ plan.monthsLeft }} of {{ plan.totalMonths }}
-                            </td>
-                            <td class="py-2.5 text-right tabular-nums">
-                                {{ formatPeso(plan.remainingBalance) }}
-                            </td>
-                            <td class="py-2.5">
-                                {{ formatMonth(plan.endMonth) }}
-                            </td>
-                            <td class="py-2.5 text-right whitespace-nowrap">
-                                <Button
-                                    variant="ghost"
-                                    size="sm"
-                                    @click="editPlan(plan)"
-                                    >Edit</Button
-                                >
-                                <Button
-                                    variant="ghost"
-                                    size="sm"
-                                    @click="removePlan(plan)"
-                                    >Delete</Button
-                                >
-                            </td>
-                        </tr>
-                    </tbody>
-                </table>
-            </div>
-        </div>
+                                <span class="bp-mono text-right">{{
+                                    formatPeso(plan.remainingBalance)
+                                }}</span>
+                                <span class="bp-mono text-[12.5px]">{{
+                                    formatMonth(plan.endMonth)
+                                }}</span>
+                                <div class="flex justify-end gap-0.5">
+                                    <button
+                                        type="button"
+                                        :class="iconButtonClass"
+                                        :aria-label="`Edit ${plan.description}`"
+                                        @click="editPlan(plan)"
+                                    >
+                                        <span
+                                            class="ms"
+                                            style="font-size: 17px"
+                                            aria-hidden="true"
+                                            >edit</span
+                                        >
+                                    </button>
+                                    <button
+                                        type="button"
+                                        :class="iconButtonClass"
+                                        :aria-label="`Delete ${plan.description}`"
+                                        @click="removePlan(plan)"
+                                    >
+                                        <span
+                                            class="ms"
+                                            style="font-size: 17px"
+                                            aria-hidden="true"
+                                            >delete</span
+                                        >
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </template>
 
-        <div
-            class="rounded-[22px] p-6"
-            style="
-                background: var(--hab-card-bg);
-                border: 1px solid var(--hab-card-border);
-                box-shadow: 0 8px 24px -20px var(--hab-card-shadow);
-            "
-        >
-            <div class="mb-4 flex items-center justify-between">
-                <h2
-                    class="font-['Bricolage_Grotesque'] text-[18px] font-bold"
-                    style="color: var(--hab-ink)"
+                <!-- B. Roll-off -->
+                <BlueprintSectionHeading
+                    :letter="hasPlans ? 'B' : 'A'"
+                    title="Payments rolling off"
+                    class="mt-11"
                 >
-                    Payment history
-                </h2>
-                <Button size="sm" @click="paymentDialog = true"
-                    >Record payment</Button
+                    <span
+                        class="bp-mono text-[10.5px] tracking-[0.12em] text-[var(--bp-faint)]"
+                        aria-hidden="true"
+                        >FIG. 1</span
+                    >
+                </BlueprintSectionHeading>
+                <RolloffChart :series="rollOff" class="mt-4" />
+
+                <!-- C. Payment history -->
+                <BlueprintSectionHeading
+                    :letter="hasPlans ? 'C' : 'B'"
+                    title="Payment history"
+                    class="mt-11"
                 >
-            </div>
-
-            <p
-                v-if="payments.length === 0"
-                class="py-6 text-center text-[14px]"
-                style="color: var(--hab-muted)"
-            >
-                No payments recorded yet.
-            </p>
-
-            <table
-                v-else
-                class="w-full text-left text-[13.5px]"
-                style="color: var(--hab-ink)"
-            >
-                <tbody>
-                    <tr
+                    <span
+                        v-if="payments.length"
+                        class="bp-mono hidden text-[11px] tracking-[0.1em] text-[var(--bp-faint)] sm:inline"
+                        >NEWEST FIRST</span
+                    >
+                </BlueprintSectionHeading>
+                <div class="mt-3.5 border-t border-[var(--bp-ink)]">
+                    <p
+                        v-if="payments.length === 0"
+                        class="border-b border-[var(--bp-hair)] py-6 text-center text-[14px] text-[var(--bp-muted)]"
+                    >
+                        No payments recorded yet.
+                    </p>
+                    <div
                         v-for="payment in payments"
                         :key="payment.id"
-                        class="border-t first:border-t-0"
-                        style="border-color: var(--hab-hairline)"
+                        class="grid grid-cols-[64px_minmax(0,1fr)_auto_28px] items-center gap-3 border-b border-[var(--bp-hair)] px-1 py-2.5 text-[13.5px] sm:grid-cols-[80px_minmax(0,1fr)_140px_32px] sm:gap-4"
                     >
-                        <td class="py-2.5">{{ formatDay(payment.date) }}</td>
-                        <td class="py-2.5" style="color: var(--hab-muted)">
-                            {{ planName(payment.paymentPlanId)
-                            }}<span v-if="payment.isExtra"> · extra</span>
-                        </td>
-                        <td class="py-2.5 text-right tabular-nums">
-                            {{ formatPeso(payment.amount) }}
-                        </td>
-                        <td class="py-2.5 text-right">
-                            <Button
-                                variant="ghost"
-                                size="sm"
-                                @click="removePayment(payment)"
-                                >Delete</Button
+                        <span class="bp-mono text-[12.5px]">{{
+                            formatDay(payment.date)
+                        }}</span>
+                        <span
+                            class="flex min-w-0 items-center gap-2 text-[var(--bp-ink-2)]"
+                        >
+                            <span class="truncate">{{
+                                planName(payment.paymentPlanId)
+                            }}</span>
+                            <span
+                                v-if="payment.isExtra"
+                                class="bp-mono shrink-0 rounded-sm border border-[var(--bp-accent)] px-1.5 py-px text-[10px] tracking-[0.08em] text-[var(--bp-accent)]"
+                                >EXTRA</span
                             >
-                        </td>
-                    </tr>
-                </tbody>
-            </table>
+                        </span>
+                        <span class="bp-mono text-right font-semibold">{{
+                            formatPeso(payment.amount)
+                        }}</span>
+                        <button
+                            type="button"
+                            :class="iconButtonClass"
+                            class="justify-self-end"
+                            :aria-label="`Delete the ${formatDay(payment.date)} payment`"
+                            @click="removePayment(payment)"
+                        >
+                            <span
+                                class="ms"
+                                style="font-size: 17px"
+                                aria-hidden="true"
+                                >delete</span
+                            >
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <div
+                v-if="showsClearing && card && clearingDefault !== null"
+                class="flex flex-col gap-3.5 lg:sticky lg:top-[76px]"
+            >
+                <ClearingEstimate
+                    :debt-id="debt.id"
+                    :default-payment="clearingDefault"
+                    :revolving-balance="card.revolvingBalance"
+                    :monthly-rate="debt.monthlyInterestRate"
+                />
+                <InfoNote id="debt-card-figures" blueprint>
+                    Card figures come from the statement you last entered.
+                    Installments are part of the minimum, so they do not pay
+                    down the balance that carries over.
+                </InfoNote>
+            </div>
+        </div>
+
+        <div :class="sheetWidth.wide">
+            <BlueprintTitleBlock
+                :drawing="`Debts / ${debt.name}`"
+                sheet="M-02.1"
+            />
         </div>
 
         <DebtFormDialog v-model:open="editingDebt" :debt="debt" />
