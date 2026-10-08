@@ -56,7 +56,11 @@ class PlanController extends Controller
                 'name' => $bill->name,
                 'amount' => $bill->amount,
                 'frequency' => $bill->frequency->value,
+                'dueDay' => $bill->due_day,
                 'dueMonth' => $bill->due_month,
+                'autopay' => $bill->autopay,
+                'accountId' => $bill->account_id,
+                'debtId' => $bill->debt_id,
                 'monthlySetAside' => (int) ceil($bill->amount / $bill->frequency->months()),
             ])->values(),
             'accounts' => $user->accounts()->orderBy('name')->get()->map(fn (Account $account): array => [
