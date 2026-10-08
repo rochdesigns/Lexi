@@ -1,7 +1,9 @@
 <script setup lang="ts">
-import { Head, Link, router } from '@inertiajs/vue3';
+import { Head, router } from '@inertiajs/vue3';
 import { computed, ref } from 'vue';
 import { update } from '@/actions/App/Http/Controllers/Money/GoalController';
+import BillDialog from '@/components/BillDialog.vue';
+import type { BillRow } from '@/components/BillDialog.vue';
 import BlueprintPageHead from '@/components/BlueprintPageHead.vue';
 import BlueprintSectionHeading from '@/components/BlueprintSectionHeading.vue';
 import BlueprintTitleBlock from '@/components/BlueprintTitleBlock.vue';
@@ -9,7 +11,6 @@ import GoalDialog from '@/components/GoalDialog.vue';
 import type { GoalRow } from '@/components/GoalDialog.vue';
 import InfoNote from '@/components/InfoNote.vue';
 import WhatIfSimulator from '@/components/WhatIfSimulator.vue';
-import { overview } from '@/routes/money';
 import { sheetWidth } from '@/utils/blueprint';
 import {
     formatDay,
@@ -20,12 +21,8 @@ import {
     toPesos,
 } from '@/utils/money';
 
-type YearlyBill = {
-    id: number;
-    name: string;
-    amount: number;
+type YearlyBill = BillRow & {
     frequency: 'quarterly' | 'annual';
-    dueMonth: number | null;
     monthlySetAside: number;
 };
 
@@ -39,6 +36,14 @@ const props = defineProps<{
     cards: { id: number; name: string; revolvingBalance: number }[];
     hasPlans: boolean;
 }>();
+
+const billOpen = ref(false);
+const editingBill = ref<YearlyBill | null>(null);
+
+function openBill(bill: YearlyBill): void {
+    editingBill.value = bill;
+    billOpen.value = true;
+}
 
 const dialogOpen = ref(false);
 const dialogKind = ref<'buffer' | 'sinking'>('sinking');
@@ -492,13 +497,7 @@ function monthCells(bill: YearlyBill): { due: boolean; now: boolean }[] {
                     letter="C"
                     title="Yearly and quarterly bills"
                     class="mt-11"
-                >
-                    <Link
-                        :href="overview().url"
-                        class="text-[13px] font-medium underline underline-offset-[3px]"
-                        >Edit in Bills →</Link
-                    >
-                </BlueprintSectionHeading>
+                />
                 <div class="mt-3 border-t border-[var(--bp-ink)]">
                     <p
                         v-if="yearlyBills.length === 0"
@@ -508,10 +507,12 @@ function monthCells(bill: YearlyBill): { due: boolean; now: boolean }[] {
                         set aside a little each month and listed here.
                     </p>
                     <template v-else>
-                        <div
+                        <button
                             v-for="bill in yearlyBills"
                             :key="bill.id"
-                            class="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-4 gap-y-2 border-b border-[var(--bp-hair)] py-3 sm:grid-cols-[minmax(0,1fr)_220px_130px]"
+                            type="button"
+                            class="grid w-full cursor-pointer grid-cols-[minmax(0,1fr)_auto] items-center gap-x-4 gap-y-2 border-b border-[var(--bp-hair)] py-3 text-left hover:bg-[var(--bp-soft)] sm:grid-cols-[minmax(0,1fr)_220px_130px]"
+                            @click="openBill(bill)"
                         >
                             <div class="min-w-0">
                                 <p class="truncate text-[14px] font-semibold">
@@ -549,7 +550,7 @@ function monthCells(bill: YearlyBill): { due: boolean; now: boolean }[] {
                                 {{ formatPeso(bill.monthlySetAside) }}
                                 <span class="text-[var(--bp-faint)]">/ mo</span>
                             </span>
-                        </div>
+                        </button>
                         <div
                             class="bp-mono mt-2 flex gap-4 text-[10px] text-[var(--bp-faint)]"
                         >
@@ -582,6 +583,12 @@ function monthCells(bill: YearlyBill): { due: boolean; now: boolean }[] {
             <BlueprintTitleBlock drawing="Money / Plan" sheet="M-05" />
         </div>
 
+        <BillDialog
+            v-model:open="billOpen"
+            :bill="editingBill"
+            :accounts="accounts"
+            :cards="cards"
+        />
         <GoalDialog
             v-model:open="dialogOpen"
             :kind="dialogKind"
