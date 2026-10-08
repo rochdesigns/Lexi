@@ -362,3 +362,16 @@ test('the account filter ignores an account that is not mine', function (): void
         ->where('accountFilter', null)
         ->has('transactions', 1));
 });
+
+test('view all lists transactions and debt payments from every month', function (): void {
+    Transaction::factory()->for($this->user)->create(['account_id' => $this->account->id, 'date' => '2026-10-10']);
+    Transaction::factory()->for($this->user)->create(['account_id' => $this->account->id, 'date' => '2026-03-02']);
+    $debt = Debt::factory()->for($this->user)->create();
+    DebtPayment::factory()->for($debt)->create(['account_id' => $this->account->id, 'date' => '2026-01-05']);
+
+    $this->actingAs($this->user)->get('/money/transactions')
+        ->assertInertia(fn ($page) => $page->where('all', false)->has('transactions', 1)->has('debtPayments', 0));
+
+    $this->actingAs($this->user)->get('/money/transactions?month=all')
+        ->assertInertia(fn ($page) => $page->where('all', true)->where('month', '2026-10')->has('transactions', 2)->has('debtPayments', 1));
+});

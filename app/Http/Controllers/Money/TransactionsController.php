@@ -31,6 +31,7 @@ class TransactionsController extends Controller
         $user = $request->user();
         $current = Carbon::today()->format('Y-m');
         $requested = (string) $request->query('month', $current);
+        $all = $requested === 'all';
         $month = preg_match('/^\d{4}-(0[1-9]|1[0-2])$/', $requested) === 1 ? $requested : $current;
         $first = Carbon::createFromFormat('Y-m-d', $month.'-01')->startOfDay();
         $accountFilter = $request->filled('account') ? $user->accounts()->find($request->integer('account'))?->id : null;
@@ -39,8 +40,9 @@ class TransactionsController extends Controller
             ->counted()
             ->with(['account', 'toAccount', 'debt', 'bill', 'statementRow', 'customCategory'])
             ->when($accountFilter, fn ($query) => $query->where(fn ($query) => $query->where('account_id', $accountFilter)->orWhere('to_account_id', $accountFilter)))
-            ->where('date', '>=', $first->toDateString())
-            ->where('date', '<', $first->copy()->addMonth()->toDateString())
+            ->when(! $all, fn ($query) => $query
+                ->where('date', '>=', $first->toDateString())
+                ->where('date', '<', $first->copy()->addMonth()->toDateString()))
             ->orderByDesc('date')
             ->orderByDesc('id')
             ->get();
@@ -49,8 +51,9 @@ class TransactionsController extends Controller
             ->whereNotNull('account_id')
             ->with(['account', 'debt'])
             ->when($accountFilter, fn ($query) => $query->where('account_id', $accountFilter))
-            ->where('date', '>=', $first->toDateString())
-            ->where('date', '<', $first->copy()->addMonth()->toDateString())
+            ->when(! $all, fn ($query) => $query
+                ->where('date', '>=', $first->toDateString())
+                ->where('date', '<', $first->copy()->addMonth()->toDateString()))
             ->orderByDesc('date')
             ->orderByDesc('id')
             ->get();
@@ -59,6 +62,7 @@ class TransactionsController extends Controller
 
         return Inertia::render('Money/Transactions', [
             'month' => $month,
+            'all' => $all,
             'currentMonth' => $current,
             'accountFilter' => $accountFilter,
             'today' => Carbon::today()->toDateString(),

@@ -34,6 +34,7 @@ type CardGuard = {
 
 const props = defineProps<{
     month: string;
+    all: boolean;
     accountFilter: number | null;
     currentMonth: string;
     today: string;
@@ -300,6 +301,10 @@ function submit(): void {
 }
 
 const title = computed(() => {
+    if (props.all) {
+        return 'All time';
+    }
+
     const [year, month] = props.month.split('-').map(Number);
 
     return new Date(year, month - 1, 1).toLocaleDateString('en-US', {
@@ -483,6 +488,10 @@ const entryCount = computed(
 
 /** "OCT 01 — OCT 06 · 14 entries": the month so far, or all of a past month. */
 const dimension = computed(() => {
+    if (props.all) {
+        return `ALL TIME · ${entryCount.value} ${entryCount.value === 1 ? 'entry' : 'entries'}`;
+    }
+
     const [year, month] = props.month.split('-').map(Number);
     const monthShort = new Date(year, month - 1, 1)
         .toLocaleDateString('en-US', { month: 'short' })
@@ -563,8 +572,9 @@ const chipOff =
                 >
                     <button
                         type="button"
-                        class="flex h-[26px] w-[26px] items-center justify-center rounded-[3px] border border-[var(--bp-line)] hover:border-[var(--bp-ink)]"
+                        class="flex h-[26px] w-[26px] items-center justify-center rounded-[3px] border border-[var(--bp-line)] enabled:hover:border-[var(--bp-ink)] disabled:border-[var(--bp-hair)] disabled:text-[var(--bp-fainter)]"
                         aria-label="Previous month"
+                        :disabled="all"
                         @click="goTo(shiftMonth(-1))"
                     >
                         <span
@@ -583,19 +593,27 @@ const chipOff =
                             title
                         }}</span>
                         <button
-                            v-if="month !== currentMonth"
+                            v-if="month !== currentMonth || all"
                             type="button"
                             class="text-[11.5px] text-[var(--bp-muted)] underline underline-offset-2 hover:text-[var(--bp-ink)]"
                             @click="goTo(currentMonth)"
                         >
                             Back to this month
                         </button>
+                        <button
+                            v-if="!all"
+                            type="button"
+                            class="text-[11.5px] text-[var(--bp-muted)] underline underline-offset-2 hover:text-[var(--bp-ink)]"
+                            @click="goTo('all')"
+                        >
+                            View all
+                        </button>
                     </span>
                     <button
                         type="button"
                         class="flex h-[26px] w-[26px] items-center justify-center rounded-[3px] border border-[var(--bp-line)] enabled:hover:border-[var(--bp-ink)] disabled:border-[var(--bp-hair)] disabled:text-[var(--bp-fainter)]"
                         aria-label="Next month"
-                        :disabled="month >= currentMonth"
+                        :disabled="all || month >= currentMonth"
                         @click="goTo(shiftMonth(1))"
                     >
                         <span
@@ -1123,7 +1141,7 @@ const chipOff =
                                 :disabled="accounts.length < 2"
                                 @change="
                                     goTo(
-                                        month,
+                                        all ? 'all' : month,
                                         Number(
                                             ($event.target as HTMLSelectElement)
                                                 .value,
