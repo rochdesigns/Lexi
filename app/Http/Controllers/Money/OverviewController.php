@@ -7,6 +7,7 @@ use App\Http\Requests\Money\RecoveryRequest;
 use App\Models\Money\Account;
 use App\Models\Money\Bill;
 use App\Models\Money\Debt;
+use App\Models\Money\DebtType;
 use App\Models\Money\IncomeSource;
 use App\Services\Money\Projection;
 use Illuminate\Http\Request;
@@ -44,6 +45,10 @@ class OverviewController extends Controller
                 'balance' => $account->balance,
                 'isSpendable' => $account->is_spendable,
             ])->values(),
+            'cards' => $debts->filter(fn (Debt $debt): bool => $debt->type === DebtType::CreditCard)->sortBy('name')->map(fn (Debt $card): array => [
+                'id' => $card->id,
+                'name' => $card->name,
+            ])->values(),
             'incomeSources' => $sources->map(fn (IncomeSource $source): array => [
                 'id' => $source->id,
                 'name' => $source->name,
@@ -61,6 +66,7 @@ class OverviewController extends Controller
                 'dueMonth' => $bill->due_month,
                 'autopay' => $bill->autopay,
                 'accountId' => $bill->account_id,
+                'debtId' => $bill->debt_id,
             ])->values(),
         ]);
     }

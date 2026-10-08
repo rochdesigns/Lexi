@@ -36,4 +36,12 @@ class BillFactory extends Factory
             'due_month' => $month,
         ]);
     }
+
+    public function quarterly(int $firstMonth = 1): static
+    {
+        return $this->state([
+            'frequency' => BillFrequency::Quarterly,
+            'due_month' => $firstMonth,
+        ]);
+    }
 }

@@ -93,6 +93,23 @@ test('an annual bill whose date passed rolls to next year', function (): void {
     expect(app(Projection::class)->nextBillDate($bill, Carbon::today())->toDateString())->toBe('2027-03-10');
 });
 
+test('a quarterly bill repeats every three months from its first month', function (): void {
+    $bill = Bill::factory()->for($this->user)->quarterly(2)->create(['due_day' => 10]);
+    $projection = app(Projection::class);
+
+    expect($projection->nextBillDate($bill, Carbon::today())->toDateString())->toBe('2026-11-10')
+        ->and($projection->nextBillDate($bill, Carbon::parse('2026-11-11'))->toDateString())->toBe('2027-02-10');
+
+    $dates = collect($projection->upcoming(collect(), collect([$bill]), collect(), Carbon::today(), 120))->pluck('date');
+    expect($dates->all())->toBe(['2026-11-10', '2027-02-10']);
+});
+
+test('a quarterly bill is set aside at a third a month', function (): void {
+    $bills = collect([Bill::factory()->for($this->user)->quarterly(1)->create(['amount' => 100_000])]);
+
+    expect(app(Projection::class)->annualSetAside($bills))->toBe(33_334);
+});
+
 test('a bill on day 31 lands on the last day of a short month', function (): void {
     $bill = Bill::factory()->for($this->user)->create(['due_day' => 31]);
 

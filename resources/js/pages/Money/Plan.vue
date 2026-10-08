@@ -1,7 +1,6 @@
 <script setup lang="ts">
 import { Head, Link, router } from '@inertiajs/vue3';
 import { computed, ref } from 'vue';
-import { update } from '@/actions/App/Http/Controllers/Money/GoalController';
 import BlueprintPageHead from '@/components/BlueprintPageHead.vue';
 import BlueprintSectionHeading from '@/components/BlueprintSectionHeading.vue';
 import BlueprintTitleBlock from '@/components/BlueprintTitleBlock.vue';
@@ -9,7 +8,6 @@ import GoalDialog from '@/components/GoalDialog.vue';
 import type { GoalRow } from '@/components/GoalDialog.vue';
 import InfoNote from '@/components/InfoNote.vue';
 import WhatIfSimulator from '@/components/WhatIfSimulator.vue';
-import { overview } from '@/routes/money';
 import { sheetWidth } from '@/utils/blueprint';
 import {
     formatDay,
@@ -19,11 +17,14 @@ import {
     monthNames,
     toPesos,
 } from '@/utils/money';
+import { update } from '@/actions/App/Http/Controllers/Money/GoalController';
+import { overview } from '@/routes/money';
 
 type YearlyBill = {
     id: number;
     name: string;
     amount: number;
+    frequency: 'quarterly' | 'annual';
     dueMonth: number | null;
     monthlySetAside: number;
 };
@@ -147,7 +148,11 @@ const currentMonthIndex = new Date().getMonth();
 
 function monthCells(bill: YearlyBill): { due: boolean; now: boolean }[] {
     return monthNames.map((_, index) => ({
-        due: bill.dueMonth !== null && index === bill.dueMonth - 1,
+        due:
+            bill.dueMonth !== null &&
+            (index - (bill.dueMonth - 1)) %
+                (bill.frequency === 'quarterly' ? 3 : 12) ===
+                0,
         now: index === currentMonthIndex,
     }));
 }
@@ -485,7 +490,7 @@ function monthCells(bill: YearlyBill): { due: boolean; now: boolean }[] {
                 <!-- C. Yearly bills -->
                 <BlueprintSectionHeading
                     letter="C"
-                    title="Yearly bills"
+                    title="Yearly and quarterly bills"
                     class="mt-11"
                 >
                     <Link
@@ -499,8 +504,8 @@ function monthCells(bill: YearlyBill): { due: boolean; now: boolean }[] {
                         v-if="yearlyBills.length === 0"
                         class="border-b border-[var(--bp-hair)] py-3.5 text-[14px] text-[var(--bp-muted)]"
                     >
-                        Yearly bills you add on the Overview are set aside a
-                        little each month and listed here.
+                        Yearly and quarterly bills you add on the Overview are
+                        set aside a little each month and listed here.
                     </p>
                     <template v-else>
                         <div
@@ -513,8 +518,12 @@ function monthCells(bill: YearlyBill): { due: boolean; now: boolean }[] {
                                     {{ bill.name }}
                                 </p>
                                 <p class="text-[12px] text-[var(--bp-muted)]">
-                                    {{ formatPeso(bill.amount) }} due in
-                                    {{ monthNames[(bill.dueMonth ?? 1) - 1] }}
+                                    {{ formatPeso(bill.amount) }}
+                                    {{
+                                        bill.frequency === 'quarterly'
+                                            ? `every 3 months from ${monthNames[(bill.dueMonth ?? 1) - 1]}`
+                                            : `due in ${monthNames[(bill.dueMonth ?? 1) - 1]}`
+                                    }}
                                 </p>
                             </div>
                             <div

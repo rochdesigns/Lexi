@@ -12,8 +12,10 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 
 /**
  * amount is integer centavos per payment. An annual bill is paid once a year
- * in due_month (1 to 12) and is set aside at one twelfth each month. account_id
- * is the account it is usually paid from. An expense logged against the bill
+ * in due_month (1 to 12) and is set aside at one twelfth each month. A
+ * quarterly bill is paid every third month starting at due_month and is set
+ * aside at one third each month. account_id
+ * is the account it is usually paid from, or debt_id the credit card it is charged to. An expense logged against the bill
  * marks the bill paid for the month it falls in.
  */
 class Bill extends Model
@@ -21,7 +23,7 @@ class Bill extends Model
     /** @use HasFactory<BillFactory> */
     use HasFactory;
 
-    protected $fillable = ['user_id', 'account_id', 'name', 'amount', 'frequency', 'due_day', 'due_month', 'autopay'];
+    protected $fillable = ['user_id', 'account_id', 'debt_id', 'name', 'amount', 'frequency', 'due_day', 'due_month', 'autopay'];
 
     /** @var array<string, string> */
     protected $casts = [
@@ -46,6 +48,16 @@ class Bill extends Model
     public function account(): BelongsTo
     {
         return $this->belongsTo(Account::class);
+    }
+
+    /**
+     * The credit card the bill is charged to, when it is not paid from an account.
+     *
+     * @return BelongsTo<Debt, $this>
+     */
+    public function debt(): BelongsTo
+    {
+        return $this->belongsTo(Debt::class);
     }
 
     /**

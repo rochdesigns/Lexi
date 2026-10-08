@@ -1,6 +1,10 @@
 <?php
 
+use App\Models\Money\Account;
 use App\Models\Money\Bill;
+use App\Models\Money\BillFrequency;
+use App\Models\Money\Debt;
+use App\Models\Money\DebtType;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 
@@ -27,6 +31,39 @@ test('an annual bill needs a due month', function (): void {
     $this->actingAs($this->user)->post('/money/bills', [...$payload, 'due_month' => 3])->assertSessionHasNoErrors();
 
     expect($this->user->bills()->sole()->due_month)->toBe(3);
+});
+
+test('a quarterly bill needs a first due month', function (): void {
+    $payload = ['name' => 'Water', 'amount' => 3000, 'frequency' => 'quarterly', 'due_day' => 10, 'autopay' => false];
+
+    $this->actingAs($this->user)->post('/money/bills', $payload)->assertSessionHasErrors('due_month');
+    $this->actingAs($this->user)->post('/money/bills', [...$payload, 'due_month' => 2])->assertSessionHasNoErrors();
+
+    $bill = $this->user->bills()->sole();
+    expect($bill->frequency)->toBe(BillFrequency::Quarterly)->and($bill->due_month)->toBe(2);
+});
+
+test('a bill can be charged to one of my credit cards', function (): void {
+    $card = Debt::factory()->for($this->user)->create(['type' => DebtType::CreditCard]);
+    $payload = ['name' => 'Netflix', 'amount' => 549, 'frequency' => 'monthly', 'due_day' => 8, 'autopay' => true];
+
+    $this->actingAs($this->user)->post('/money/bills', [...$payload, 'debt_id' => $card->id])->assertSessionHasNoErrors();
+
+    expect($this->user->bills()->sole()->debt_id)->toBe($card->id);
+});
+
+test('a bill cannot name a card that is not mine, not a card, or an account as well', function (): void {
+    $payload = ['name' => 'Netflix', 'amount' => 549, 'frequency' => 'monthly', 'due_day' => 8, 'autopay' => true];
+    $theirCard = Debt::factory()->for(User::factory())->create(['type' => DebtType::CreditCard]);
+    $loan = Debt::factory()->for($this->user)->create(['type' => DebtType::Loan]);
+    $card = Debt::factory()->for($this->user)->create(['type' => DebtType::CreditCard]);
+    $account = Account::factory()->for($this->user)->create();
+
+    $this->actingAs($this->user)->post('/money/bills', [...$payload, 'debt_id' => $theirCard->id])->assertSessionHasErrors('debt_id');
+    $this->actingAs($this->user)->post('/money/bills', [...$payload, 'debt_id' => $loan->id])->assertSessionHasErrors('debt_id');
+    $this->actingAs($this->user)->post('/money/bills', [...$payload, 'debt_id' => $card->id, 'account_id' => $account->id])->assertSessionHasErrors();
+
+    expect($this->user->bills()->count())->toBe(0);
 });
 
 test('I can update and delete my bill', function (): void {

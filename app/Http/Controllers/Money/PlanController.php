@@ -6,7 +6,6 @@ use App\Http\Controllers\Controller;
 use App\Http\Requests\Money\GoalRequest;
 use App\Models\Money\Account;
 use App\Models\Money\Bill;
-use App\Models\Money\BillFrequency;
 use App\Models\Money\Goal;
 use App\Models\Money\GoalKind;
 use App\Services\Money\Projection;
@@ -52,12 +51,13 @@ class PlanController extends Controller
             'obligations' => $obligations,
             'buffer' => $buffer === null ? null : $present($buffer),
             'goals' => $goals->filter(fn (Goal $goal): bool => $goal->kind === GoalKind::Sinking)->map($present)->values(),
-            'yearlyBills' => $bills->filter(fn (Bill $bill): bool => $bill->frequency === BillFrequency::Annual)->map(fn (Bill $bill): array => [
+            'yearlyBills' => $bills->filter(fn (Bill $bill): bool => $bill->frequency->isSetAside())->map(fn (Bill $bill): array => [
                 'id' => $bill->id,
                 'name' => $bill->name,
                 'amount' => $bill->amount,
+                'frequency' => $bill->frequency->value,
                 'dueMonth' => $bill->due_month,
-                'monthlySetAside' => (int) ceil($bill->amount / 12),
+                'monthlySetAside' => (int) ceil($bill->amount / $bill->frequency->months()),
             ])->values(),
             'accounts' => $user->accounts()->orderBy('name')->get()->map(fn (Account $account): array => [
                 'id' => $account->id,

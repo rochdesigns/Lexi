@@ -292,9 +292,9 @@ class Projection
 
     private function previousBillDate(Bill $bill, CarbonImmutable $due): CarbonImmutable
     {
-        return $bill->frequency === BillFrequency::Monthly
-            ? $this->dayInMonth($due->startOfMonth()->subMonthNoOverflow(), $bill->due_day)
-            : $due->subYearNoOverflow();
+        return $bill->frequency === BillFrequency::Annual
+            ? $due->subYearNoOverflow()
+            : $this->dayInMonth($due->startOfMonth()->subMonthsNoOverflow($bill->frequency->months()), $bill->due_day);
     }
 
     /** Plan balances plus any outstanding or revolving balance. */
@@ -391,16 +391,16 @@ class Projection
     }
 
     /**
-     * Annual bills are saved at one twelfth a month, rounded up per bill so
-     * twelve months of saving never fall short of the bill.
+     * Annual and quarterly bills are saved a little each month (a twelfth or a
+     * third), rounded up per bill so the saving never falls short of the bill.
      *
      * @param  Collection<int, Bill>  $bills
      */
     public function annualSetAside(Collection $bills): int
     {
         return $bills
-            ->filter(fn (Bill $bill): bool => $bill->frequency === BillFrequency::Annual)
-            ->sum(fn (Bill $bill): int => (int) ceil($bill->amount / 12));
+            ->filter(fn (Bill $bill): bool => $bill->frequency->isSetAside())
+            ->sum(fn (Bill $bill): int => (int) ceil($bill->amount / $bill->frequency->months()));
     }
 
     /**
@@ -461,15 +461,21 @@ class Projection
     {
         $today = CarbonImmutable::instance($today)->startOfDay();
 
-        if ($bill->frequency === BillFrequency::Monthly) {
-            $due = $this->dayInMonth($today, $bill->due_day);
+        foreach (range(0, 12) as $offset) {
+            $month = $today->startOfMonth()->addMonthsNoOverflow($offset);
 
-            return $due->lessThan($today) ? $this->dayInMonth($today->addMonthNoOverflow(), $bill->due_day) : $due;
+            if (! $bill->frequency->fallsDueIn($bill->due_month, $month->month)) {
+                continue;
+            }
+
+            $due = $this->dayInMonth($month, $bill->due_day);
+
+            if ($due->greaterThanOrEqualTo($today)) {
+                return $due;
+            }
         }
 
-        $due = $this->dayInMonth($today->setDate($today->year, $bill->due_month, 1), $bill->due_day);
-
-        return $due->lessThan($today) ? $this->dayInMonth($due->addYearNoOverflow(), $bill->due_day) : $due;
+        return $this->dayInMonth($today->addYearNoOverflow(), $bill->due_day);
     }
 
     /**
@@ -721,10 +727,14 @@ class Projection
 
         foreach ($bills as $bill) {
             $bill->loadMissing('payments');
-            $dates = [$this->nextBillDate($bill, $start)];
+            $dates = [];
 
-            if ($bill->frequency === BillFrequency::Monthly) {
-                $dates = array_map(fn (int $offset): CarbonImmutable => $this->dayInMonth($start->startOfMonth()->addMonths($offset), $bill->due_day), range(0, $months));
+            foreach (range(0, $months) as $offset) {
+                $month = $start->startOfMonth()->addMonthsNoOverflow($offset);
+
+                if ($bill->frequency->fallsDueIn($bill->due_month, $month->month)) {
+                    $dates[] = $this->dayInMonth($month, $bill->due_day);
+                }
             }
 
             foreach ($dates as $date) {
@@ -752,8 +762,8 @@ class Projection
     // ── Goals ────────────────────────────────────────────────────────────
 
     /**
-     * What has to be paid every month: the monthly bills, the yearly bills set
-     * aside at a twelfth, and the debt payments due this month. A buffer is
+     * What has to be paid every month: the monthly bills, the yearly and quarterly bills set
+     * aside, and the debt payments due this month. A buffer is
      * sized in months of this, so it shrinks as installments roll off.
      *
      * @param  Collection<int, Debt>  $debts

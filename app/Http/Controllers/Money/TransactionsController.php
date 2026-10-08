@@ -119,6 +119,7 @@ class TransactionsController extends Controller
                 'name' => $bill->name,
                 'amount' => $bill->amount,
                 'accountId' => $bill->account_id,
+                'debtId' => $bill->debt_id,
             ])->values(),
             'cards' => $user->debts()->where('type', DebtType::CreditCard)->with('cardDetail')->orderBy('name')->get()->map(fn (Debt $card): array => [
                 'id' => $card->id,
