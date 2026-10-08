@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { Head, Link, router } from '@inertiajs/vue3';
 import { computed, ref } from 'vue';
+import { update as updateRecovery } from '@/actions/App/Http/Controllers/Money/RecoveryController';
 import AccountDialog from '@/components/AccountDialog.vue';
 import type { AccountRow } from '@/components/AccountDialog.vue';
 import BillDialog from '@/components/BillDialog.vue';
@@ -11,10 +12,9 @@ import BlueprintTitleBlock from '@/components/BlueprintTitleBlock.vue';
 import type { IncomeSourceRow } from '@/components/IncomeSourceDialog.vue';
 import IncomeSourceDialog from '@/components/IncomeSourceDialog.vue';
 import InfoNote from '@/components/InfoNote.vue';
+import { transactions } from '@/routes/money';
 import { sheetWidth } from '@/utils/blueprint';
 import { formatDay, formatPeso, monthNames } from '@/utils/money';
-import { update as updateRecovery } from '@/actions/App/Http/Controllers/Money/RecoveryController';
-import { transactions } from '@/routes/money';
 
 type Upcoming = {
     kind: 'debt' | 'bill' | 'income';

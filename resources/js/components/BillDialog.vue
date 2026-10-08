@@ -1,6 +1,11 @@
 <script setup lang="ts">
 import { useForm } from '@inertiajs/vue3';
 import { watch } from 'vue';
+import {
+    destroy,
+    store,
+    update,
+} from '@/actions/App/Http/Controllers/Money/BillController';
 import FieldLabel from '@/components/FieldLabel.vue';
 import MoneyInput from '@/components/MoneyInput.vue';
 import { Button } from '@/components/ui/button';
@@ -12,11 +17,6 @@ import {
 } from '@/components/ui/dialog';
 import { formError, formField } from '@/utils/blueprint';
 import { monthNames, toPesos } from '@/utils/money';
-import {
-    destroy,
-    store,
-    update,
-} from '@/actions/App/Http/Controllers/Money/BillController';
 
 export type BillRow = {
     id: number;

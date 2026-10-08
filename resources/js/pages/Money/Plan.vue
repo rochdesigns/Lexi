@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { Head, Link, router } from '@inertiajs/vue3';
 import { computed, ref } from 'vue';
+import { update } from '@/actions/App/Http/Controllers/Money/GoalController';
 import BlueprintPageHead from '@/components/BlueprintPageHead.vue';
 import BlueprintSectionHeading from '@/components/BlueprintSectionHeading.vue';
 import BlueprintTitleBlock from '@/components/BlueprintTitleBlock.vue';
@@ -8,6 +9,7 @@ import GoalDialog from '@/components/GoalDialog.vue';
 import type { GoalRow } from '@/components/GoalDialog.vue';
 import InfoNote from '@/components/InfoNote.vue';
 import WhatIfSimulator from '@/components/WhatIfSimulator.vue';
+import { overview } from '@/routes/money';
 import { sheetWidth } from '@/utils/blueprint';
 import {
     formatDay,
@@ -17,8 +19,6 @@ import {
     monthNames,
     toPesos,
 } from '@/utils/money';
-import { update } from '@/actions/App/Http/Controllers/Money/GoalController';
-import { overview } from '@/routes/money';
 
 type YearlyBill = {
     id: number;
