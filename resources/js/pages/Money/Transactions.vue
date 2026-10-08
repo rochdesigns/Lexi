@@ -423,7 +423,17 @@ const categoryIcons: Record<string, string> = {
     other: 'sell',
 };
 
+function isAdjustment(row: TransactionRow): boolean {
+    return (
+        row.kind === 'adjustment_increase' || row.kind === 'adjustment_decrease'
+    );
+}
+
 function entryIcon(row: TransactionRow): string {
+    if (isAdjustment(row)) {
+        return 'balance';
+    }
+
     if (row.kind === 'income') {
         return 'payments';
     }
@@ -440,13 +450,19 @@ function entryIcon(row: TransactionRow): string {
 function entryName(row: TransactionRow): string {
     return (
         row.note ||
-        (row.kind === 'income'
-            ? 'Income'
-            : (row.categoryName ?? categoryLabel(row.category)))
+        (isAdjustment(row)
+            ? 'Reconciliation adjustment'
+            : row.kind === 'income'
+              ? 'Income'
+              : (row.categoryName ?? categoryLabel(row.category)))
     );
 }
 
 function entryMeta(row: TransactionRow): string {
+    if (isAdjustment(row)) {
+        return `Adjustment · ${row.paidWith}`;
+    }
+
     if (row.kind === 'income') {
         return `Income · into ${row.paidWith}`;
     }
@@ -1263,12 +1279,14 @@ const chipOff =
                                     v-else
                                     type="button"
                                     class="-mx-2 grid min-h-[54px] grid-cols-[32px_minmax(0,1fr)_auto] items-center gap-3 rounded px-2 text-left hover:bg-[rgba(27,27,26,0.035)] sm:grid-cols-[40px_minmax(0,1fr)_auto]"
+                                    :disabled="isAdjustment(item.row)"
                                     @click="edit(item.row)"
                                 >
                                     <span
                                         class="flex h-8 w-8 items-center justify-center rounded-full border"
                                         :class="
-                                            item.row.kind === 'transfer'
+                                            item.row.kind === 'transfer' ||
+                                            isAdjustment(item.row)
                                                 ? 'border-dashed border-[var(--bp-faint)] text-[var(--bp-muted)]'
                                                 : 'border-[var(--bp-line)] bg-[var(--bp-card)]'
                                         "
@@ -1303,14 +1321,20 @@ const chipOff =
                                                     item.row.kind === 'income',
                                                 'text-[var(--bp-faint)]':
                                                     item.row.kind ===
-                                                    'transfer',
+                                                        'transfer' ||
+                                                    isAdjustment(item.row),
                                                 'font-semibold':
                                                     item.row.kind === 'expense',
                                             }"
                                             >{{
-                                                item.row.kind === 'income'
+                                                item.row.kind === 'income' ||
+                                                item.row.kind ===
+                                                    'adjustment_increase'
                                                     ? '+'
-                                                    : ''
+                                                    : item.row.kind ===
+                                                        'adjustment_decrease'
+                                                      ? '−'
+                                                      : ''
                                             }}{{
                                                 formatPeso(item.row.amount)
                                             }}</span
@@ -1329,8 +1353,8 @@ const chipOff =
                         class="h-3.5 w-3.5 shrink-0 rounded-full border border-dashed border-[var(--bp-faint)]"
                         aria-hidden="true"
                     ></span>
-                    Debt payments and transfers are shown for reference and are
-                    not counted in Spent.
+                    Debt payments, transfers and reconciliation adjustments are
+                    shown for reference and are not counted in Spent.
                 </p>
             </div>
         </div>

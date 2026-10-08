@@ -10,6 +10,7 @@ use App\Models\Money\DebtType;
 use App\Models\Money\Transaction;
 use App\Models\Money\TransactionCategory;
 use App\Models\Money\TransactionKind;
+use App\Models\Money\TransactionSource;
 use App\Models\User;
 use Illuminate\Support\Facades\DB;
 
@@ -35,6 +36,33 @@ class Ledger
             $this->move($transaction, 1);
 
             return $transaction;
+        });
+    }
+
+    /**
+     * Brings an account's balance to what the bank shows. The gap is recorded
+     * as an adjustment, so the history says where the balance was corrected;
+     * nothing is recorded when the two already match.
+     */
+    public function reconcileAccount(Account $account, int $actualBalance, ?string $date = null): ?Transaction
+    {
+        return DB::transaction(function () use ($account, $actualBalance, $date): ?Transaction {
+            $current = Account::query()->lockForUpdate()->findOrFail($account->id)->balance;
+            $difference = $actualBalance - $current;
+
+            if ($difference === 0) {
+                return null;
+            }
+
+            return $this->recordTransaction($account->user, [
+                'kind' => $difference > 0 ? TransactionKind::AdjustmentIncrease : TransactionKind::AdjustmentDecrease,
+                'date' => $date ?? now()->toDateString(),
+                'amount' => abs($difference),
+                'category' => TransactionCategory::Adjustment,
+                'note' => 'Reconciliation adjustment',
+                'source' => TransactionSource::Manual,
+                'account_id' => $account->id,
+            ]);
         });
     }
 
@@ -147,7 +175,8 @@ class Ledger
             return;
         }
 
-        $change = $direction * ($transaction->kind === TransactionKind::Income ? 1 : -1) * $transaction->amount;
+        $adds = in_array($transaction->kind, [TransactionKind::Income, TransactionKind::AdjustmentIncrease], true);
+        $change = $direction * ($adds ? 1 : -1) * $transaction->amount;
 
         Account::whereKey($transaction->account_id)->increment('balance', $change);
     }
