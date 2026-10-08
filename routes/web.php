@@ -80,6 +80,7 @@ Route::middleware(['auth', 'verified'])->group(function (): void {
         Route::patch('/recovery', [RecoveryController::class, 'update'])->name('recovery.update');
         Route::post('/accounts', [AccountController::class, 'store'])->name('accounts.store');
         Route::patch('/accounts/{account}', [AccountController::class, 'update'])->name('accounts.update');
+        Route::post('/accounts/{account}/reconcile', [AccountController::class, 'reconcile'])->name('accounts.reconcile');
         Route::delete('/accounts/{account}', [AccountController::class, 'destroy'])->name('accounts.destroy');
         Route::post('/bills', [BillController::class, 'store'])->name('bills.store');
         Route::patch('/bills/{bill}', [BillController::class, 'update'])->name('bills.update');

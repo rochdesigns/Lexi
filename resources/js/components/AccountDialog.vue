@@ -1,8 +1,9 @@
 <script setup lang="ts">
 import { useForm } from '@inertiajs/vue3';
-import { watch } from 'vue';
+import { computed, ref, watch } from 'vue';
 import {
     destroy,
+    reconcile,
     store,
     update,
 } from '@/actions/App/Http/Controllers/Money/AccountController';
@@ -16,7 +17,7 @@ import {
     DialogTitle,
 } from '@/components/ui/dialog';
 import { formError, formField } from '@/utils/blueprint';
-import { toPesos } from '@/utils/money';
+import { formatPeso, toPesos } from '@/utils/money';
 
 export type AccountRow = {
     id: number;
@@ -36,12 +37,36 @@ const form = useForm({
     is_spendable: true,
 });
 
+const reconcileForm = useForm({ balance: null as number | null });
+const reconciling = ref(false);
+
+const reconcileDifference = computed<number | null>(() =>
+    props.account && reconcileForm.balance !== null
+        ? Math.round(reconcileForm.balance * 100) - props.account.balance
+        : null,
+);
+
+function submitReconcile(): void {
+    if (!props.account) {
+        return;
+    }
+
+    reconcileForm.post(reconcile(props.account.id).url, {
+        preserveScroll: true,
+        onSuccess: () => emit('update:open', false),
+    });
+}
+
 watch(
     () => props.open,
     (open) => {
         if (!open) {
             return;
         }
+
+        reconciling.value = false;
+        reconcileForm.clearErrors();
+        reconcileForm.defaults({ balance: null }).reset();
 
         form.clearErrors();
         form.defaults({
@@ -90,7 +115,67 @@ const errorClass = formError;
                 }}</DialogTitle>
             </DialogHeader>
 
-            <form class="flex flex-col gap-3.5 pt-1" @submit.prevent="submit">
+            <form
+                v-if="account && reconciling"
+                class="flex flex-col gap-3.5 pt-1"
+                @submit.prevent="submitReconcile"
+            >
+                <div>
+                    <FieldLabel
+                        hint="Type what your bank or wallet app shows right now."
+                        >Balance in the bank</FieldLabel
+                    >
+                    <MoneyInput
+                        v-model="reconcileForm.balance"
+                        :empty-value="null"
+                        adorn
+                        :class="fieldClass"
+                    />
+                    <p v-if="reconcileForm.errors.balance" :class="errorClass">
+                        {{ reconcileForm.errors.balance }}
+                    </p>
+                </div>
+                <p
+                    class="text-[13px]"
+                    style="color: var(--bp-muted)"
+                    aria-live="polite"
+                >
+                    <template v-if="reconcileDifference === null">
+                        Lexi has {{ formatPeso(account.balance) }}.
+                    </template>
+                    <template v-else-if="reconcileDifference === 0">
+                        Already matches, nothing to adjust.
+                    </template>
+                    <template v-else>
+                        Lexi has {{ formatPeso(account.balance) }}, so it is
+                        {{ formatPeso(Math.abs(reconcileDifference)) }}
+                        {{ reconcileDifference > 0 ? 'short' : 'over' }}. An
+                        adjustment of that amount will be recorded.
+                    </template>
+                </p>
+                <div class="flex justify-end gap-2 pt-1">
+                    <Button
+                        type="button"
+                        variant="outline"
+                        @click="reconciling = false"
+                        >Back</Button
+                    >
+                    <Button
+                        type="submit"
+                        :disabled="
+                            reconcileForm.processing ||
+                            reconcileForm.balance === null
+                        "
+                        >Reconcile</Button
+                    >
+                </div>
+            </form>
+
+            <form
+                v-else
+                class="flex flex-col gap-3.5 pt-1"
+                @submit.prevent="submit"
+            >
                 <div>
                     <FieldLabel
                         hint="Where the money sits, like BPI Savings or GCash."
@@ -171,6 +256,13 @@ const errorClass = formError;
                     >
                     <span v-else></span>
                     <div class="flex gap-2">
+                        <Button
+                            v-if="account"
+                            type="button"
+                            variant="outline"
+                            @click="reconciling = true"
+                            >Reconcile</Button
+                        >
                         <Button
                             type="button"
                             variant="outline"

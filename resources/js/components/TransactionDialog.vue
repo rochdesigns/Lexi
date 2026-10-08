@@ -20,7 +20,12 @@ export type TransactionRow = {
     id: number;
     date: string;
     amount: number;
-    kind: 'expense' | 'income' | 'transfer';
+    kind:
+        | 'expense'
+        | 'income'
+        | 'transfer'
+        | 'adjustment_increase'
+        | 'adjustment_decrease';
     category: string;
     customCategoryId: number | null;
     categoryName: string | null;
