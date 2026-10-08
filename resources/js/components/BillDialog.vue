@@ -33,6 +33,7 @@ export type BillRow = {
 const props = defineProps<{
     open: boolean;
     bill?: BillRow | null;
+    defaultFrequency?: string;
     accounts: { id: number; name: string }[];
     cards: { id: number; name: string }[];
 }>();
@@ -64,7 +65,7 @@ watch(
                   ? `card:${props.bill.debtId}`
                   : '',
             amount: props.bill ? toPesos(props.bill.amount) : null,
-            frequency: props.bill?.frequency ?? 'monthly',
+            frequency: props.bill?.frequency ?? props.defaultFrequency ?? 'monthly',
             due_day: props.bill?.dueDay ?? 1,
             due_month: props.bill?.dueMonth ?? new Date().getMonth() + 1,
             autopay: props.bill?.autopay ?? false,
