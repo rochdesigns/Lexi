@@ -110,6 +110,21 @@ class Ledger
     }
 
     /**
+     * Deletes a debt with its history, first putting back into each account
+     * what the debt's payments took from it.
+     */
+    public function removeDebt(Debt $debt): void
+    {
+        DB::transaction(function () use ($debt): void {
+            foreach ($debt->payments()->whereNotNull('account_id')->get() as $payment) {
+                Account::whereKey($payment->account_id)->increment('balance', $payment->amount);
+            }
+
+            $debt->delete();
+        });
+    }
+
+    /**
      * Applies (1) or undoes (-1) what an entry did to its accounts: income adds
      * to the balance, an expense takes from it, and a transfer does both, one
      * on each side.
