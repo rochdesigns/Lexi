@@ -67,6 +67,7 @@ const props = defineProps<{
         name: string;
         amount: number;
         accountId: number | null;
+        debtId: number | null;
     }[];
     cards: { id: number; name: string; guard: CardGuard | null }[];
     customCategories: { id: number; name: string }[];
@@ -81,12 +82,16 @@ const incomeSourceId = ref<number | ''>(props.prefill?.incomeSourceId ?? '');
 const payDate = ref<string | null>(props.prefill?.date ?? null);
 
 function defaultPaidWith(): string {
-    const billAccountId = props.bills.find(
+    const prefillBill = props.bills.find(
         (bill) => bill.id === props.prefill?.billId,
-    )?.accountId;
+    );
 
-    if (billAccountId) {
-        return `account:${billAccountId}`;
+    if (prefillBill?.accountId) {
+        return `account:${prefillBill.accountId}`;
+    }
+
+    if (prefillBill?.debtId) {
+        return `card:${prefillBill.debtId}`;
     }
 
     if (props.lastPaidWith?.accountId) {
@@ -130,6 +135,8 @@ function chooseBill(): void {
 
     if (bill.accountId) {
         form.paidWith = `account:${bill.accountId}`;
+    } else if (bill.debtId) {
+        form.paidWith = `card:${bill.debtId}`;
     }
 
     form.note ||= bill.name;

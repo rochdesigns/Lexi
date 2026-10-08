@@ -154,7 +154,7 @@ test('the plan page shows the buffer, the funds, the yearly bills and my account
         ->has('goals', 1)
         ->where('goals.0.name', 'Japan trip')
         ->where('goals.0.suggestedContribution', 600_000)
-        ->where('yearlyBills', [['id' => Bill::where('name', 'Domain')->value('id'), 'name' => 'Domain', 'amount' => 100_000, 'dueMonth' => 3, 'monthlySetAside' => 8_334]])
+        ->where('yearlyBills', [['id' => Bill::where('name', 'Domain')->value('id'), 'name' => 'Domain', 'amount' => 100_000, 'frequency' => 'annual', 'dueMonth' => 3, 'monthlySetAside' => 8_334]])
         ->has('accounts', 1));
 });
 

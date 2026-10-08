@@ -65,6 +65,7 @@ const props = defineProps<{
     cashAvailable: number;
     shortfalls: Shortfall[];
     accounts: AccountRow[];
+    cards: { id: number; name: string }[];
     upcoming: Upcoming[];
     incomeSources: IncomeSourceRow[];
     bills: BillRow[];
@@ -235,6 +236,10 @@ function scheduleText(source: IncomeSourceRow): string {
 }
 
 function billText(bill: BillRow): string {
+    if (bill.frequency === 'quarterly') {
+        return `Every 3 months from ${monthNames[(bill.dueMonth ?? 1) - 1]}, day ${bill.dueDay}`;
+    }
+
     return bill.frequency === 'annual'
         ? `Yearly, ${monthNames[(bill.dueMonth ?? 1) - 1]} ${bill.dueDay}`
         : `Monthly, day ${bill.dueDay}`;
@@ -988,6 +993,7 @@ const addRowClass =
             v-model:open="billOpen"
             :bill="editingBill"
             :accounts="accounts"
+            :cards="cards"
         />
     </div>
 </template>

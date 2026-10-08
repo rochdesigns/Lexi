@@ -13,7 +13,7 @@ class ListBills extends MoneyTool
 {
     protected string $name = 'list_bills';
 
-    protected string $description = 'List the user\'s recurring bills (monthly or annual) with amount, due day, autopay flag, the account it is paid from (accountId), whether it is already paid this month, and the next due date. Use this for questions about what bills are coming up or what the user owes each month.';
+    protected string $description = 'List the user\'s recurring bills (monthly, quarterly or annual) with amount, due day, autopay flag, the account it is paid from (accountId) or the credit card it is charged to (cardId), whether it is already paid this month, and the next due date. Use this for questions about what bills are coming up or what the user owes each month.';
 
     public function handle(Request $request, Projection $projection): ResponseFactory
     {
@@ -29,6 +29,7 @@ class ListBills extends MoneyTool
             'dueMonth' => $bill->due_month,
             'autopay' => $bill->autopay,
             'accountId' => $bill->account_id,
+            'cardId' => $bill->debt_id,
             'paidThisMonth' => $bill->isPaidInMonthOf($today),
             'nextDueDate' => $projection->nextBillDate($bill, $today)->toDateString(),
         ])->values()->all();
