@@ -88,3 +88,15 @@ test('I cannot change someone else\'s bill', function (): void {
 test('guests cannot add bills', function (): void {
     $this->post('/money/bills', [])->assertRedirect('/login');
 });
+
+test('a bill added from the plan page returns there and shows under yearly bills', function (): void {
+    $this->actingAs($this->user)
+        ->from('/money/plan')
+        ->post('/money/bills', ['name' => 'Water', 'amount' => 3000, 'frequency' => 'quarterly', 'due_day' => 10, 'due_month' => 2, 'autopay' => false])
+        ->assertRedirect('/money/plan');
+
+    $this->actingAs($this->user)->get('/money/plan')->assertInertia(fn ($page) => $page
+        ->has('yearlyBills', 1)
+        ->where('yearlyBills.0.name', 'Water')
+        ->where('yearlyBills.0.monthlySetAside', 100_000));
+});

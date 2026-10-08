@@ -45,6 +45,11 @@ function openBill(bill: YearlyBill): void {
     billOpen.value = true;
 }
 
+function openNewBill(): void {
+    editingBill.value = null;
+    billOpen.value = true;
+}
+
 const dialogOpen = ref(false);
 const dialogKind = ref<'buffer' | 'sinking'>('sinking');
 const editing = ref<GoalRow | null>(null);
@@ -503,8 +508,8 @@ function monthCells(bill: YearlyBill): { due: boolean; now: boolean }[] {
                         v-if="yearlyBills.length === 0"
                         class="border-b border-[var(--bp-hair)] py-3.5 text-[14px] text-[var(--bp-muted)]"
                     >
-                        Yearly and quarterly bills you add on the Overview are
-                        set aside a little each month and listed here.
+                        Yearly and quarterly bills you add are set aside a
+                        little each month and listed here.
                     </p>
                     <template v-else>
                         <button
@@ -569,6 +574,19 @@ function monthCells(bill: YearlyBill): { due: boolean; now: boolean }[] {
                             <span>JAN → DEC</span>
                         </div>
                     </template>
+                    <button
+                        type="button"
+                        class="flex items-center gap-1.5 py-2.5 text-[13.5px] text-[var(--bp-faint)] hover:text-[var(--bp-ink)]"
+                        @click="openNewBill"
+                    >
+                        <span
+                            class="ms"
+                            style="font-size: 17px"
+                            aria-hidden="true"
+                            >add</span
+                        >
+                        Add bill
+                    </button>
                 </div>
             </div>
 
@@ -586,6 +604,7 @@ function monthCells(bill: YearlyBill): { due: boolean; now: boolean }[] {
         <BillDialog
             v-model:open="billOpen"
             :bill="editingBill"
+            default-frequency="annual"
             :accounts="accounts"
             :cards="cards"
         />
