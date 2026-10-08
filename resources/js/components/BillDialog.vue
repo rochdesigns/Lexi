@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { useForm } from '@inertiajs/vue3';
-import { watch } from 'vue';
+import { computed, watch } from 'vue';
 import {
     destroy,
     store,
@@ -71,6 +71,12 @@ watch(
         }).reset();
     },
 );
+
+const paidFromError = computed(() => {
+    const errors = form.errors as Record<string, string | undefined>;
+
+    return errors.account_id ?? errors.debt_id;
+});
 
 function submit(): void {
     const options = {
@@ -235,11 +241,8 @@ const errorClass = formError;
                             </option>
                         </optgroup>
                     </select>
-                    <p
-                        v-if="form.errors.account_id || form.errors.debt_id"
-                        :class="errorClass"
-                    >
-                        {{ form.errors.account_id || form.errors.debt_id }}
+                    <p v-if="paidFromError" :class="errorClass">
+                        {{ paidFromError }}
                     </p>
                 </div>
 
