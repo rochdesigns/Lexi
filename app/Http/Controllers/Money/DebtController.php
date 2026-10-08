@@ -117,7 +117,7 @@ class DebtController extends Controller
     {
         abort_if($debt->user_id !== $request->user()->id, 403);
 
-        $debt->delete();
+        $this->ledger->removeDebt($debt);
 
         return redirect()->route('money.debts.index');
     }

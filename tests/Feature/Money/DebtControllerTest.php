@@ -1,5 +1,6 @@
 <?php
 
+use App\Models\Money\Account;
 use App\Models\Money\CardDetail;
 use App\Models\Money\Debt;
 use App\Models\Money\DebtType;
@@ -409,6 +410,19 @@ test('deleting a debt deletes its plans, details and payments', function (): voi
 
     expect(Debt::count())->toBe(0)->and(CardDetail::count())->toBe(0)->and(PaymentPlan::count())->toBe(0)
         ->and($debt->payments()->count())->toBe(0);
+});
+
+test('deleting a debt puts back what its payments took from accounts', function (): void {
+    $account = Account::factory()->for($this->user)->create(['balance' => 500_000]);
+    $debt = Debt::factory()->for($this->user)->create();
+    $debt->payments()->create(['date' => '2026-10-01', 'amount' => 100_000, 'is_extra' => false, 'account_id' => $account->id]);
+    $debt->payments()->create(['date' => '2026-10-02', 'amount' => 50_000, 'is_extra' => false, 'account_id' => $account->id]);
+    $debt->payments()->create(['date' => '2026-10-03', 'amount' => 70_000, 'is_extra' => false]);
+    $account->update(['balance' => 350_000]);
+
+    $this->actingAs($this->user)->delete("/money/debts/{$debt->id}")->assertRedirect('/money/debts');
+
+    expect($account->fresh()->balance)->toBe(500_000);
 });
 
 test('other people cannot see, change or delete my debt', function (): void {
