@@ -32,7 +32,7 @@ class OverviewController extends Controller
         $contributions = $this->projection->goalContributions($user->goals()->with('account')->get(), $debts, $bills, $today);
 
         return Inertia::render('Money/Overview', [
-            'numbers' => $this->projection->overview($debts, $bills, $sources, $today, $contributions['buffer'], $recoveryMonths, $contributions['sinking']),
+            'numbers' => $this->projection->overview($debts, $bills, $sources, $today, $contributions['buffer'], $recoveryMonths, $contributions['sinking'], $this->projection->spentThisMonth($user, $today)),
             'carryAlerts' => $this->projection->carriedBalanceAlerts($debts, $today),
             'recovery' => $this->recovery($debts, $recoveryMonths, $today),
             'cashAvailable' => $this->projection->cashAvailable($accounts),
