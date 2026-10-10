@@ -15,6 +15,8 @@ use App\Models\Money\IncomeSource;
 use App\Models\Money\InterestType;
 use App\Models\Money\PaymentPlan;
 use App\Models\Money\Transaction;
+use App\Models\Money\TransactionKind;
+use App\Models\User;
 use Carbon\CarbonImmutable;
 use Carbon\CarbonInterface;
 use Illuminate\Support\Collection;
@@ -407,14 +409,14 @@ class Projection
      * The five numbers for the month. The set-aside is the yearly bills at a twelfth a month plus the contributions to sinking funds. Safe to spend is what is left of income
      * once bills, the annual set-aside, debt payments, the buffer contribution
      * and any recovery payment are covered, and can be negative. The buffer is zero until
-     * goals exist.
+     * goals exist. The daily amount also takes off what has been spent so far this month.
      *
      * @param  Collection<int, Debt>  $debts
      * @param  Collection<int, Bill>  $bills
      * @param  Collection<int, IncomeSource>  $sources
-     * @return array{income: int, expenses: int, setAside: int, debtPayment: int, bufferContribution: int, recoveryContribution: int, safeToSpend: int, perDay: int}
+     * @return array{income: int, expenses: int, setAside: int, debtPayment: int, bufferContribution: int, recoveryContribution: int, safeToSpend: int, spent: int, perDay: int}
      */
-    public function overview(Collection $debts, Collection $bills, Collection $sources, CarbonInterface $today, int $bufferContribution = 0, ?int $recoveryMonths = null, int $sinkingContribution = 0): array
+    public function overview(Collection $debts, Collection $bills, Collection $sources, CarbonInterface $today, int $bufferContribution = 0, ?int $recoveryMonths = null, int $sinkingContribution = 0, int $spentThisMonth = 0): array
     {
         $income = $this->monthlyIncome($sources);
         $expenses = $this->monthlyBills($bills);
@@ -431,8 +433,26 @@ class Projection
             'bufferContribution' => $bufferContribution,
             'recoveryContribution' => $recoveryContribution,
             'safeToSpend' => $safeToSpend,
-            'perDay' => $this->dailyAllowance($safeToSpend, $today),
+            'spent' => $spentThisMonth,
+            'perDay' => $this->dailyAllowance($safeToSpend - $spentThisMonth, $today),
         ];
+    }
+
+    /**
+     * Spending logged so far this month. Bill payments are left out because the bills are
+     * already taken off safe to spend, and debt payments are not transactions.
+     */
+    public function spentThisMonth(User $user, CarbonInterface $today): int
+    {
+        $today = CarbonImmutable::instance($today);
+
+        return (int) $user->transactions()
+            ->counted()
+            ->where('kind', TransactionKind::Expense)
+            ->whereNull('bill_id')
+            ->whereDate('date', '>=', $today->startOfMonth()->toDateString())
+            ->whereDate('date', '<=', $today->toDateString())
+            ->sum('amount');
     }
 
     /**

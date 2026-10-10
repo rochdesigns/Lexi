@@ -58,6 +58,7 @@ const props = defineProps<{
         bufferContribution: number;
         recoveryContribution: number;
         safeToSpend: number;
+        spent: number;
         perDay: number;
     };
     carryAlerts: CarryAlert[];
@@ -509,7 +510,9 @@ const addRowClass =
                         >
                         <template v-else
                             >About this much a day for the {{ daysLeft }}
-                            {{ daysLeft === 1 ? 'day' : 'days' }} left</template
+                            {{ daysLeft === 1 ? 'day' : 'days' }} left, after
+                            {{ formatPeso(numbers.spent) }} spent so
+                            far</template
                         >
                     </span>
                     <div

@@ -4,6 +4,7 @@ use App\Models\Money\Bill;
 use App\Models\Money\Debt;
 use App\Models\Money\IncomeSource;
 use App\Models\Money\PaymentPlan;
+use App\Models\Money\Transaction;
 use App\Models\User;
 use App\Services\Money\Projection;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -125,4 +126,20 @@ test('the overview only counts my own data', function (): void {
         ->where('numbers.expenses', 0)
         ->has('bills', 0)
         ->has('incomeSources', 0));
+});
+
+test('the daily amount takes off what was spent this month, leaving out bill payments and other months', function (): void {
+    IncomeSource::factory()->for($this->user)->create(['amount' => 1_700_000, 'pay_day_1' => 30]);
+    $bill = Bill::factory()->for($this->user)->create(['amount' => 0, 'due_day' => 25]);
+
+    Transaction::factory()->for($this->user)->create(['amount' => 170_000]);
+    Transaction::factory()->for($this->user)->create(['amount' => 100_000, 'bill_id' => $bill->id]);
+    Transaction::factory()->for($this->user)->create(['amount' => 500_000, 'date' => '2026-09-30']);
+
+    $this->actingAs($this->user)
+        ->get('/money')
+        ->assertInertia(fn ($page) => $page
+            ->where('numbers.safeToSpend', 1_700_000)
+            ->where('numbers.spent', 170_000)
+            ->where('numbers.perDay', 90_000));
 });
