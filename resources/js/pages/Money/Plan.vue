@@ -28,11 +28,10 @@ type YearlyBill = BillRow & {
 
 const props = defineProps<{
     obligations: number;
-    obligationBreakdown: {
-        bills: number;
-        yearlyBills: number;
-        debtPayments: number;
-    };
+    obligationBreakdown: Record<
+        'bills' | 'yearlyBills' | 'debtPayments',
+        { total: number; items: { name: string; amount: number }[] }
+    >;
     buffer: GoalRow | null;
     goals: GoalRow[];
     yearlyBills: YearlyBill[];
@@ -139,13 +138,21 @@ const setAsideMonthly = computed(
 );
 
 const obligationLines = computed(() => [
-    { label: 'Monthly bills', amount: props.obligationBreakdown.bills },
+    { label: 'Monthly bills', ...props.obligationBreakdown.bills },
     {
         label: 'Yearly and quarterly bills',
-        amount: props.obligationBreakdown.yearlyBills,
+        ...props.obligationBreakdown.yearlyBills,
     },
-    { label: 'Debt payments', amount: props.obligationBreakdown.debtPayments },
+    { label: 'Debt payments', ...props.obligationBreakdown.debtPayments },
 ]);
+
+const openObligations = ref<string[]>([]);
+
+function toggleObligation(label: string): void {
+    openObligations.value = openObligations.value.includes(label)
+        ? openObligations.value.filter((open) => open !== label)
+        : [...openObligations.value, label];
+}
 
 const split = computed(() => [
     { label: 'Buffer', amount: bufferMonthly.value, fill: 'var(--bp-accent)' },
@@ -613,14 +620,52 @@ function monthCells(bill: YearlyBill): { due: boolean; now: boolean }[] {
                         <li
                             v-for="line in obligationLines"
                             :key="line.label"
-                            class="flex items-baseline justify-between gap-3 py-2 text-[13.5px]"
+                            class="text-[13.5px]"
                         >
-                            <span class="text-[var(--bp-ink-2)]">{{
-                                line.label
-                            }}</span>
-                            <span class="bp-mono tabular-nums">{{
-                                formatPeso(line.amount)
-                            }}</span>
+                            <button
+                                type="button"
+                                class="flex w-full items-center gap-2 py-2 text-left"
+                                :aria-expanded="
+                                    openObligations.includes(line.label)
+                                "
+                                @click="toggleObligation(line.label)"
+                            >
+                                <span
+                                    class="ms text-[var(--bp-muted)] transition-transform"
+                                    :class="{
+                                        'rotate-90': openObligations.includes(
+                                            line.label,
+                                        ),
+                                    }"
+                                    style="font-size: 16px"
+                                    aria-hidden="true"
+                                    >chevron_right</span
+                                >
+                                <span class="flex-1 text-[var(--bp-ink-2)]">{{
+                                    line.label
+                                }}</span>
+                                <span class="bp-mono tabular-nums">{{
+                                    formatPeso(line.total)
+                                }}</span>
+                            </button>
+                            <ul
+                                v-if="openObligations.includes(line.label)"
+                                class="mb-2 ml-6 space-y-1 text-[12.5px] text-[var(--bp-muted)]"
+                            >
+                                <li
+                                    v-for="(item, index) in line.items"
+                                    :key="`${item.name}-${index}`"
+                                    class="flex items-baseline justify-between gap-3"
+                                >
+                                    <span>{{ item.name }}</span>
+                                    <span class="bp-mono tabular-nums">{{
+                                        formatPeso(item.amount)
+                                    }}</span>
+                                </li>
+                                <li v-if="line.items.length === 0">
+                                    Nothing this month
+                                </li>
+                            </ul>
                         </li>
                         <li
                             class="flex items-baseline justify-between gap-3 border-t border-[var(--bp-ink)] py-2 text-[13.5px] font-semibold"
