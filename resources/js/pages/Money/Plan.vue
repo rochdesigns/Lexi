@@ -28,6 +28,11 @@ type YearlyBill = BillRow & {
 
 const props = defineProps<{
     obligations: number;
+    obligationBreakdown: {
+        bills: number;
+        yearlyBills: number;
+        debtPayments: number;
+    };
     buffer: GoalRow | null;
     goals: GoalRow[];
     yearlyBills: YearlyBill[];
@@ -132,6 +137,15 @@ const yearlyMonthly = computed(() =>
 const setAsideMonthly = computed(
     () => bufferMonthly.value + goalsMonthly.value + yearlyMonthly.value,
 );
+
+const obligationLines = computed(() => [
+    { label: 'Monthly bills', amount: props.obligationBreakdown.bills },
+    {
+        label: 'Yearly and quarterly bills',
+        amount: props.obligationBreakdown.yearlyBills,
+    },
+    { label: 'Debt payments', amount: props.obligationBreakdown.debtPayments },
+]);
 
 const split = computed(() => [
     { label: 'Buffer', amount: bufferMonthly.value, fill: 'var(--bp-accent)' },
@@ -590,11 +604,36 @@ function monthCells(bill: YearlyBill): { due: boolean; now: boolean }[] {
                 </div>
             </div>
 
-            <WhatIfSimulator
-                :cards="cards"
-                :has-plans="hasPlans"
-                class="lg:sticky lg:top-[76px]"
-            />
+            <div class="space-y-6 lg:sticky lg:top-[76px]">
+                <div
+                    class="border border-[var(--bp-line)] bg-[var(--bp-card)] px-[18px] py-3.5"
+                >
+                    <p class="bp-caption">Obligations / month</p>
+                    <ul class="mt-2 divide-y divide-[var(--bp-line)]">
+                        <li
+                            v-for="line in obligationLines"
+                            :key="line.label"
+                            class="flex items-baseline justify-between gap-3 py-2 text-[13.5px]"
+                        >
+                            <span class="text-[var(--bp-ink-2)]">{{
+                                line.label
+                            }}</span>
+                            <span class="bp-mono tabular-nums">{{
+                                formatPeso(line.amount)
+                            }}</span>
+                        </li>
+                        <li
+                            class="flex items-baseline justify-between gap-3 border-t border-[var(--bp-ink)] py-2 text-[13.5px] font-semibold"
+                        >
+                            <span>Total</span>
+                            <span class="bp-mono tabular-nums">{{
+                                formatPeso(obligations)
+                            }}</span>
+                        </li>
+                    </ul>
+                </div>
+                <WhatIfSimulator :cards="cards" :has-plans="hasPlans" />
+            </div>
         </div>
 
         <div :class="sheetWidth.wide">
