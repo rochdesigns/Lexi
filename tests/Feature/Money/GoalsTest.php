@@ -148,6 +148,7 @@ test('the plan page shows the buffer, the funds, the yearly bills and my account
     $this->actingAs($this->user)->get('/money/plan')->assertOk()->assertInertia(fn ($page) => $page
         ->component('Money/Plan')
         ->where('obligations', 908_334)
+        ->where('obligationBreakdown', ['bills' => 400_000, 'yearlyBills' => 8_334, 'debtPayments' => 500_000])
         ->where('buffer.target', 2_725_002)
         ->where('buffer.saved', 500_000)
         ->where('buffer.accountName', 'Savings')

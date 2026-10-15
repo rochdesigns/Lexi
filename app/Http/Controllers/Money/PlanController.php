@@ -49,6 +49,11 @@ class PlanController extends Controller
 
         return Inertia::render('Money/Plan', [
             'obligations' => $obligations,
+            'obligationBreakdown' => [
+                'bills' => $this->projection->monthlyBills($bills),
+                'yearlyBills' => $this->projection->annualSetAside($bills),
+                'debtPayments' => $this->projection->totalMonthlyPayment($debts, $today),
+            ],
             'buffer' => $buffer === null ? null : $present($buffer),
             'goals' => $goals->filter(fn (Goal $goal): bool => $goal->kind === GoalKind::Sinking)->map($present)->values(),
             'yearlyBills' => $bills->filter(fn (Bill $bill): bool => $bill->frequency->isSetAside())->map(fn (Bill $bill): array => [
