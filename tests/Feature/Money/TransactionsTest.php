@@ -1,6 +1,7 @@
 <?php
 
 use App\Models\Money\Account;
+use App\Models\Money\Bill;
 use App\Models\Money\Debt;
 use App\Models\Money\DebtPayment;
 use App\Models\Money\DebtType;
@@ -136,7 +137,22 @@ test('the page lists the month newest first with totals by category', function (
         ->where('transactions.2.note', 'Coffee')
         ->where('transactions.0.paidWith', 'GCash')
         ->where('total', 65_000)
-        ->where('categoryTotals', [['category' => 'transport', 'total' => 50_000], ['category' => 'food', 'total' => 15_000]]));
+        ->where('categoryTotals', [
+            ['category' => 'transport', 'total' => 50_000, 'items' => [['name' => 'No note', 'amount' => 50_000]]],
+            ['category' => 'food', 'total' => 15_000, 'items' => [['name' => 'Coffee', 'amount' => 10_000], ['name' => 'No note', 'amount' => 5_000]]],
+        ]));
+});
+
+test('each category breaks down by what the money went on, largest first', function (): void {
+    $bill = Bill::factory()->for($this->user)->create(['name' => 'Meralco']);
+    Transaction::factory()->for($this->user)->create(['account_id' => $this->account->id, 'date' => '2026-10-03', 'amount' => 4_000, 'category' => 'food', 'note' => 'Coffee']);
+    Transaction::factory()->for($this->user)->create(['account_id' => $this->account->id, 'date' => '2026-10-04', 'amount' => 6_000, 'category' => 'food', 'note' => 'Coffee']);
+    Transaction::factory()->for($this->user)->create(['account_id' => $this->account->id, 'date' => '2026-10-05', 'amount' => 25_000, 'category' => 'food', 'note' => 'Groceries run']);
+    Transaction::factory()->for($this->user)->create(['account_id' => $this->account->id, 'date' => '2026-10-05', 'amount' => 30_000, 'category' => 'home', 'bill_id' => $bill->id, 'note' => null]);
+
+    $this->actingAs($this->user)->get('/money/transactions')->assertInertia(fn ($page) => $page
+        ->where('categoryTotals.1.items', [['name' => 'Meralco', 'amount' => 30_000]])
+        ->where('categoryTotals.0.items', [['name' => 'Groceries run', 'amount' => 25_000], ['name' => 'Coffee', 'amount' => 10_000]]));
 });
 
 test('another month can be opened and a bad month shows this one', function (): void {
