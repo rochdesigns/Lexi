@@ -719,13 +719,17 @@ const chipOff =
                                 <span class="text-[22px] text-[var(--bp-faint)]"
                                     >₱</span
                                 >
-                                <MoneyInput
-                                    id="entry-amount"
-                                    v-model="form.amount"
-                                    :empty-value="null"
-                                    placeholder="0.00"
-                                    class="bp-mono w-full min-w-0 bg-transparent text-[28px] font-medium outline-none placeholder:text-[var(--bp-fainter)]"
-                                />
+                                <!-- The hint wraps the input, so give it the row's spare width. -->
+                                <div class="min-w-0 flex-1">
+                                    <MoneyInput
+                                        id="entry-amount"
+                                        v-model="form.amount"
+                                        :empty-value="null"
+                                        hint
+                                        placeholder="0.00"
+                                        class="bp-mono w-full min-w-0 bg-transparent text-[28px] font-medium outline-none placeholder:text-[var(--bp-fainter)]"
+                                    />
+                                </div>
                             </div>
                             <p
                                 v-if="form.errors.amount"
