@@ -97,7 +97,15 @@ class TransactionsController extends Controller
             'categoryTotals' => $transactions
                 ->where('kind', TransactionKind::Expense)
                 ->groupBy(fn (Transaction $transaction): string => $transaction->customCategory->name ?? $transaction->category->value)
-                ->map(fn ($group, string $category): array => ['category' => $category, 'total' => $group->sum('amount')])
+                ->map(fn ($group, string $category): array => [
+                    'category' => $category,
+                    'total' => $group->sum('amount'),
+                    'items' => $group
+                        ->groupBy(fn (Transaction $transaction): string => $transaction->note ?: ($transaction->bill->name ?? 'No note'))
+                        ->map(fn ($items, string $name): array => ['name' => $name, 'amount' => $items->sum('amount')])
+                        ->sortByDesc('amount')
+                        ->values(),
+                ])
                 ->sortByDesc('total')
                 ->values(),
             'total' => $transactions->where('kind', TransactionKind::Expense)->sum('amount'),

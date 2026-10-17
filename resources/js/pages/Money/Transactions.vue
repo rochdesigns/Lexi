@@ -46,7 +46,11 @@ const props = defineProps<{
         debtName: string;
         paidWith: string | null;
     }[];
-    categoryTotals: { category: string; total: number }[];
+    categoryTotals: {
+        category: string;
+        total: number;
+        items: { name: string; amount: number }[];
+    }[];
     total: number;
     received: number;
     incomeSources: { id: number; name: string; amount: number }[];
@@ -539,6 +543,14 @@ const categoryBars = computed(() => {
         fill: `color-mix(in oklch, var(--bp-accent) ${shades[Math.min(index, shades.length - 1)]}%, var(--bp-card))`,
     }));
 });
+
+const openCategories = ref<string[]>([]);
+
+function toggleCategory(category: string): void {
+    openCategories.value = openCategories.value.includes(category)
+        ? openCategories.value.filter((open) => open !== category)
+        : [...openCategories.value, category];
+}
 
 const rowClass =
     'flex items-center justify-between gap-3 border-b border-[var(--bp-hair)] pb-2 text-[13.5px]';
@@ -1101,12 +1113,32 @@ const chipOff =
                         :key="bar.category"
                         class="border-b border-[var(--bp-hair)] py-2"
                     >
-                        <div class="flex justify-between text-[13px]">
-                            <span>{{ categoryLabel(bar.category) }}</span>
+                        <button
+                            type="button"
+                            class="flex w-full items-center gap-1.5 text-left text-[13px]"
+                            :aria-expanded="
+                                openCategories.includes(bar.category)
+                            "
+                            @click="toggleCategory(bar.category)"
+                        >
+                            <span
+                                class="ms text-[var(--bp-muted)] transition-transform"
+                                :class="{
+                                    'rotate-90': openCategories.includes(
+                                        bar.category,
+                                    ),
+                                }"
+                                style="font-size: 16px"
+                                aria-hidden="true"
+                                >chevron_right</span
+                            >
+                            <span class="flex-1">{{
+                                categoryLabel(bar.category)
+                            }}</span>
                             <span class="bp-mono text-[12px]">{{
                                 formatPeso(bar.total)
                             }}</span>
-                        </div>
+                        </button>
                         <div
                             class="mt-[5px] h-1.5 bg-[var(--bp-paper)] bg-[linear-gradient(90deg,var(--bp-line)_1px,transparent_1px)] bg-[length:10%_100%]"
                             aria-hidden="true"
@@ -1119,6 +1151,23 @@ const chipOff =
                                 }"
                             ></div>
                         </div>
+                        <ul
+                            v-if="openCategories.includes(bar.category)"
+                            class="mt-2 ml-6 space-y-1 text-[12.5px] text-[var(--bp-muted)]"
+                        >
+                            <li
+                                v-for="(item, index) in bar.items"
+                                :key="`${item.name}-${index}`"
+                                class="flex items-baseline justify-between gap-3"
+                            >
+                                <span class="min-w-0 truncate">{{
+                                    item.name
+                                }}</span>
+                                <span class="bp-mono tabular-nums">{{
+                                    formatPeso(item.amount)
+                                }}</span>
+                            </li>
+                        </ul>
                     </div>
                 </div>
 

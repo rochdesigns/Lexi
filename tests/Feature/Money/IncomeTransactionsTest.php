@@ -98,7 +98,7 @@ test('the page lists income with spending but totals them apart', function (): v
         ->where('transactions.1.kind', 'expense')
         ->where('total', 30_000)
         ->where('received', 1_000_000)
-        ->where('categoryTotals', [['category' => 'food', 'total' => 30_000]]));
+        ->where('categoryTotals', [['category' => 'food', 'total' => 30_000, 'items' => [['name' => 'No note', 'amount' => 30_000]]]]));
 });
 
 test('logging income does not change which payer the form remembers', function (): void {
