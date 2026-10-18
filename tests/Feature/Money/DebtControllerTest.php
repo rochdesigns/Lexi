@@ -6,6 +6,8 @@ use App\Models\Money\Debt;
 use App\Models\Money\DebtType;
 use App\Models\Money\InterestType;
 use App\Models\Money\PaymentPlan;
+use App\Models\Money\Transaction;
+use App\Models\Money\TransactionSource;
 use App\Models\User;
 use App\Services\Money\Projection;
 use Illuminate\Support\Carbon;
@@ -381,6 +383,41 @@ test('the debt page lists plans soonest ending first and the payment history', f
             ->where('payments.0.isExtra', true)
             ->where('payments.1.date', '2026-09-01')
             ->has('rollOff', 24)
+        );
+});
+
+test('a card page groups its charges and payments by statement, newest first', function (): void {
+    $card = Debt::factory()->for($this->user)->create(['type' => DebtType::CreditCard, 'interest_type' => InterestType::Revolving, 'due_day' => 28]);
+    CardDetail::factory()->for($card)->create(['statement_day' => 10]);
+    Transaction::factory()->for($this->user)->onCard($card)->create(['date' => '2026-09-05', 'amount' => 40_000, 'note' => 'Groceries']);
+    Transaction::factory()->for($this->user)->onCard($card)->create(['date' => '2026-09-10', 'amount' => 10_000, 'note' => null]);
+    $later = Transaction::factory()->for($this->user)->onCard($card)->create(['date' => '2026-10-12', 'amount' => 25_000, 'note' => 'Grab']);
+    Transaction::factory()->for($this->user)->onCard($card)->create(['date' => '2026-10-12', 'amount' => 25_000, 'source' => TransactionSource::StatementImport, 'matched_transaction_id' => $later->id]);
+    $card->payments()->create(['date' => '2026-10-01', 'amount' => 30_000, 'is_extra' => false]);
+    Transaction::factory()->for($this->user)->create(['date' => '2026-10-12', 'amount' => 99_000]);
+
+    $this->actingAs($this->user)
+        ->get("/money/debts/{$card->id}")
+        ->assertOk()
+        ->assertInertia(fn ($page) => $page
+            ->has('statements', 3)
+            ->where('statements.0.closesOn', '2026-11-10')
+            ->where('statements.0.charged', 25_000)
+            ->where('statements.0.paid', 0)
+            ->has('statements.0.entries', 1)
+            ->where('statements.0.entries.0.label', 'Grab')
+            ->where('statements.1.closesOn', '2026-10-10')
+            ->where('statements.1.opensOn', '2026-09-11')
+            ->where('statements.1.charged', 0)
+            ->where('statements.1.paid', 30_000)
+            ->where('statements.1.entries.0.kind', 'payment')
+            ->where('statements.2.closesOn', '2026-09-10')
+            ->where('statements.2.charged', 50_000)
+            ->where('statements.2.entries.0.label', 'Groceries')
+            ->where('statements.2.entries.1.date', '2026-09-10')
+            ->where('statements.2.entries.1.label', null)
+            ->where('statements.2.entries.1.category', 'food')
+            ->etc()
         );
 });
 

@@ -7,6 +7,7 @@ use App\Http\Requests\Money\DebtRequest;
 use App\Models\Money\Debt;
 use App\Models\Money\DebtPayment;
 use App\Models\Money\PaymentPlan;
+use App\Models\Money\Transaction;
 use App\Services\Money\Centavos;
 use App\Services\Money\Ledger;
 use App\Services\Money\Projection;
@@ -14,6 +15,7 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Inertia\Inertia;
 use Inertia\Response;
@@ -42,7 +44,7 @@ class DebtController extends Controller
         abort_if($debt->user_id !== $request->user()->id, 403);
 
         $today = Carbon::today();
-        $debt->load(['cardDetail', 'paymentPlans.debt', 'payments', 'transactions']);
+        $debt->load(['cardDetail', 'paymentPlans.debt', 'payments', 'transactions.customCategory', 'transactions.bill']);
 
         $plans = $debt->paymentPlans
             ->sortBy([
@@ -71,6 +73,7 @@ class DebtController extends Controller
             'payments' => $payments,
             'rollOff' => $this->projection->rollOff(collect([$debt]), $today),
             'clearingDefault' => $debt->cardDetail ? $this->projection->minimumTowardsBalance($debt, $today) : null,
+            'statements' => $debt->cardDetail ? $this->statements($debt) : [],
         ]);
     }
 
@@ -160,6 +163,55 @@ class DebtController extends Controller
                 'utilization' => $this->projection->utilization($debt, $today),
             ] : null,
         ];
+    }
+
+    /**
+     * A card's charges and payments grouped by the statement they fall on,
+     * newest statement first, oldest entry first within each. A charge on the
+     * closing day is on that statement.
+     *
+     * @return list<array{closesOn: string, opensOn: string, charged: int, paid: int, entries: list<array{kind: string, id: int, date: string, amount: int, label: ?string, category: ?string}>}>
+     */
+    private function statements(Debt $debt): array
+    {
+        $statementDay = $debt->cardDetail->statement_day;
+
+        $charges = $debt->transactions
+            ->whereNull('matched_transaction_id')
+            ->map(fn (Transaction $transaction): array => [
+                'kind' => 'charge',
+                'id' => $transaction->id,
+                'date' => $transaction->date->toDateString(),
+                'amount' => $transaction->amount,
+                'label' => $transaction->note ?: ($transaction->bill->name ?? $transaction->customCategory?->name),
+                'category' => $transaction->category->value,
+            ]);
+
+        $payments = $debt->payments->map(fn (DebtPayment $payment): array => [
+            'kind' => 'payment',
+            'id' => $payment->id,
+            'date' => $payment->date->toDateString(),
+            'amount' => $payment->amount,
+            'label' => null,
+            'category' => null,
+        ]);
+
+        return array_values($charges->concat($payments)
+            ->sortBy([['date', 'asc'], ['kind', 'asc'], ['id', 'asc']])
+            ->groupBy(fn (array $entry): string => $this->projection->nextClosingDate($statementDay, Carbon::parse($entry['date']))->toDateString())
+            ->sortKeysDesc()
+            ->map(function (Collection $entries, string $closesOn) use ($statementDay): array {
+                $closes = Carbon::parse($closesOn);
+
+                return [
+                    'closesOn' => $closesOn,
+                    'opensOn' => $this->projection->latestClosingDate($statementDay, $closes)->addDay()->toDateString(),
+                    'charged' => $entries->where('kind', 'charge')->sum(fn (array $entry): int => $entry['amount']),
+                    'paid' => $entries->where('kind', 'payment')->sum(fn (array $entry): int => $entry['amount']),
+                    'entries' => array_values($entries->all()),
+                ];
+            })
+            ->all());
     }
 
     /**

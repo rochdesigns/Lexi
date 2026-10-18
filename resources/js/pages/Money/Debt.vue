@@ -28,6 +28,7 @@ import {
 } from '@/components/ui/dialog';
 import { sheetWidth } from '@/utils/blueprint';
 import {
+    categoryLabel,
     debtTypes,
     formatDay,
     formatMonth,
@@ -55,6 +56,23 @@ type Payment = {
     isExtra: boolean;
 };
 
+type StatementEntry = {
+    kind: 'charge' | 'payment';
+    id: number;
+    date: string;
+    amount: number;
+    label: string | null;
+    category: string | null;
+};
+
+type Statement = {
+    closesOn: string;
+    opensOn: string;
+    charged: number;
+    paid: number;
+    entries: StatementEntry[];
+};
+
 const props = defineProps<{
     debt: DebtFormDebt & {
         totalRemaining: number;
@@ -75,6 +93,7 @@ const props = defineProps<{
     payments: Payment[];
     rollOff: { month: string; total: number }[];
     clearingDefault: number | null;
+    statements: Statement[];
 }>();
 
 const editingDebt = ref(false);
@@ -113,6 +132,24 @@ function planName(id: number | null): string {
 }
 
 const card = computed(() => props.debt.card);
+
+const openStatements = ref<string[]>(
+    props.statements.length ? [props.statements[0].closesOn] : [],
+);
+
+function toggleStatement(closesOn: string): void {
+    openStatements.value = openStatements.value.includes(closesOn)
+        ? openStatements.value.filter((open) => open !== closesOn)
+        : [...openStatements.value, closesOn];
+}
+
+function entryLabel(entry: StatementEntry): string {
+    if (entry.kind === 'payment') {
+        return 'Payment';
+    }
+
+    return entry.label ?? categoryLabel(entry.category ?? 'other');
+}
 const utilizationPct = computed(() =>
     Math.round((card.value?.utilization ?? 0) * 100),
 );
@@ -596,6 +633,119 @@ const stats = computed(() => {
                         </button>
                     </div>
                 </div>
+
+                <!-- D. Statement of account -->
+                <template v-if="card">
+                    <BlueprintSectionHeading
+                        :letter="hasPlans ? 'D' : 'C'"
+                        title="Statement of account"
+                        class="mt-11"
+                    >
+                        <span
+                            v-if="statements.length"
+                            class="bp-mono hidden text-[11px] tracking-[0.1em] text-[var(--bp-faint)] sm:inline"
+                            >BY STATEMENT</span
+                        >
+                    </BlueprintSectionHeading>
+                    <div class="mt-3.5 border-t border-[var(--bp-ink)]">
+                        <p
+                            v-if="statements.length === 0"
+                            class="border-b border-[var(--bp-hair)] py-6 text-center text-[14px] text-[var(--bp-muted)]"
+                        >
+                            Nothing charged to or paid on this card yet.
+                        </p>
+                        <div
+                            v-for="statement in statements"
+                            :key="statement.closesOn"
+                            class="border-b border-[var(--bp-hair)]"
+                        >
+                            <button
+                                type="button"
+                                class="flex w-full items-center gap-2 px-1 py-2.5 text-left text-[13.5px]"
+                                :aria-expanded="
+                                    openStatements.includes(statement.closesOn)
+                                "
+                                @click="toggleStatement(statement.closesOn)"
+                            >
+                                <span
+                                    class="ms text-[var(--bp-muted)] transition-transform"
+                                    :class="{
+                                        'rotate-90': openStatements.includes(
+                                            statement.closesOn,
+                                        ),
+                                    }"
+                                    style="font-size: 16px"
+                                    aria-hidden="true"
+                                    >chevron_right</span
+                                >
+                                <span class="min-w-0 flex-1">
+                                    <span class="font-semibold"
+                                        >Closes
+                                        {{
+                                            formatDay(statement.closesOn)
+                                        }}</span
+                                    >
+                                    <span
+                                        class="bp-mono ml-2 hidden text-[11px] text-[var(--bp-faint)] sm:inline"
+                                        >{{ formatDay(statement.opensOn) }} –
+                                        {{
+                                            formatDay(statement.closesOn)
+                                        }}</span
+                                    >
+                                </span>
+                                <span
+                                    class="bp-mono text-right text-[12.5px] tabular-nums"
+                                    >{{ formatPeso(statement.charged) }}</span
+                                >
+                                <span
+                                    v-if="statement.paid"
+                                    class="bp-mono w-[92px] text-right text-[12.5px] text-[var(--bp-accent)] tabular-nums sm:w-[120px]"
+                                    >−{{ formatPeso(statement.paid) }}</span
+                                >
+                                <span
+                                    v-else
+                                    class="w-[92px] sm:w-[120px]"
+                                    aria-hidden="true"
+                                ></span>
+                            </button>
+                            <ul
+                                v-if="
+                                    openStatements.includes(statement.closesOn)
+                                "
+                                class="mb-2 ml-6 text-[12.5px]"
+                            >
+                                <li
+                                    v-for="entry in statement.entries"
+                                    :key="`${entry.kind}-${entry.id}`"
+                                    class="grid grid-cols-[52px_minmax(0,1fr)_auto] items-baseline gap-3 py-1"
+                                >
+                                    <span
+                                        class="bp-mono text-[var(--bp-muted)]"
+                                        >{{ formatDay(entry.date) }}</span
+                                    >
+                                    <span
+                                        class="truncate"
+                                        :class="
+                                            entry.kind === 'payment'
+                                                ? 'text-[var(--bp-accent)]'
+                                                : 'text-[var(--bp-ink-2)]'
+                                        "
+                                        >{{ entryLabel(entry) }}</span
+                                    >
+                                    <span
+                                        class="bp-mono text-right tabular-nums"
+                                        :class="{
+                                            'text-[var(--bp-accent)]':
+                                                entry.kind === 'payment',
+                                        }"
+                                        >{{ entry.kind === 'payment' ? '−' : ''
+                                        }}{{ formatPeso(entry.amount) }}</span
+                                    >
+                                </li>
+                            </ul>
+                        </div>
+                    </div>
+                </template>
             </div>
 
             <div
