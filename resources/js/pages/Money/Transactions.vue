@@ -36,6 +36,7 @@ const props = defineProps<{
     month: string;
     all: boolean;
     accountFilter: number | null;
+    cardFilter: number | null;
     currentMonth: string;
     today: string;
     transactions: TransactionRow[];
@@ -331,13 +332,21 @@ function shiftMonth(delta: number): string {
     return `${next.getFullYear()}-${String(next.getMonth() + 1).padStart(2, '0')}`;
 }
 
-function goTo(
-    month: string,
-    account: number | null = props.accountFilter,
-): void {
+/** The account filter's value: "account:<id>", "card:<id>" or "" for everything. */
+const ledgerFilter = computed(() => {
+    if (props.accountFilter) {
+        return `account:${props.accountFilter}`;
+    }
+
+    return props.cardFilter ? `card:${props.cardFilter}` : '';
+});
+
+function goTo(month: string, filter: string = ledgerFilter.value): void {
+    const [kind, id] = filter.split(':');
+
     router.get(
         transactionsRoute({
-            query: { month, ...(account ? { account } : {}) },
+            query: { month, ...(id ? { [kind]: id } : {}) },
         }).url,
         {},
         { preserveScroll: true, preserveState: true },
@@ -1212,30 +1221,45 @@ const chipOff =
                         <span class="bp-caption block">Account</span>
                         <span class="relative mt-1.5 flex items-center">
                             <select
-                                :value="accountFilter ?? ''"
+                                :value="ledgerFilter"
                                 class="w-full appearance-none bg-transparent pr-6 text-[15px] font-medium outline-none disabled:opacity-100"
-                                :disabled="accounts.length < 2"
+                                :disabled="accounts.length + cards.length < 2"
                                 @change="
                                     goTo(
                                         all ? 'all' : month,
-                                        Number(
-                                            ($event.target as HTMLSelectElement)
-                                                .value,
-                                        ) || null,
+                                        ($event.target as HTMLSelectElement)
+                                            .value,
                                     )
                                 "
                             >
                                 <option value="">All accounts</option>
-                                <option
-                                    v-for="account in accounts"
-                                    :key="account.id"
-                                    :value="account.id"
+                                <optgroup
+                                    v-if="accounts.length"
+                                    label="Accounts"
                                 >
-                                    {{ account.name }}
-                                </option>
+                                    <option
+                                        v-for="account in accounts"
+                                        :key="account.id"
+                                        :value="`account:${account.id}`"
+                                    >
+                                        {{ account.name }}
+                                    </option>
+                                </optgroup>
+                                <optgroup
+                                    v-if="cards.length"
+                                    label="Credit cards"
+                                >
+                                    <option
+                                        v-for="card in cards"
+                                        :key="`card${card.id}`"
+                                        :value="`card:${card.id}`"
+                                    >
+                                        {{ card.name }}
+                                    </option>
+                                </optgroup>
                             </select>
                             <span
-                                v-if="accounts.length > 1"
+                                v-if="accounts.length + cards.length > 1"
                                 class="ms pointer-events-none absolute right-0 text-[var(--bp-muted)]"
                                 style="font-size: 18px"
                                 aria-hidden="true"
