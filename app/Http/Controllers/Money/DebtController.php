@@ -183,7 +183,7 @@ class DebtController extends Controller
                 'id' => $transaction->id,
                 'date' => $transaction->date->toDateString(),
                 'amount' => $transaction->amount,
-                'label' => $transaction->note ?: ($transaction->bill?->name ?? $transaction->customCategory?->name),
+                'label' => $transaction->note ?: ($transaction->bill->name ?? $transaction->customCategory?->name),
                 'category' => $transaction->category->value,
             ]);
 
@@ -196,7 +196,7 @@ class DebtController extends Controller
             'category' => null,
         ]);
 
-        return $charges->concat($payments)
+        return array_values($charges->concat($payments)
             ->sortBy([['date', 'asc'], ['kind', 'asc'], ['id', 'asc']])
             ->groupBy(fn (array $entry): string => $this->projection->nextClosingDate($statementDay, Carbon::parse($entry['date']))->toDateString())
             ->sortKeysDesc()
@@ -206,13 +206,12 @@ class DebtController extends Controller
                 return [
                     'closesOn' => $closesOn,
                     'opensOn' => $this->projection->latestClosingDate($statementDay, $closes)->addDay()->toDateString(),
-                    'charged' => $entries->where('kind', 'charge')->sum('amount'),
-                    'paid' => $entries->where('kind', 'payment')->sum('amount'),
-                    'entries' => $entries->values()->all(),
+                    'charged' => $entries->where('kind', 'charge')->sum(fn (array $entry): int => $entry['amount']),
+                    'paid' => $entries->where('kind', 'payment')->sum(fn (array $entry): int => $entry['amount']),
+                    'entries' => array_values($entries->all()),
                 ];
             })
-            ->values()
-            ->all();
+            ->all());
     }
 
     /**
