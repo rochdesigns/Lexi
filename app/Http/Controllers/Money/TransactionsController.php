@@ -35,11 +35,15 @@ class TransactionsController extends Controller
         $month = preg_match('/^\d{4}-(0[1-9]|1[0-2])$/', $requested) === 1 ? $requested : $current;
         $first = Carbon::createFromFormat('Y-m-d', $month.'-01')->startOfDay();
         $accountFilter = $request->filled('account') ? $user->accounts()->find($request->integer('account'))?->id : null;
+        $cardFilter = $accountFilter === null && $request->filled('card')
+            ? $user->debts()->where('type', DebtType::CreditCard)->find($request->integer('card'))?->id
+            : null;
 
         $transactions = $user->transactions()
             ->counted()
             ->with(['account', 'toAccount', 'debt', 'bill', 'statementRow', 'customCategory'])
             ->when($accountFilter, fn ($query) => $query->where(fn ($query) => $query->where('account_id', $accountFilter)->orWhere('to_account_id', $accountFilter)))
+            ->when($cardFilter, fn ($query) => $query->where('debt_id', $cardFilter))
             ->when(! $all, fn ($query) => $query
                 ->where('date', '>=', $first->toDateString())
                 ->where('date', '<', $first->copy()->addMonth()->toDateString()))
@@ -51,6 +55,7 @@ class TransactionsController extends Controller
             ->whereNotNull('account_id')
             ->with(['account', 'debt'])
             ->when($accountFilter, fn ($query) => $query->where('account_id', $accountFilter))
+            ->when($cardFilter, fn ($query) => $query->where('debt_id', $cardFilter))
             ->when(! $all, fn ($query) => $query
                 ->where('date', '>=', $first->toDateString())
                 ->where('date', '<', $first->copy()->addMonth()->toDateString()))
@@ -65,6 +70,7 @@ class TransactionsController extends Controller
             'all' => $all,
             'currentMonth' => $current,
             'accountFilter' => $accountFilter,
+            'cardFilter' => $cardFilter,
             'today' => Carbon::today()->toDateString(),
             'transactions' => $transactions->map(fn (Transaction $transaction): array => [
                 'id' => $transaction->id,

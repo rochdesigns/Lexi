@@ -379,6 +379,35 @@ test('the account filter ignores an account that is not mine', function (): void
         ->has('transactions', 1));
 });
 
+test('the transactions list can be filtered to one credit card', function (): void {
+    $otherCard = Debt::factory()->for($this->user)->create(['type' => DebtType::CreditCard]);
+    Transaction::factory()->for($this->user)->create(['date' => '2026-10-10', 'amount' => 10_000, 'account_id' => $this->account->id]);
+    Transaction::factory()->for($this->user)->create(['date' => '2026-10-11', 'amount' => 25_000, 'account_id' => null, 'debt_id' => $this->card->id]);
+    Transaction::factory()->for($this->user)->create(['date' => '2026-10-12', 'amount' => 5_000, 'account_id' => null, 'debt_id' => $otherCard->id]);
+    DebtPayment::factory()->for($this->card)->create(['date' => '2026-10-13', 'account_id' => $this->account->id]);
+    DebtPayment::factory()->for($otherCard)->create(['date' => '2026-10-14', 'account_id' => $this->account->id]);
+
+    $this->actingAs($this->user)->get('/money/transactions?card='.$this->card->id)->assertInertia(fn ($page) => $page
+        ->where('cardFilter', $this->card->id)
+        ->where('accountFilter', null)
+        ->has('transactions', 1)
+        ->where('total', 25_000)
+        ->has('debtPayments', 1)
+        ->where('debtPayments.0.debtName', 'Platinum'));
+});
+
+test('the card filter ignores a card that is not mine or not a credit card', function (): void {
+    $theirCard = Debt::factory()->create(['type' => DebtType::CreditCard]);
+    $loan = Debt::factory()->for($this->user)->create(['type' => DebtType::Loan]);
+    Transaction::factory()->for($this->user)->create(['date' => '2026-10-10', 'account_id' => $this->account->id]);
+
+    foreach ([$theirCard, $loan] as $debt) {
+        $this->actingAs($this->user)->get('/money/transactions?card='.$debt->id)->assertInertia(fn ($page) => $page
+            ->where('cardFilter', null)
+            ->has('transactions', 1));
+    }
+});
+
 test('view all lists transactions and debt payments from every month', function (): void {
     Transaction::factory()->for($this->user)->create(['account_id' => $this->account->id, 'date' => '2026-10-10']);
     Transaction::factory()->for($this->user)->create(['account_id' => $this->account->id, 'date' => '2026-03-02']);
