@@ -137,21 +137,68 @@ const setAsideMonthly = computed(
     () => bufferMonthly.value + goalsMonthly.value + yearlyMonthly.value,
 );
 
-const obligationLines = computed(() => [
-    { label: 'Monthly bills', ...props.obligationBreakdown.bills },
+type BreakdownLine = {
+    label: string;
+    total: number;
+    /** Null for a line with nothing to expand. */
+    items: { name: string; amount: number }[] | null;
+};
+
+const breakdowns = computed<
+    { title: string; total: number; lines: BreakdownLine[] }[]
+>(() => [
     {
-        label: 'Yearly and quarterly bills',
-        ...props.obligationBreakdown.yearlyBills,
+        title: 'Obligations / month',
+        total: props.obligations,
+        lines: [
+            { label: 'Monthly bills', ...props.obligationBreakdown.bills },
+            {
+                label: 'Yearly and quarterly bills',
+                ...props.obligationBreakdown.yearlyBills,
+            },
+            {
+                label: 'Debt payments',
+                ...props.obligationBreakdown.debtPayments,
+            },
+        ],
     },
-    { label: 'Debt payments', ...props.obligationBreakdown.debtPayments },
+    {
+        title: 'Set aside / month',
+        total: setAsideMonthly.value,
+        lines: [
+            {
+                label: 'Emergency buffer',
+                total: bufferMonthly.value,
+                items: null,
+            },
+            {
+                label: 'Goals',
+                total: goalsMonthly.value,
+                items: props.goals
+                    .filter((goal) => activeContribution(goal) > 0)
+                    .map((goal) => ({
+                        name: goal.name,
+                        amount: goal.monthlyContribution,
+                    })),
+            },
+            {
+                label: 'Yearly and quarterly bills',
+                total: yearlyMonthly.value,
+                items: props.yearlyBills.map((bill) => ({
+                    name: bill.name,
+                    amount: bill.monthlySetAside,
+                })),
+            },
+        ],
+    },
 ]);
 
-const openObligations = ref<string[]>([]);
+const openLines = ref<string[]>([]);
 
-function toggleObligation(label: string): void {
-    openObligations.value = openObligations.value.includes(label)
-        ? openObligations.value.filter((open) => open !== label)
-        : [...openObligations.value, label];
+function toggleLine(key: string): void {
+    openLines.value = openLines.value.includes(key)
+        ? openLines.value.filter((open) => open !== key)
+        : [...openLines.value, key];
 }
 
 const split = computed(() => [
@@ -613,66 +660,93 @@ function monthCells(bill: YearlyBill): { due: boolean; now: boolean }[] {
 
             <div class="space-y-6 lg:sticky lg:top-[76px]">
                 <div
+                    v-for="card in breakdowns"
+                    :key="card.title"
                     class="border border-[var(--bp-line)] bg-[var(--bp-card)] px-[18px] py-3.5"
                 >
-                    <p class="bp-caption">Obligations / month</p>
+                    <p class="bp-caption">{{ card.title }}</p>
                     <ul class="mt-2 divide-y divide-[var(--bp-line)]">
                         <li
-                            v-for="line in obligationLines"
+                            v-for="line in card.lines"
                             :key="line.label"
                             class="text-[13.5px]"
                         >
-                            <button
-                                type="button"
-                                class="flex w-full items-center gap-2 py-2 text-left"
-                                :aria-expanded="
-                                    openObligations.includes(line.label)
-                                "
-                                @click="toggleObligation(line.label)"
+                            <div
+                                v-if="line.items === null"
+                                class="flex items-center gap-2 py-2"
                             >
-                                <span
-                                    class="ms text-[var(--bp-muted)] transition-transform"
-                                    :class="{
-                                        'rotate-90': openObligations.includes(
-                                            line.label,
-                                        ),
-                                    }"
-                                    style="font-size: 16px"
-                                    aria-hidden="true"
-                                    >chevron_right</span
-                                >
+                                <span class="w-4" aria-hidden="true"></span>
                                 <span class="flex-1 text-[var(--bp-ink-2)]">{{
                                     line.label
                                 }}</span>
                                 <span class="bp-mono tabular-nums">{{
                                     formatPeso(line.total)
                                 }}</span>
-                            </button>
-                            <ul
-                                v-if="openObligations.includes(line.label)"
-                                class="mb-2 ml-6 space-y-1 text-[12.5px] text-[var(--bp-muted)]"
-                            >
-                                <li
-                                    v-for="(item, index) in line.items"
-                                    :key="`${item.name}-${index}`"
-                                    class="flex items-baseline justify-between gap-3"
+                            </div>
+                            <template v-else>
+                                <button
+                                    type="button"
+                                    class="flex w-full items-center gap-2 py-2 text-left"
+                                    :aria-expanded="
+                                        openLines.includes(
+                                            `${card.title}:${line.label}`,
+                                        )
+                                    "
+                                    @click="
+                                        toggleLine(
+                                            `${card.title}:${line.label}`,
+                                        )
+                                    "
                                 >
-                                    <span>{{ item.name }}</span>
+                                    <span
+                                        class="ms text-[var(--bp-muted)] transition-transform"
+                                        :class="{
+                                            'rotate-90': openLines.includes(
+                                                `${card.title}:${line.label}`,
+                                            ),
+                                        }"
+                                        style="font-size: 16px"
+                                        aria-hidden="true"
+                                        >chevron_right</span
+                                    >
+                                    <span
+                                        class="flex-1 text-[var(--bp-ink-2)]"
+                                        >{{ line.label }}</span
+                                    >
                                     <span class="bp-mono tabular-nums">{{
-                                        formatPeso(item.amount)
+                                        formatPeso(line.total)
                                     }}</span>
-                                </li>
-                                <li v-if="line.items.length === 0">
-                                    Nothing this month
-                                </li>
-                            </ul>
+                                </button>
+                                <ul
+                                    v-if="
+                                        openLines.includes(
+                                            `${card.title}:${line.label}`,
+                                        )
+                                    "
+                                    class="mb-2 ml-6 space-y-1 text-[12.5px] text-[var(--bp-muted)]"
+                                >
+                                    <li
+                                        v-for="(item, index) in line.items"
+                                        :key="`${item.name}-${index}`"
+                                        class="flex items-baseline justify-between gap-3"
+                                    >
+                                        <span>{{ item.name }}</span>
+                                        <span class="bp-mono tabular-nums">{{
+                                            formatPeso(item.amount)
+                                        }}</span>
+                                    </li>
+                                    <li v-if="line.items.length === 0">
+                                        Nothing this month
+                                    </li>
+                                </ul>
+                            </template>
                         </li>
                         <li
                             class="flex items-baseline justify-between gap-3 border-t border-[var(--bp-ink)] py-2 text-[13.5px] font-semibold"
                         >
                             <span>Total</span>
                             <span class="bp-mono tabular-nums">{{
-                                formatPeso(obligations)
+                                formatPeso(card.total)
                             }}</span>
                         </li>
                     </ul>
