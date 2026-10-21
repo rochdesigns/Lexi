@@ -163,11 +163,7 @@ class TransactionsController extends Controller
     {
         abort_if($transaction->user_id !== $request->user()->id, 403);
 
-        DB::transaction(function () use ($request, $transaction): void {
-            $this->ledger->move($transaction, -1);
-            $transaction->update($request->transactionAttributes());
-            $this->ledger->move($transaction, 1);
-        });
+        $this->ledger->updateTransaction($transaction, $request->transactionAttributes());
 
         return back();
     }

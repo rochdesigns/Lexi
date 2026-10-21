@@ -37,4 +37,29 @@ abstract class MoneyTool extends Tool
             ...$data,
         ]);
     }
+
+    /**
+     * How an entry reads back to the client.
+     *
+     * @return array<string, mixed>
+     */
+    protected function transactionRow(mixed $transaction): array
+    {
+        return [
+            'id' => $transaction->id,
+            'kind' => $transaction->kind->value,
+            'date' => $transaction->date->toDateString(),
+            'amount' => $transaction->amount,
+            'category' => $transaction->category->value,
+            'customCategoryId' => $transaction->custom_category_id,
+            'customCategoryName' => $transaction->customCategory?->name,
+            'note' => $transaction->note,
+            'accountId' => $transaction->account_id,
+            'toAccountId' => $transaction->to_account_id,
+            'debtId' => $transaction->debt_id,
+            'billId' => $transaction->bill_id,
+            'incomeSourceId' => $transaction->income_source_id,
+            'payDate' => $transaction->pay_date?->toDateString(),
+        ];
+    }
 }

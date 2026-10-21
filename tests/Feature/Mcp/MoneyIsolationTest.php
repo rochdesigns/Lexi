@@ -6,6 +6,7 @@ use App\Mcp\Tools\Money\ListBills;
 use App\Mcp\Tools\Money\ListDebts;
 use App\Mcp\Tools\Money\ListGoals;
 use App\Mcp\Tools\Money\ListIncomeSources;
+use App\Mcp\Tools\Money\ListTransactions;
 use App\Models\User;
 
 /**
@@ -72,6 +73,7 @@ test('a user\'s own amounts are visible to them', function (string $amountName, 
     'bill amount' => ['billAmount', ListBills::class],
     'income amount' => ['incomeAmount', ListIncomeSources::class],
     'receipt amount' => ['receiptAmount', ListIncomeSources::class],
+    'transaction amount' => ['receiptAmount', ListTransactions::class],
     'goal target' => ['goalTarget', ListGoals::class],
     'goal contribution' => ['goalContribution', ListGoals::class],
     'loan balance' => ['loanBalance', ListDebts::class],

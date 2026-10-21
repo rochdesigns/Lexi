@@ -10,9 +10,11 @@ test('the server exposes exactly the reviewed read-only tools', function (): voi
         'get_money_overview',
         'list_accounts',
         'list_bills',
+        'list_categories',
         'list_debts',
         'list_goals',
         'list_income_sources',
+        'list_transactions',
     ];
 
     $names = collect(MoneyServer::TOOLS)
@@ -29,8 +31,9 @@ test('every tool is annotated read-only', function (string $tool): void {
     expect((new $tool)->toArray()['annotations'])->toMatchArray(['readOnlyHint' => true]);
 })->with('money tools');
 
-test('no tool takes any argument, in particular no user or ownership argument', function (string $tool): void {
-    $properties = array_keys((array) ((new $tool)->toArray()['inputSchema']['properties'] ?? []));
+test('no tool takes an argument beyond the reviewed ones, in particular no user or ownership argument', function (string $tool): void {
+    $tool = new $tool;
+    $properties = array_keys((array) ($tool->toArray()['inputSchema']['properties'] ?? []));
 
-    expect($properties)->toBe([]);
+    expect($properties)->toBe(['list_transactions' => ['month']][$tool->name()] ?? []);
 })->with('money tools');

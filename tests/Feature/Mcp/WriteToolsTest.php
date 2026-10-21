@@ -4,11 +4,14 @@ use App\Mcp\Servers\MoneyServer;
 use App\Mcp\Tools\Money\Write\CreateDebt;
 use App\Mcp\Tools\Money\Write\RecordDebtPayment;
 use App\Mcp\Tools\Money\Write\RecordTransaction;
+use App\Mcp\Tools\Money\Write\UpdateTransaction;
 use App\Models\Money\Account;
 use App\Models\Money\Bill;
+use App\Models\Money\CustomCategory;
 use App\Models\Money\Debt;
 use App\Models\Money\DebtType;
 use App\Models\Money\IncomeSource;
+use App\Models\Money\Transaction;
 use App\Models\User;
 use Illuminate\Testing\TestResponse;
 use Laravel\Passport\Passport;
@@ -35,7 +38,7 @@ test('a read-only token is not offered the write tools', function (): void {
     $this->postJson('/mcp/money', rpc('tools/list'))
         ->assertOk()
         ->assertSee('list_accounts')
-        ->assertDontSee(['record_transaction', 'record_debt_payment']);
+        ->assertDontSee(['record_transaction', 'record_debt_payment', 'update_transaction']);
 });
 
 test('a token with the write scope is offered the write tools', function (): void {
@@ -43,7 +46,7 @@ test('a token with the write scope is offered the write tools', function (): voi
 
     $this->postJson('/mcp/money', rpc('tools/list'))
         ->assertOk()
-        ->assertSee(['record_transaction', 'record_debt_payment']);
+        ->assertSee(['record_transaction', 'record_debt_payment', 'update_transaction']);
 });
 
 test('a read-only token cannot call a write tool by name', function (): void {
@@ -247,17 +250,22 @@ test('a debt payment cannot be paid from another user\'s account', function (): 
     expect($account->fresh()->balance)->toBe(100_000)->and($debt->payments()->count())->toBe(0);
 });
 
-test('the write tools are annotated as additive, never destructive', function (string $tool): void {
+test('the recording tools are annotated as additive, never destructive', function (string $tool): void {
     expect((new $tool)->toArray()['annotations'])->toMatchArray(['destructiveHint' => false, 'idempotentHint' => false])
         ->not->toHaveKey('readOnlyHint');
-})->with(MoneyServer::WRITE_TOOLS);
+})->with([RecordTransaction::class, RecordDebtPayment::class, CreateDebt::class]);
+
+test('the edit tool is annotated as destructive and idempotent', function (): void {
+    expect((new UpdateTransaction)->toArray()['annotations'])->toMatchArray(['destructiveHint' => true, 'idempotentHint' => true])
+        ->not->toHaveKey('readOnlyHint');
+});
 
 test('the server exposes exactly the reviewed write tools, and none of them is also a read tool', function (): void {
     $names = collect(MoneyServer::WRITE_TOOLS)->map(fn (string $tool): string => (new $tool)->name())->sort()->values()->all();
 
-    expect($names)->toBe(['create_debt', 'record_debt_payment', 'record_transaction'])
+    expect($names)->toBe(['create_debt', 'record_debt_payment', 'record_transaction', 'update_transaction'])
         ->and(array_intersect(MoneyServer::TOOLS, MoneyServer::WRITE_TOOLS))->toBe([])
-        ->and(MoneyServer::WRITE_TOOLS)->toBe([RecordTransaction::class, RecordDebtPayment::class, CreateDebt::class]);
+        ->and(MoneyServer::WRITE_TOOLS)->toBe([RecordTransaction::class, RecordDebtPayment::class, CreateDebt::class, UpdateTransaction::class]);
 });
 
 /**
@@ -367,4 +375,157 @@ test('a bill with no account needs an account or card to be recorded', function 
     ]))->assertOk()->assertJsonPath('result.isError', true);
 
     expect($user->transactions()->count())->toBe(0);
+});
+
+test('an expense can be recorded in one of the user\'s own categories', function (): void {
+    $user = signedIn();
+    $account = Account::factory()->for($user)->create(['balance' => 10_000]);
+    $category = CustomCategory::factory()->for($user)->create(['name' => 'Pets']);
+
+    $this->postJson('/mcp/money', rpc('tools/call', [
+        'name' => 'record_transaction',
+        'arguments' => ['amountCentavos' => 1_000, 'customCategoryId' => $category->id, 'accountId' => $account->id],
+    ]))->assertOk()
+        ->assertJsonPath('result.structuredContent.transaction.customCategoryId', $category->id)
+        ->assertJsonPath('result.structuredContent.transaction.customCategoryName', 'Pets');
+
+    $this->assertDatabaseHas('transactions', ['user_id' => $user->id, 'category' => 'other', 'custom_category_id' => $category->id]);
+});
+
+test('another user\'s custom category cannot be used', function (): void {
+    $user = signedIn();
+    $account = Account::factory()->for($user)->create(['balance' => 10_000]);
+    $category = CustomCategory::factory()->create();
+
+    $this->postJson('/mcp/money', rpc('tools/call', [
+        'name' => 'record_transaction',
+        'arguments' => ['amountCentavos' => 1_000, 'customCategoryId' => $category->id, 'accountId' => $account->id],
+    ]))->assertOk()->assertJsonMissingPath('result.structuredContent');
+
+    expect($user->transactions()->count())->toBe(0);
+});
+
+/**
+ * @param  array<string, mixed>  $arguments
+ */
+function updateTransaction(mixed $test, array $arguments): TestResponse
+{
+    return $test->postJson('/mcp/money', rpc('tools/call', ['name' => 'update_transaction', 'arguments' => $arguments]));
+}
+
+test('editing an expense\'s amount moves the difference in the account', function (): void {
+    $user = signedIn();
+    $account = Account::factory()->for($user)->create(['balance' => 75_000]);
+    $transaction = Transaction::factory()->for($user)->create(['account_id' => $account->id, 'amount' => 25_000, 'note' => 'Lunch', 'date' => '2026-10-01']);
+
+    updateTransaction($this, ['transactionId' => $transaction->id, 'amountCentavos' => 30_000])
+        ->assertOk()
+        ->assertJsonPath('result.structuredContent.transaction.amount', 30_000)
+        ->assertJsonPath('result.structuredContent.transaction.note', 'Lunch')
+        ->assertJsonPath('result.structuredContent.accounts.0.balance', 70_000);
+
+    expect($account->fresh()->balance)->toBe(70_000)
+        ->and($transaction->fresh()->date->toDateString())->toBe('2026-10-01');
+});
+
+test('an expense can be moved to a custom category and back to a built-in one', function (): void {
+    $user = signedIn();
+    $transaction = Transaction::factory()->for($user)->create(['account_id' => Account::factory()->for($user)]);
+    $category = CustomCategory::factory()->for($user)->create();
+
+    updateTransaction($this, ['transactionId' => $transaction->id, 'customCategoryId' => $category->id])->assertOk();
+    expect($transaction->fresh())->category->value->toBe('other')->custom_category_id->toBe($category->id);
+
+    updateTransaction($this, ['transactionId' => $transaction->id, 'category' => 'transport'])->assertOk();
+    expect($transaction->fresh())->category->value->toBe('transport')->custom_category_id->toBeNull();
+});
+
+test('moving an expense from an account to a card puts the money back in the account', function (): void {
+    $user = signedIn();
+    $account = Account::factory()->for($user)->create(['balance' => 75_000]);
+    $card = Debt::factory()->for($user)->create(['type' => DebtType::CreditCard]);
+    $transaction = Transaction::factory()->for($user)->create(['account_id' => $account->id, 'amount' => 25_000]);
+
+    updateTransaction($this, ['transactionId' => $transaction->id, 'debtId' => $card->id])->assertOk();
+
+    expect($account->fresh()->balance)->toBe(100_000)
+        ->and($transaction->fresh())->account_id->toBeNull()->debt_id->toBe($card->id);
+});
+
+test('editing a transfer moves both sides', function (): void {
+    $user = signedIn();
+    $from = Account::factory()->for($user)->create(['balance' => 60_000]);
+    $to = Account::factory()->for($user)->create(['balance' => 45_000]);
+    $other = Account::factory()->for($user)->create(['balance' => 0]);
+    $transaction = Transaction::factory()->for($user)->create([
+        'kind' => 'transfer', 'category' => 'transfer', 'amount' => 40_000, 'account_id' => $from->id, 'to_account_id' => $to->id,
+    ]);
+
+    updateTransaction($this, ['transactionId' => $transaction->id, 'toAccountId' => $other->id, 'amountCentavos' => 10_000])->assertOk();
+
+    expect($from->fresh()->balance)->toBe(90_000)
+        ->and($to->fresh()->balance)->toBe(5_000)
+        ->and($other->fresh()->balance)->toBe(10_000);
+});
+
+test('a note can be cleared', function (): void {
+    $user = signedIn();
+    $transaction = Transaction::factory()->for($user)->create(['account_id' => Account::factory()->for($user), 'note' => 'Lunch']);
+
+    updateTransaction($this, ['transactionId' => $transaction->id, 'note' => null])->assertOk();
+
+    expect($transaction->fresh()->note)->toBeNull();
+});
+
+test('a bad edit is rejected and nothing changes', function (array $arguments): void {
+    $user = signedIn();
+    $account = Account::factory()->for($user)->create(['balance' => 75_000]);
+    $theirs = Account::factory()->create();
+    $transaction = Transaction::factory()->for($user)->create(['account_id' => $account->id, 'amount' => 25_000, 'category' => 'food']);
+    $arguments = array_map(fn ($value) => $value === 'THEIRS' ? $theirs->id : $value, ['transactionId' => $transaction->id, ...$arguments]);
+
+    updateTransaction($this, $arguments)->assertOk()->assertJsonMissingPath('result.structuredContent');
+
+    expect($account->fresh()->balance)->toBe(75_000)
+        ->and($transaction->fresh())->amount->toBe(25_000)->category->value->toBe('food');
+})->with([
+    'zero amount' => [['amountCentavos' => 0]],
+    'unknown category' => [['category' => 'yachts']],
+    'another user\'s account' => [['accountId' => 'THEIRS']],
+    'a destination on an expense' => [['toAccountId' => 'THEIRS']],
+    'no account or card left' => [['accountId' => null]],
+]);
+
+test('another user\'s transaction cannot be edited', function (): void {
+    signedIn();
+    $other = User::factory()->create();
+    $account = Account::factory()->for($other)->create(['balance' => 75_000]);
+    $transaction = Transaction::factory()->for($other)->create(['account_id' => $account->id, 'amount' => 25_000]);
+
+    updateTransaction($this, ['transactionId' => $transaction->id, 'amountCentavos' => 1])
+        ->assertOk()->assertJsonPath('result.isError', true);
+
+    expect($transaction->fresh()->amount)->toBe(25_000)->and($account->fresh()->balance)->toBe(75_000);
+});
+
+test('a balance adjustment cannot be edited', function (): void {
+    $user = signedIn();
+    $transaction = Transaction::factory()->for($user)->create([
+        'kind' => 'adjustment_increase', 'category' => 'adjustment', 'account_id' => Account::factory()->for($user), 'amount' => 25_000,
+    ]);
+
+    updateTransaction($this, ['transactionId' => $transaction->id, 'amountCentavos' => 1])
+        ->assertOk()->assertJsonPath('result.isError', true);
+
+    expect($transaction->fresh()->amount)->toBe(25_000);
+});
+
+test('a read-only token cannot edit a transaction', function (): void {
+    $user = signedIn(['mcp:use']);
+    $transaction = Transaction::factory()->for($user)->create(['account_id' => Account::factory()->for($user), 'amount' => 25_000]);
+
+    updateTransaction($this, ['transactionId' => $transaction->id, 'amountCentavos' => 1])
+        ->assertOk()->assertJsonMissingPath('result.structuredContent');
+
+    expect($transaction->fresh()->amount)->toBe(25_000);
 });
