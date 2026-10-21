@@ -119,7 +119,7 @@ class AppServiceProvider extends ServiceProvider
     {
         Passport::tokensCan([
             'mcp:use' => 'Read your Money data',
-            'mcp:write' => 'Record expenses, income and debt payments',
+            'mcp:write' => 'Record expenses, income and debt payments, and edit transactions',
         ]);
 
         Passport::authorizationView(fn (array $parameters): Response => response()->view('mcp.authorize', $parameters));

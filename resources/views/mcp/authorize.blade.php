@@ -92,7 +92,7 @@
     <p>
         This lets {{ $client->name }} read <strong>Your Money data</strong> (debts, accounts, bills, income and goals).
         @if ($canWrite)
-            It can also <strong>record</strong> expenses, income and debt payments, which changes your account balances and payment history. It cannot edit or delete anything.
+            It can also <strong>record</strong> expenses, income and debt payments, and <strong>edit</strong> your expenses, income and transfers, which changes your account balances and payment history. It cannot delete anything.
         @else
             It is read-only: {{ $client->name }} cannot add, change or delete anything.
         @endif

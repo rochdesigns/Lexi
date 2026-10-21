@@ -40,6 +40,23 @@ class Ledger
     }
 
     /**
+     * Changes an entry, undoing what it did to its accounts before and applying
+     * what it does after, so balances follow the edit.
+     *
+     * @param  array<string, mixed>  $attributes
+     */
+    public function updateTransaction(Transaction $transaction, array $attributes): Transaction
+    {
+        return DB::transaction(function () use ($transaction, $attributes): Transaction {
+            $this->move($transaction, -1);
+            $transaction->update($attributes);
+            $this->move($transaction, 1);
+
+            return $transaction;
+        });
+    }
+
+    /**
      * Brings an account's balance to what the bank shows. The gap is recorded
      * as an adjustment, so the history says where the balance was corrected;
      * nothing is recorded when the two already match.

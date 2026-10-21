@@ -5,6 +5,7 @@ use App\Models\Money\Bill;
 use App\Models\Money\CardBalanceSnapshot;
 use App\Models\Money\CardDetail;
 use App\Models\Money\Debt;
+use App\Models\Money\CustomCategory;
 use App\Models\Money\DebtPayment;
 use App\Models\Money\DebtType;
 use App\Models\Money\Goal;
@@ -104,7 +105,9 @@ function seedMarkedMoney(User $user, string $marker, int $amountBase = 100_000):
         'income_source_id' => $income->id,
         'amount' => $amounts['receiptAmount'],
         'date' => now()->toDateString(),
+        'note' => "{$marker} pay",
     ]);
+    CustomCategory::factory()->for($user)->create(['name' => "{$marker} category"]);
 
     $debt = Debt::factory()->for($user)->create(['name' => "{$marker} debt", 'lender' => "{$marker} lender", 'outstanding_balance' => $amounts['loanBalance']]);
     PaymentPlan::factory()->for($debt)->create(['description' => "{$marker} plan"]);
