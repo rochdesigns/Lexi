@@ -853,7 +853,7 @@ function monthCells(bill: YearlyBill): { due: boolean; now: boolean }[] {
                     >
                         <button
                             type="button"
-                            class="grid w-full cursor-pointer grid-cols-[minmax(0,1fr)_auto] items-center gap-x-4 gap-y-2 py-3 text-left hover:bg-[var(--bp-soft)] sm:grid-cols-[minmax(0,1fr)_220px_150px]"
+                            class="grid w-full cursor-pointer grid-cols-[minmax(0,1fr)_auto] items-center gap-x-4 gap-y-2 py-3 text-left hover:bg-[var(--bp-soft)]"
                             :aria-expanded="editingLimit === limitKey(row)"
                             @click="openLimit(row)"
                         >
@@ -874,23 +874,8 @@ function monthCells(bill: YearlyBill): { due: boolean; now: boolean }[] {
                                     {{ limitStatus(row) }}
                                 </p>
                             </div>
-                            <div
-                                class="col-span-2 row-start-2 sm:col-span-1 sm:row-start-auto"
-                            >
-                                <SpendingLimitBar
-                                    v-if="
-                                        row.limit !== null &&
-                                        row.status !== 'none'
-                                    "
-                                    :limit="row.limit"
-                                    :spent="row.spent"
-                                    :pace="row.pace ?? 0"
-                                    :status="row.status"
-                                    :label="`${limitName(row)} spent against its limit`"
-                                />
-                            </div>
                             <span
-                                class="bp-mono text-right text-[13px] whitespace-nowrap"
+                                class="bp-mono self-start text-right text-[13px] whitespace-nowrap"
                             >
                                 {{ formatPeso(row.spent) }}
                                 <span
@@ -904,6 +889,17 @@ function monthCells(bill: YearlyBill): { due: boolean; now: boolean }[] {
                                     >Add limit</span
                                 >
                             </span>
+                            <SpendingLimitBar
+                                v-if="
+                                    row.limit !== null && row.status !== 'none'
+                                "
+                                class="col-span-2"
+                                :limit="row.limit"
+                                :spent="row.spent"
+                                :pace="row.pace ?? 0"
+                                :status="row.status"
+                                :label="`${limitName(row)} spent against its limit`"
+                            />
                         </button>
                         <form
                             v-if="editingLimit === limitKey(row)"

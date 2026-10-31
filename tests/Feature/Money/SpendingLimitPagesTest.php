@@ -92,3 +92,12 @@ test('transactions get this month\'s limits even when viewing another month', fu
         ->where('spendingLimits.0.spent', 300_000)
         ->where('spendingLimits.0.left', 500_000));
 });
+
+test('no limits means no over-safe-to-spend note, even when safe to spend is negative', function (): void {
+    Bill::factory()->for($this->user)->create(['amount' => 1_000_000, 'due_day' => 5]);
+
+    expect(overviewSafeToSpend($this->user))->toBeLessThan(0);
+
+    $this->actingAs($this->user)->get('/money/plan')->assertInertia(fn (Assert $page) => $page
+        ->where('limitsOverSafeToSpend', 0));
+});

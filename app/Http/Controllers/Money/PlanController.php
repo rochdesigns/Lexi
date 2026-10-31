@@ -58,6 +58,7 @@ class PlanController extends Controller
         $contributions = $this->projection->goalContributions($goals, $debts, $bills, $today);
         $safeToSpend = $this->projection->overview($debts, $bills, $sources, $today, $contributions['buffer'], $user->setting?->recovery_months, $contributions['sinking'])['safeToSpend'];
         $spendingLimits = $this->spendingLimits->forMonth($user, $today);
+        $totalLimits = $this->spendingLimits->totalLimits($spendingLimits);
 
         return Inertia::render('Money/Plan', [
             'obligations' => $obligations,
@@ -108,7 +109,7 @@ class PlanController extends Controller
             ])->sortBy('name')->values(),
             'hasPlans' => $debts->contains(fn ($debt): bool => $debt->paymentPlans->isNotEmpty()),
             'spendingLimits' => $spendingLimits,
-            'limitsOverSafeToSpend' => max(0, $this->spendingLimits->totalLimits($spendingLimits) - $safeToSpend),
+            'limitsOverSafeToSpend' => $totalLimits === 0 ? 0 : max(0, $totalLimits - $safeToSpend),
         ]);
     }
 
