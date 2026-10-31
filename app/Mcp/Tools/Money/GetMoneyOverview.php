@@ -4,6 +4,7 @@ namespace App\Mcp\Tools\Money;
 
 use App\Http\Requests\Money\RecoveryRequest;
 use App\Services\Money\Projection;
+use App\Services\Money\SpendingLimits;
 use Illuminate\Support\Carbon;
 use Laravel\Mcp\Request;
 use Laravel\Mcp\ResponseFactory;
@@ -14,9 +15,9 @@ class GetMoneyOverview extends MoneyTool
 {
     protected string $name = 'get_money_overview';
 
-    protected string $description = 'The user\'s money at a glance: monthly income, expenses, set-asides, debt payments and safe-to-spend (total and per day), cash available, upcoming bills and pay days for the next 14 days, projected shortfalls over the next 30 days, and carried credit-card balance alerts. Start here for questions about cash flow, what is safe to spend, or whether the user will run short.';
+    protected string $description = 'The user\'s money at a glance: monthly income, expenses, set-asides, debt payments and safe-to-spend (total and per day), cash available, upcoming bills and pay days for the next 14 days, projected shortfalls over the next 30 days, carried credit-card balance alerts, and this month\'s spending limits per category with what has been spent against each (left is negative when over). Start here for questions about cash flow, what is safe to spend, or whether the user will run short.';
 
-    public function handle(Request $request, Projection $projection): ResponseFactory
+    public function handle(Request $request, Projection $projection, SpendingLimits $spendingLimits): ResponseFactory
     {
         $today = Carbon::today();
         $user = $this->userFor($request);
@@ -43,6 +44,17 @@ class GetMoneyOverview extends MoneyTool
                 'cashAvailable' => $projection->cashAvailable($accounts),
                 'shortfalls' => $projection->shortfalls($debts, $bills, $sources, $accounts, $today),
                 'upcoming' => $projection->upcoming($debts, $bills, $sources, $today),
+                'spendingLimits' => array_values(array_map(
+                    fn (array $row): array => [
+                        'category' => $row['categoryName'] ?? $row['category'],
+                        'limit' => $row['limit'],
+                        'spent' => $row['spent'],
+                        'left' => $row['left'],
+                        'pace' => $row['pace'],
+                        'status' => $row['status'],
+                    ],
+                    array_filter($spendingLimits->forMonth($user, $today), fn (array $row): bool => $row['limit'] !== null),
+                )),
             ],
         );
     }
