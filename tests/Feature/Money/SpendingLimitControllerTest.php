@@ -85,11 +85,11 @@ test('income, transfer and adjustment are not limitable', function (string $cate
         ->assertSessionHasErrors('category');
 })->with(['income', 'transfer', 'adjustment']);
 
-test('a zero or negative limit is rejected', function (int $amount): void {
+test('a zero, negative or sub-centavo limit is rejected', function (int|float $amount): void {
     $this->actingAs($this->user)
         ->put('/money/spending-limits', ['category' => 'food', 'amount' => $amount])
         ->assertSessionHasErrors('amount');
-})->with([0, -100]);
+})->with([0, -100, 0.004]);
 
 test('deleting a custom category removes its limit and its spending counts as other', function (): void {
     $coffee = CustomCategory::factory()->for($this->user)->create();

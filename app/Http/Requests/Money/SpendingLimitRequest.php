@@ -20,7 +20,8 @@ class SpendingLimitRequest extends FormRequest
     }
 
     /**
-     * The amount arrives in pesos. No amount clears the limit.
+     * The amount arrives in pesos, at least one centavo so it never rounds to a
+     * zero limit. No amount clears the limit.
      *
      * @return array<string, array<int, mixed>>
      */
@@ -29,7 +30,7 @@ class SpendingLimitRequest extends FormRequest
         return [
             'category' => ['required', 'string', Rule::in(TransactionCategory::expenseValues())],
             'custom_category_id' => ['nullable', 'integer', Rule::exists('custom_categories', 'id')->where('user_id', $this->user()->id)],
-            'amount' => ['nullable', 'numeric', 'gt:0', 'max:1000000000'],
+            'amount' => ['nullable', 'numeric', 'min:0.01', 'max:1000000000'],
         ];
     }
 
