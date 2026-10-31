@@ -15,6 +15,7 @@ use App\Http\Controllers\Money\PaymentAllocationController;
 use App\Http\Controllers\Money\PaymentPlanController;
 use App\Http\Controllers\Money\PlanController as MoneyPlanController;
 use App\Http\Controllers\Money\RecoveryController;
+use App\Http\Controllers\Money\SpendingLimitController;
 use App\Http\Controllers\Money\StatementImportController;
 use App\Http\Controllers\Money\TransactionsController as MoneyTransactionsController;
 use App\Http\Controllers\Money\WhatIfController;
@@ -96,6 +97,7 @@ Route::middleware(['auth', 'verified'])->group(function (): void {
         Route::delete('/transactions/{transaction}', [MoneyTransactionsController::class, 'destroy'])->name('transactions.destroy');
         Route::post('/categories', [CustomCategoryController::class, 'store'])->name('categories.store');
         Route::delete('/categories/{customCategory}', [CustomCategoryController::class, 'destroy'])->name('categories.destroy');
+        Route::put('/spending-limits', [SpendingLimitController::class, 'update'])->name('spending-limits.update');
         Route::get('/plan', MoneyPlanController::class)->name('plan');
         Route::post('/plan/what-if/afford', [WhatIfController::class, 'afford'])->name('what-if.afford');
         Route::post('/plan/what-if/extra-cash', [WhatIfController::class, 'extraCash'])->name('what-if.extra-cash');

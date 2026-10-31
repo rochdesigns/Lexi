@@ -1,7 +1,8 @@
 <script setup lang="ts">
-import { Head, router } from '@inertiajs/vue3';
+import { Head, router, useForm } from '@inertiajs/vue3';
 import { computed, ref } from 'vue';
 import { update } from '@/actions/App/Http/Controllers/Money/GoalController';
+import { update as updateSpendingLimit } from '@/actions/App/Http/Controllers/Money/SpendingLimitController';
 import { update as updateYearlyBillsAccount } from '@/actions/App/Http/Controllers/Money/YearlyBillsAccountController';
 import BillDialog from '@/components/BillDialog.vue';
 import type { BillRow } from '@/components/BillDialog.vue';
@@ -11,9 +12,13 @@ import BlueprintTitleBlock from '@/components/BlueprintTitleBlock.vue';
 import GoalDialog from '@/components/GoalDialog.vue';
 import type { GoalRow } from '@/components/GoalDialog.vue';
 import InfoNote from '@/components/InfoNote.vue';
+import MoneyInput from '@/components/MoneyInput.vue';
+import SpendingLimitBar from '@/components/SpendingLimitBar.vue';
+import type { LimitRow } from '@/components/SpendingLimitBar.vue';
 import WhatIfSimulator from '@/components/WhatIfSimulator.vue';
 import { sheetWidth } from '@/utils/blueprint';
 import {
+    categoryLabel,
     formatDay,
     formatMonth,
     formatPeso,
@@ -48,7 +53,70 @@ const props = defineProps<{
     bufferMonthOptions: number[];
     cards: { id: number; name: string; revolvingBalance: number }[];
     hasPlans: boolean;
+    spendingLimits: LimitRow[];
+    limitsOverSafeToSpend: number;
 }>();
+
+const editingLimit = ref<string | null>(null);
+const limitForm = useForm({
+    category: '',
+    custom_category_id: null as number | null,
+    amount: null as number | null,
+});
+
+function limitKey(row: LimitRow): string {
+    return `${row.category}:${row.customCategoryId ?? ''}`;
+}
+
+function limitName(row: LimitRow): string {
+    return row.categoryName ?? categoryLabel(row.category);
+}
+
+/** The words under a category: how it stands against its limit, or just what was spent. */
+function limitStatus(row: LimitRow): string {
+    if (row.limit === null || row.left === null) {
+        return `${formatPeso(row.spent)} spent, no limit`;
+    }
+
+    if (row.status === 'over') {
+        return `${formatPeso(-row.left)} over`;
+    }
+
+    return row.aheadOfPace
+        ? `${formatPeso(row.left)} left · ahead of pace`
+        : `${formatPeso(row.left)} left`;
+}
+
+function openLimit(row: LimitRow): void {
+    if (editingLimit.value === limitKey(row)) {
+        editingLimit.value = null;
+
+        return;
+    }
+
+    limitForm.clearErrors();
+    limitForm.category = row.category;
+    limitForm.custom_category_id = row.customCategoryId;
+    limitForm.amount = row.limit === null ? null : toPesos(row.limit);
+    editingLimit.value = limitKey(row);
+}
+
+/** An empty amount clears the limit from this month on. */
+function saveLimit(row: LimitRow): void {
+    limitForm.put(updateSpendingLimit().url, {
+        preserveScroll: true,
+        onSuccess: () => {
+            if (editingLimit.value === limitKey(row)) {
+                editingLimit.value = null;
+            }
+        },
+    });
+}
+
+function clearLimit(row: LimitRow): void {
+    limitForm.amount = null;
+    saveLimit(row);
+}
 
 const billOpen = ref(false);
 const editingBill = ref<YearlyBill | null>(null);
@@ -761,6 +829,120 @@ function monthCells(bill: YearlyBill): { due: boolean; now: boolean }[] {
                         >
                         Add bill
                     </button>
+                </div>
+
+                <!-- D. Spending limits -->
+                <BlueprintSectionHeading
+                    letter="D"
+                    title="Spending limits"
+                    class="mt-11"
+                />
+                <p
+                    v-if="limitsOverSafeToSpend > 0"
+                    class="mt-3 rounded-[3px] border border-[var(--bp-accent-line)] bg-[var(--bp-tint)] px-3.5 py-2.5 text-[12.5px] text-[var(--bp-ink-2)]"
+                >
+                    Your limits are
+                    {{ formatPeso(limitsOverSafeToSpend) }} more than safe to
+                    spend.
+                </p>
+                <div class="mt-3 border-t border-[var(--bp-ink)]">
+                    <div
+                        v-for="row in spendingLimits"
+                        :key="limitKey(row)"
+                        class="border-b border-[var(--bp-hair)]"
+                    >
+                        <button
+                            type="button"
+                            class="grid w-full cursor-pointer grid-cols-[minmax(0,1fr)_auto] items-center gap-x-4 gap-y-2 py-3 text-left hover:bg-[var(--bp-soft)]"
+                            :aria-expanded="editingLimit === limitKey(row)"
+                            @click="openLimit(row)"
+                        >
+                            <div class="min-w-0">
+                                <p class="truncate text-[14px] font-semibold">
+                                    {{ limitName(row) }}
+                                </p>
+                                <p
+                                    class="text-[12px]"
+                                    :class="
+                                        row.status === 'over'
+                                            ? 'font-semibold text-[var(--bp-ink)]'
+                                            : row.aheadOfPace
+                                              ? 'text-[var(--bp-accent)]'
+                                              : 'text-[var(--bp-muted)]'
+                                    "
+                                >
+                                    {{ limitStatus(row) }}
+                                </p>
+                            </div>
+                            <span
+                                class="bp-mono self-start text-right text-[13px] whitespace-nowrap"
+                            >
+                                {{ formatPeso(row.spent) }}
+                                <span
+                                    v-if="row.limit !== null"
+                                    class="text-[var(--bp-faint)]"
+                                    >/ {{ formatPeso(row.limit) }}</span
+                                >
+                                <span
+                                    v-else
+                                    class="text-[var(--bp-faint)] underline decoration-dotted"
+                                    >Add limit</span
+                                >
+                            </span>
+                            <SpendingLimitBar
+                                v-if="
+                                    row.limit !== null && row.status !== 'none'
+                                "
+                                class="col-span-2"
+                                :limit="row.limit"
+                                :spent="row.spent"
+                                :pace="row.pace ?? 0"
+                                :status="row.status"
+                                :label="`${limitName(row)} spent against its limit`"
+                            />
+                        </button>
+                        <form
+                            v-if="editingLimit === limitKey(row)"
+                            class="flex flex-wrap items-start gap-2 pb-3"
+                            @submit.prevent="saveLimit(row)"
+                        >
+                            <label
+                                class="sr-only"
+                                :for="`limit-${limitKey(row)}`"
+                                >Monthly limit for {{ limitName(row) }}</label
+                            >
+                            <MoneyInput
+                                :id="`limit-${limitKey(row)}`"
+                                v-model="limitForm.amount"
+                                :empty-value="null"
+                                adorn
+                                suffix="a month"
+                                class="w-48 rounded border border-[var(--bp-line)] bg-[var(--bp-card)] px-2 py-1 text-[13.5px]"
+                            />
+                            <button
+                                type="submit"
+                                class="rounded border border-[var(--bp-ink)] px-3 py-1 text-[13px] font-semibold"
+                                :disabled="limitForm.processing"
+                            >
+                                Save
+                            </button>
+                            <button
+                                v-if="row.limit !== null"
+                                type="button"
+                                class="px-2 py-1 text-[13px] text-[var(--bp-muted)] hover:text-[var(--bp-ink)]"
+                                :disabled="limitForm.processing"
+                                @click="clearLimit(row)"
+                            >
+                                Remove limit
+                            </button>
+                            <p
+                                v-if="limitForm.errors.amount"
+                                class="w-full text-[12px] text-[var(--bp-ink)]"
+                            >
+                                {{ limitForm.errors.amount }}
+                            </p>
+                        </form>
+                    </div>
                 </div>
             </div>
 

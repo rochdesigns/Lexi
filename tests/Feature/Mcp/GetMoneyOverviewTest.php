@@ -6,11 +6,14 @@ use App\Models\Money\Account;
 use App\Models\Money\Bill;
 use App\Models\Money\CardBalanceSnapshot;
 use App\Models\Money\CardDetail;
+use App\Models\Money\CustomCategory;
 use App\Models\Money\Debt;
 use App\Models\Money\DebtType;
 use App\Models\Money\IncomeSource;
 use App\Models\Money\InterestType;
 use App\Models\Money\PaymentPlan;
+use App\Models\Money\SpendingLimit;
+use App\Models\Money\Transaction;
 use App\Models\User;
 use Illuminate\Support\Carbon;
 
@@ -140,4 +143,31 @@ test('recovery has no extra to set aside until the user picks a number of months
         ->assertStructuredContent(fn ($json) => $json
             ->where('recovery', ['carryover' => 1_200_000, 'months' => null, 'extraPerMonth' => 0])
             ->etc());
+});
+
+test('the overview includes spending limits with spending against them', function (): void {
+    $coffee = CustomCategory::factory()->for($this->user)->create(['name' => 'Coffee']);
+    SpendingLimit::factory()->for($this->user)->create(['category' => 'groceries', 'amount' => 800_000]);
+    SpendingLimit::factory()->custom($coffee)->create(['amount' => 100_000]);
+    Transaction::factory()->for($this->user)->create(['category' => 'groceries', 'amount' => 300_000, 'date' => '2026-10-02']);
+    Transaction::factory()->for($this->user)->create(['category' => 'other', 'custom_category_id' => $coffee->id, 'amount' => 120_000, 'date' => '2026-10-03']);
+
+    MoneyServer::actingAs($this->user)->tool(GetMoneyOverview::class)
+        ->assertOk()
+        ->assertStructuredContent(fn ($json) => $json
+            ->where('spendingLimits', [
+                ['category' => 'groceries', 'limit' => 800_000, 'spent' => 300_000, 'left' => 500_000, 'pace' => 387_096, 'status' => 'under'],
+                ['category' => 'Coffee', 'limit' => 100_000, 'spent' => 120_000, 'left' => -20_000, 'pace' => 48_387, 'status' => 'over'],
+            ])
+            ->etc());
+});
+
+test('spending limits are only the user\'s own', function (): void {
+    $theirs = User::factory()->create();
+    SpendingLimit::factory()->for($theirs)->create(['category' => 'groceries', 'amount' => 98_765_432]);
+
+    MoneyServer::actingAs($this->user)->tool(GetMoneyOverview::class)
+        ->assertOk()
+        ->assertDontSee('98765432')
+        ->assertStructuredContent(fn ($json) => $json->where('spendingLimits', [])->etc());
 });

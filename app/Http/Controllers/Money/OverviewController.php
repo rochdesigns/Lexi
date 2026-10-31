@@ -9,7 +9,9 @@ use App\Models\Money\Bill;
 use App\Models\Money\Debt;
 use App\Models\Money\DebtType;
 use App\Models\Money\IncomeSource;
+use App\Models\User;
 use App\Services\Money\Projection;
+use App\Services\Money\SpendingLimits;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
@@ -18,7 +20,7 @@ use Inertia\Response;
 
 class OverviewController extends Controller
 {
-    public function __construct(private Projection $projection) {}
+    public function __construct(private Projection $projection, private SpendingLimits $spendingLimits) {}
 
     public function __invoke(Request $request): Response
     {
@@ -34,6 +36,7 @@ class OverviewController extends Controller
         return Inertia::render('Money/Overview', [
             'numbers' => $this->projection->overview($debts, $bills, $sources, $today, $contributions['buffer'], $recoveryMonths, $contributions['sinking'], $this->projection->spentThisMonth($user, $today)),
             'carryAlerts' => $this->projection->carriedBalanceAlerts($debts, $today),
+            'limitAlerts' => $this->limitAlerts($user, $today),
             'recovery' => $this->recovery($debts, $recoveryMonths, $today),
             'cashAvailable' => $this->projection->cashAvailable($accounts),
             'shortfalls' => $this->projection->shortfalls($debts, $bills, $sources, $accounts, $today),
@@ -69,6 +72,21 @@ class OverviewController extends Controller
                 'debtId' => $bill->debt_id,
             ])->values(),
         ]);
+    }
+
+    /**
+     * Spending limits that are close or over: over first, each in category order.
+     *
+     * @return list<array<string, mixed>>
+     */
+    private function limitAlerts(User $user, Carbon $today): array
+    {
+        $rows = $this->spendingLimits->forMonth($user, $today);
+
+        return [
+            ...array_values(array_filter($rows, fn (array $row): bool => $row['status'] === 'over')),
+            ...array_values(array_filter($rows, fn (array $row): bool => $row['status'] === 'close')),
+        ];
     }
 
     /**

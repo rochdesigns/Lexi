@@ -8,6 +8,7 @@ use App\Models\Money\CustomCategory;
 use App\Models\Money\Debt;
 use App\Models\Money\Goal;
 use App\Models\Money\IncomeSource;
+use App\Models\Money\SpendingLimit;
 use App\Models\Money\Transaction;
 use App\Notifications\QueuedResetPassword;
 use App\Notifications\QueuedVerifyEmail;
@@ -136,6 +137,14 @@ class User extends Authenticatable implements MustVerifyEmail, OAuthenticatable,
     public function customCategories(): HasMany
     {
         return $this->hasMany(CustomCategory::class)->orderBy('name');
+    }
+
+    /**
+     * @return HasMany<SpendingLimit, $this>
+     */
+    public function spendingLimits(): HasMany
+    {
+        return $this->hasMany(SpendingLimit::class);
     }
 
     /**

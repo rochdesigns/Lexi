@@ -11,6 +11,7 @@ use App\Models\Money\Debt;
 use App\Models\Money\Goal;
 use App\Models\Money\GoalKind;
 use App\Services\Money\Projection;
+use App\Services\Money\SpendingLimits;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
@@ -19,12 +20,13 @@ use Inertia\Response;
 
 class PlanController extends Controller
 {
-    public function __construct(private Projection $projection) {}
+    public function __construct(private Projection $projection, private SpendingLimits $spendingLimits) {}
 
     /**
      * The emergency buffer and the sinking funds, with where each one stands.
      * Yearly bills are listed too, since they are already set aside each month,
      * with how the account they are saved in stands against what they need by now.
+     * Spending limits come last, with how far their total runs past safe to spend.
      */
     public function __invoke(Request $request): Response
     {
@@ -51,6 +53,12 @@ class PlanController extends Controller
         ];
 
         $buffer = $goals->first(fn (Goal $goal): bool => $goal->kind === GoalKind::Buffer);
+
+        $sources = $user->incomeSources()->with('receipts')->get();
+        $contributions = $this->projection->goalContributions($goals, $debts, $bills, $today);
+        $safeToSpend = $this->projection->overview($debts, $bills, $sources, $today, $contributions['buffer'], $user->setting?->recovery_months, $contributions['sinking'])['safeToSpend'];
+        $spendingLimits = $this->spendingLimits->forMonth($user, $today);
+        $totalLimits = $this->spendingLimits->totalLimits($spendingLimits);
 
         return Inertia::render('Money/Plan', [
             'obligations' => $obligations,
@@ -100,6 +108,8 @@ class PlanController extends Controller
                 'revolvingBalance' => $debt->cardDetail->revolving_balance,
             ])->sortBy('name')->values(),
             'hasPlans' => $debts->contains(fn ($debt): bool => $debt->paymentPlans->isNotEmpty()),
+            'spendingLimits' => $spendingLimits,
+            'limitsOverSafeToSpend' => $totalLimits === 0 ? 0 : max(0, $totalLimits - $safeToSpend),
         ]);
     }
 
