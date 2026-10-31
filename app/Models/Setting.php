@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Models\Money\Account;
 use Database\Factories\SettingFactory;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
@@ -16,6 +17,7 @@ class Setting extends Model
         'user_id',
         'theme',
         'recovery_months',
+        'yearly_bills_account_id',
     ];
 
     /** @var array<string, string> */
@@ -29,5 +31,15 @@ class Setting extends Model
     public function user(): BelongsTo
     {
         return $this->belongsTo(User::class);
+    }
+
+    /**
+     * The account yearly and quarterly bills are saved in.
+     *
+     * @return BelongsTo<Account, $this>
+     */
+    public function yearlyBillsAccount(): BelongsTo
+    {
+        return $this->belongsTo(Account::class, 'yearly_bills_account_id');
     }
 }

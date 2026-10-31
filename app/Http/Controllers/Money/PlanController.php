@@ -23,14 +23,16 @@ class PlanController extends Controller
 
     /**
      * The emergency buffer and the sinking funds, with where each one stands.
-     * Yearly bills are listed too, since they are already set aside each month.
+     * Yearly bills are listed too, since they are already set aside each month,
+     * with how the account they are saved in stands against what they need by now.
      */
     public function __invoke(Request $request): Response
     {
         $today = Carbon::today();
         $user = $request->user();
         $debts = $user->debts()->with(['cardDetail', 'paymentPlans.debt', 'payments'])->get();
-        $bills = $user->bills()->orderBy('name')->get();
+        $bills = $user->bills()->with('payments')->orderBy('name')->get();
+        $yearlyBillsAccount = $user->setting?->yearlyBillsAccount;
         $goals = $user->goals()->with('account')->orderBy('name')->get();
         $obligations = $this->projection->monthlyObligations($debts, $bills, $today);
 
@@ -79,7 +81,13 @@ class PlanController extends Controller
                 'accountId' => $bill->account_id,
                 'debtId' => $bill->debt_id,
                 'monthlySetAside' => (int) ceil($bill->amount / $bill->frequency->months()),
+                'setAsideSoFar' => $this->projection->setAsideSoFar($bill, $today),
             ])->values(),
+            'yearlyBillsAccount' => $yearlyBillsAccount === null ? null : [
+                'id' => $yearlyBillsAccount->id,
+                'name' => $yearlyBillsAccount->name,
+                ...$this->projection->yearlyBillsProgress($yearlyBillsAccount, $bills, $today),
+            ],
             'accounts' => $user->accounts()->orderBy('name')->get()->map(fn (Account $account): array => [
                 'id' => $account->id,
                 'name' => $account->name,

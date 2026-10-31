@@ -163,7 +163,7 @@ test('the plan page shows the buffer, the funds, the yearly bills and my account
         ->has('yearlyBills', 1, fn ($bill) => $bill
             ->where('id', Bill::where('name', 'Domain')->value('id'))
             ->where('name', 'Domain')->where('amount', 100_000)->where('frequency', 'annual')
-            ->where('dueMonth', 3)->where('monthlySetAside', 8_334)
+            ->where('dueMonth', 3)->where('monthlySetAside', 8_334)->where('setAsideSoFar', 58_338)
             ->has('dueDay')->has('autopay')->has('accountId')->has('debtId'))
         ->has('accounts', 1));
 });
