@@ -406,6 +406,40 @@ class Projection
     }
 
     /**
+     * What should be saved for a set-aside bill by now: a share for each month
+     * since it was last due. In the due month it is the whole bill until a
+     * payment is logged, then nothing. Needs the bill's payments loaded.
+     */
+    public function setAsideSoFar(Bill $bill, CarbonInterface $today): int
+    {
+        $months = $bill->frequency->months();
+        $elapsed = ((($today->month - ($bill->due_month ?? $today->month)) % $months) + $months) % $months;
+
+        if ($elapsed === 0) {
+            return $bill->isPaidInMonthOf($today) ? 0 : $bill->amount;
+        }
+
+        return min($bill->amount, $elapsed * (int) ceil($bill->amount / $months));
+    }
+
+    /**
+     * Where the yearly bills account stands: its balance against what the
+     * set-aside bills should have saved by now.
+     *
+     * @param  Collection<int, Bill>  $bills
+     * @return array{saved: int, target: int, short: int}
+     */
+    public function yearlyBillsProgress(Account $account, Collection $bills, CarbonInterface $today): array
+    {
+        $saved = max(0, $account->balance);
+        $target = $bills
+            ->filter(fn (Bill $bill): bool => $bill->frequency->isSetAside())
+            ->sum(fn (Bill $bill): int => $this->setAsideSoFar($bill, $today));
+
+        return ['saved' => $saved, 'target' => $target, 'short' => max(0, $target - $saved)];
+    }
+
+    /**
      * The five numbers for the month. The set-aside is the yearly bills at a twelfth a month plus the contributions to sinking funds. Safe to spend is what is left of income
      * once bills, the annual set-aside, debt payments, the buffer contribution
      * and any recovery payment are covered, and can be negative. The buffer is zero until

@@ -18,6 +18,7 @@ use App\Http\Controllers\Money\RecoveryController;
 use App\Http\Controllers\Money\StatementImportController;
 use App\Http\Controllers\Money\TransactionsController as MoneyTransactionsController;
 use App\Http\Controllers\Money\WhatIfController;
+use App\Http\Controllers\Money\YearlyBillsAccountController;
 use App\Http\Controllers\TaskController;
 use App\Http\Controllers\TaskSectionController;
 use App\Http\Controllers\TodayController;
@@ -78,6 +79,7 @@ Route::middleware(['auth', 'verified'])->group(function (): void {
         Route::patch('/income-sources/{incomeSource}', [IncomeSourceController::class, 'update'])->name('income-sources.update');
         Route::delete('/income-sources/{incomeSource}', [IncomeSourceController::class, 'destroy'])->name('income-sources.destroy');
         Route::patch('/recovery', [RecoveryController::class, 'update'])->name('recovery.update');
+        Route::patch('/yearly-bills-account', [YearlyBillsAccountController::class, 'update'])->name('yearly-bills-account.update');
         Route::post('/accounts', [AccountController::class, 'store'])->name('accounts.store');
         Route::patch('/accounts/{account}', [AccountController::class, 'update'])->name('accounts.update');
         Route::post('/accounts/{account}/reconcile', [AccountController::class, 'reconcile'])->name('accounts.reconcile');

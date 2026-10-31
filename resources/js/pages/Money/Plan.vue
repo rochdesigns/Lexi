@@ -2,6 +2,7 @@
 import { Head, router } from '@inertiajs/vue3';
 import { computed, ref } from 'vue';
 import { update } from '@/actions/App/Http/Controllers/Money/GoalController';
+import { update as updateYearlyBillsAccount } from '@/actions/App/Http/Controllers/Money/YearlyBillsAccountController';
 import BillDialog from '@/components/BillDialog.vue';
 import type { BillRow } from '@/components/BillDialog.vue';
 import BlueprintPageHead from '@/components/BlueprintPageHead.vue';
@@ -24,6 +25,7 @@ import {
 type YearlyBill = BillRow & {
     frequency: 'quarterly' | 'annual';
     monthlySetAside: number;
+    setAsideSoFar: number;
 };
 
 const props = defineProps<{
@@ -35,6 +37,13 @@ const props = defineProps<{
     buffer: GoalRow | null;
     goals: GoalRow[];
     yearlyBills: YearlyBill[];
+    yearlyBillsAccount: {
+        id: number;
+        name: string;
+        saved: number;
+        target: number;
+        short: number;
+    } | null;
     accounts: { id: number; name: string; isSpendable: boolean }[];
     bufferMonthOptions: number[];
     cards: { id: number; name: string; revolvingBalance: number }[];
@@ -220,6 +229,27 @@ const bufferMarks = computed(() => {
         left: ((index + 1) / months) * 100,
         amount: props.obligations * (index + 1),
     }));
+});
+
+/** Saves which account the yearly bills are kept in, or none. */
+function pickYearlyBillsAccount(event: Event): void {
+    const value = (event.target as HTMLSelectElement).value;
+
+    router.patch(
+        updateYearlyBillsAccount().url,
+        { account_id: value === '' ? null : Number(value) },
+        { preserveScroll: true },
+    );
+}
+
+const yearlyBillsPercent = computed(() => {
+    const account = props.yearlyBillsAccount;
+
+    if (!account || account.target === 0) {
+        return 100;
+    }
+
+    return Math.min(100, Math.round((account.saved / account.target) * 100));
 });
 
 const currentMonthIndex = new Date().getMonth();
@@ -571,6 +601,77 @@ function monthCells(bill: YearlyBill): { due: boolean; now: boolean }[] {
                     title="Yearly and quarterly bills"
                     class="mt-11"
                 />
+                <div
+                    v-if="yearlyBills.length"
+                    class="mt-3 border border-[var(--bp-line)] px-3.5 py-3"
+                >
+                    <label
+                        class="flex items-center justify-between gap-3 text-[13.5px]"
+                    >
+                        <span class="text-[var(--bp-muted)]">Saved in</span>
+                        <select
+                            class="min-w-0 rounded border border-[var(--bp-line)] bg-[var(--bp-card)] px-2 py-1 text-[13.5px]"
+                            :value="yearlyBillsAccount?.id ?? ''"
+                            @change="pickYearlyBillsAccount"
+                        >
+                            <option value="">No account yet</option>
+                            <option
+                                v-for="account in accounts"
+                                :key="account.id"
+                                :value="account.id"
+                            >
+                                {{ account.name
+                                }}{{
+                                    account.isSpendable ? ' (spendable)' : ''
+                                }}
+                            </option>
+                        </select>
+                    </label>
+                    <template v-if="yearlyBillsAccount">
+                        <p
+                            class="mt-3 flex items-baseline justify-between gap-3 text-[13px]"
+                        >
+                            <span
+                                :class="
+                                    yearlyBillsAccount.short > 0
+                                        ? 'font-semibold'
+                                        : 'text-[var(--bp-accent)]'
+                                "
+                            >
+                                {{
+                                    yearlyBillsAccount.short > 0
+                                        ? `${formatPeso(yearlyBillsAccount.short)} short`
+                                        : 'On track'
+                                }}
+                            </span>
+                            <span class="bp-mono">
+                                {{ formatPeso(yearlyBillsAccount.saved) }}
+                                <span class="text-[var(--bp-faint)]"
+                                    >/
+                                    {{ formatPeso(yearlyBillsAccount.target) }}
+                                    needed by now</span
+                                >
+                            </span>
+                        </p>
+                        <span
+                            class="mt-2 block h-2 border border-[var(--bp-line)] bg-[var(--bp-paper)] bg-[linear-gradient(90deg,var(--bp-line)_1px,transparent_1px)] bg-[length:10%_100%]"
+                            role="progressbar"
+                            :aria-valuenow="yearlyBillsPercent"
+                            aria-valuemin="0"
+                            aria-valuemax="100"
+                            aria-label="Yearly bills saved"
+                        >
+                            <span
+                                class="hab-progress-fill block h-full bg-[var(--bp-accent)]"
+                                :style="{ width: yearlyBillsPercent + '%' }"
+                            ></span>
+                        </span>
+                    </template>
+                    <p v-else class="mt-2 text-[12.5px] text-[var(--bp-muted)]">
+                        Pick the savings account you put these bills' money in
+                        to see whether it is on track.
+                    </p>
+                </div>
                 <div class="mt-3 border-t border-[var(--bp-ink)]">
                     <p
                         v-if="yearlyBills.length === 0"
@@ -598,6 +699,11 @@ function monthCells(bill: YearlyBill): { due: boolean; now: boolean }[] {
                                             ? `every 3 months from ${monthNames[(bill.dueMonth ?? 1) - 1]}`
                                             : `due in ${monthNames[(bill.dueMonth ?? 1) - 1]}`
                                     }}
+                                    <template v-if="yearlyBillsAccount">
+                                        ·
+                                        {{ formatPeso(bill.setAsideSoFar) }}
+                                        needed by now
+                                    </template>
                                 </p>
                             </div>
                             <div
