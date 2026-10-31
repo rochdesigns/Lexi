@@ -61,3 +61,21 @@ test('the plan notes when limits add up to more than safe to spend', function ()
     $this->actingAs($this->user)->get('/money/plan')->assertInertia(fn (Assert $page) => $page
         ->where('limitsOverSafeToSpend', 0));
 });
+
+test('the overview lists only limits that are close or over, over first', function (): void {
+    foreach (['food' => 100_000, 'groceries' => 500_000, 'transport' => 200_000, 'home' => 300_000] as $category => $limit) {
+        SpendingLimit::factory()->for($this->user)->create(['category' => $category, 'amount' => $limit]);
+    }
+    Transaction::factory()->for($this->user)->create(['category' => 'food', 'amount' => 90_000, 'date' => '2026-10-02']);
+    Transaction::factory()->for($this->user)->create(['category' => 'groceries', 'amount' => 100_000, 'date' => '2026-10-02']);
+    Transaction::factory()->for($this->user)->create(['category' => 'transport', 'amount' => 250_000, 'date' => '2026-10-02']);
+    Transaction::factory()->for($this->user)->create(['category' => 'shopping', 'amount' => 999_000, 'date' => '2026-10-02']);
+
+    $this->actingAs($this->user)->get('/money')->assertInertia(fn (Assert $page) => $page
+        ->component('Money/Overview')
+        ->has('limitAlerts', 2)
+        ->where('limitAlerts.0.category', 'transport')
+        ->where('limitAlerts.0.status', 'over')
+        ->where('limitAlerts.1.category', 'food')
+        ->where('limitAlerts.1.status', 'close'));
+});

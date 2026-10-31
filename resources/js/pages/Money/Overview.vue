@@ -12,9 +12,15 @@ import BlueprintTitleBlock from '@/components/BlueprintTitleBlock.vue';
 import type { IncomeSourceRow } from '@/components/IncomeSourceDialog.vue';
 import IncomeSourceDialog from '@/components/IncomeSourceDialog.vue';
 import InfoNote from '@/components/InfoNote.vue';
-import { transactions } from '@/routes/money';
+import type { LimitRow } from '@/components/SpendingLimitBar.vue';
+import { plan, transactions } from '@/routes/money';
 import { sheetWidth } from '@/utils/blueprint';
-import { formatDay, formatPeso, monthNames } from '@/utils/money';
+import {
+    categoryLabel,
+    formatDay,
+    formatPeso,
+    monthNames,
+} from '@/utils/money';
 
 type Upcoming = {
     kind: 'debt' | 'bill' | 'income';
@@ -62,6 +68,7 @@ const props = defineProps<{
         perDay: number;
     };
     carryAlerts: CarryAlert[];
+    limitAlerts: LimitRow[];
     recovery: Recovery | null;
     cashAvailable: number;
     shortfalls: Shortfall[];
@@ -213,6 +220,15 @@ const kindIcon = {
 } as const;
 
 const isShort = computed(() => props.numbers.safeToSpend < 0);
+
+/** "₱1,200 over" for a limit gone past, "86% used" for one that is close. */
+function limitAlertText(alert: LimitRow): string {
+    if (alert.status === 'over') {
+        return `${formatPeso(-(alert.left ?? 0))} over`;
+    }
+
+    return `${Math.floor((alert.spent / (alert.limit ?? 1)) * 100)}% used`;
+}
 
 /** How many warnings sit at the top of the page; the header bell points to them. */
 const alertCount = computed(
@@ -549,6 +565,38 @@ const addRowClass =
                     </div>
                 </div>
             </div>
+            <Link
+                v-if="limitAlerts.length"
+                :href="plan().url"
+                class="mt-3.5 flex items-start gap-2.5 border border-[var(--bp-line)] bg-[var(--bp-card)] px-3.5 py-2.5 text-[13px] hover:border-[var(--bp-ink)]"
+            >
+                <span
+                    class="ms shrink-0 text-[var(--bp-accent)]"
+                    style="font-size: 17px"
+                    aria-hidden="true"
+                    >data_usage</span
+                >
+                <span class="min-w-0 flex-1">
+                    <span class="font-semibold">Spending limits</span>
+                    ·
+                    <span
+                        v-for="(alert, index) in limitAlerts"
+                        :key="`${alert.category}:${alert.customCategoryId ?? ''}`"
+                        ><template v-if="index > 0"> · </template
+                        >{{
+                            alert.categoryName ?? categoryLabel(alert.category)
+                        }}
+                        <span
+                            :class="
+                                alert.status === 'over'
+                                    ? 'font-semibold'
+                                    : 'text-[var(--bp-muted)]'
+                            "
+                            >{{ limitAlertText(alert) }}</span
+                        ></span
+                    >
+                </span>
+            </Link>
             <InfoNote id="overview-safe" blueprint class="mt-3.5">
                 Your forecast income, less bills, the yearly set-aside, debt
                 payments, goals and any recovery payment. It looks at what is
