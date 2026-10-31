@@ -79,3 +79,16 @@ test('the overview lists only limits that are close or over, over first', functi
         ->where('limitAlerts.1.category', 'food')
         ->where('limitAlerts.1.status', 'close'));
 });
+
+test('transactions get this month\'s limits even when viewing another month', function (): void {
+    SpendingLimit::factory()->for($this->user)->create(['category' => 'groceries', 'amount' => 800_000]);
+    Transaction::factory()->for($this->user)->create(['category' => 'groceries', 'amount' => 300_000, 'date' => '2026-10-02']);
+    Transaction::factory()->for($this->user)->create(['category' => 'groceries', 'amount' => 50_000, 'date' => '2026-08-02']);
+
+    $this->actingAs($this->user)->get('/money/transactions?month=2026-08')->assertInertia(fn (Assert $page) => $page
+        ->component('Money/Transactions')
+        ->has('spendingLimits', 1)
+        ->where('spendingLimits.0.category', 'groceries')
+        ->where('spendingLimits.0.spent', 300_000)
+        ->where('spendingLimits.0.left', 500_000));
+});

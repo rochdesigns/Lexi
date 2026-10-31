@@ -11,6 +11,7 @@ import BlueprintSectionHeading from '@/components/BlueprintSectionHeading.vue';
 import BlueprintTitleBlock from '@/components/BlueprintTitleBlock.vue';
 import InfoNote from '@/components/InfoNote.vue';
 import MoneyInput from '@/components/MoneyInput.vue';
+import type { LimitRow } from '@/components/SpendingLimitBar.vue';
 import StatementImportDialog from '@/components/StatementImportDialog.vue';
 import TransactionDialog from '@/components/TransactionDialog.vue';
 import type { TransactionRow } from '@/components/TransactionDialog.vue';
@@ -38,6 +39,7 @@ const props = defineProps<{
     accountFilter: number | null;
     cardFilter: number | null;
     currentMonth: string;
+    spendingLimits: LimitRow[];
     today: string;
     transactions: TransactionRow[];
     debtPayments: {
@@ -147,6 +149,56 @@ function chooseBill(): void {
 
     form.note ||= bill.name;
 }
+
+/**
+ * What is left of the chosen category's limit this month, and after this
+ * entry once an amount is in. Only for spending dated this month that is not a bill.
+ */
+const limitHint = computed((): { text: string; over: boolean } | null => {
+    if (
+        kind.value !== 'expense' ||
+        form.bill !== '' ||
+        !form.date.startsWith(props.currentMonth)
+    ) {
+        return null;
+    }
+
+    const row = props.spendingLimits.find(
+        (limit) =>
+            limit.category === form.category &&
+            limit.customCategoryId === form.custom_category_id,
+    );
+
+    if (!row || row.left === null) {
+        return null;
+    }
+
+    const name = row.categoryName ?? categoryLabel(row.category);
+    const amount = form.amount ? Math.round(form.amount * 100) : 0;
+    const left = row.left - amount;
+
+    if (amount === 0) {
+        return left < 0
+            ? {
+                  text: `${formatPeso(-left)} over in ${name} this month`,
+                  over: true,
+              }
+            : {
+                  text: `${formatPeso(left)} left in ${name} this month`,
+                  over: false,
+              };
+    }
+
+    return left < 0
+        ? {
+              text: `${formatPeso(-left)} over in ${name} after this`,
+              over: true,
+          }
+        : {
+              text: `${formatPeso(left)} left in ${name} after this`,
+              over: false,
+          };
+});
 
 function chooseCategory(value: string): void {
     form.category = value;
@@ -1053,6 +1105,17 @@ const chipOff =
                                     :class="errorClass"
                                 >
                                     {{ categoryForm.errors.name }}
+                                </p>
+                                <p
+                                    v-if="limitHint"
+                                    class="text-[12.5px]"
+                                    :class="
+                                        limitHint.over
+                                            ? 'font-semibold text-[var(--bp-ink)]'
+                                            : 'text-[var(--bp-muted)]'
+                                    "
+                                >
+                                    {{ limitHint.text }}
                                 </p>
                             </div>
                         </template>

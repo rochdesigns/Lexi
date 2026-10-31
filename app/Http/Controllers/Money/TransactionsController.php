@@ -15,6 +15,7 @@ use App\Models\Money\TransactionKind;
 use App\Models\Money\TransactionSource;
 use App\Services\Money\Ledger;
 use App\Services\Money\Projection;
+use App\Services\Money\SpendingLimits;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
@@ -24,7 +25,7 @@ use Inertia\Response;
 
 class TransactionsController extends Controller
 {
-    public function __construct(private Projection $projection, private Ledger $ledger) {}
+    public function __construct(private Projection $projection, private Ledger $ledger, private SpendingLimits $spendingLimits) {}
 
     public function index(Request $request): Response
     {
@@ -125,6 +126,10 @@ class TransactionsController extends Controller
                 'id' => $category->id,
                 'name' => $category->name,
             ])->values(),
+            'spendingLimits' => array_values(array_filter(
+                $this->spendingLimits->forMonth($user, Carbon::today()),
+                fn (array $row): bool => $row['limit'] !== null,
+            )),
             'prefill' => $this->prefill($request),
             'accounts' => $accounts->map(fn (Account $account): array => [
                 'id' => $account->id,
