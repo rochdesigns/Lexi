@@ -66,6 +66,9 @@ const props = defineProps<{
         safeToSpend: number;
         spent: number;
         perDay: number;
+        cashOnHand: number | null;
+        billsDue: number;
+        debtDue: number;
         dueRestOfMonth: number | null;
     };
     carryAlerts: CarryAlert[];
@@ -114,17 +117,28 @@ function openBill(bill: BillRow | null): void {
 
 /** The lines of the month's statement, ending in safe to spend. Recovery only shows while it is on. */
 const statement = computed(() => {
+    const onHand = props.numbers.cashOnHand !== null;
     const lines = [
-        { label: 'Income', value: props.numbers.income, sign: '+' },
-        { label: 'Bills', value: props.numbers.expenses, sign: '−' },
+        onHand
+            ? {
+                  label: 'Cash on hand',
+                  value: props.numbers.cashOnHand ?? 0,
+                  sign: '+',
+              }
+            : { label: 'Income', value: props.numbers.income, sign: '+' },
+        {
+            label: onHand ? 'Bills still due this month' : 'Bills',
+            value: onHand ? props.numbers.billsDue : props.numbers.expenses,
+            sign: '−',
+        },
         {
             label: 'Set aside for yearly bills and goals',
             value: props.numbers.setAside,
             sign: '−',
         },
         {
-            label: 'Debt payments',
-            value: props.numbers.debtPayment,
+            label: onHand ? 'Debt payments still due' : 'Debt payments',
+            value: onHand ? props.numbers.debtDue : props.numbers.debtPayment,
             sign: '−',
         },
         {
@@ -395,11 +409,20 @@ const addRowClass =
                         <p class="font-semibold">
                             This month's plan is
                             {{ formatPeso(-numbers.safeToSpend) }} over your
-                            income
+                            {{
+                                numbers.cashOnHand === null
+                                    ? 'income'
+                                    : 'cash on hand'
+                            }}
                         </p>
                         <p class="text-pretty text-[var(--bp-ink-2)]">
                             Your bills, savings and debt payments come to more
-                            than you expect to earn this month.
+                            than you
+                            {{
+                                numbers.cashOnHand === null
+                                    ? 'expect to earn this month'
+                                    : 'have on hand'
+                            }}.
                         </p>
                     </div>
                 </div>

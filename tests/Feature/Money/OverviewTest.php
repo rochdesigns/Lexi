@@ -154,6 +154,9 @@ test('with an account the daily amount comes from cash on hand less the bills st
     $this->actingAs($this->user)
         ->get('/money')
         ->assertInertia(fn ($page) => $page
-            ->where('numbers.dueRestOfMonth', 170_000)
+            ->where('numbers.cashOnHand', 1_000_000)
+            ->where('numbers.billsDue', 170_000)
+            ->where('numbers.debtDue', 0)
+            ->where('numbers.safeToSpend', 830_000)
             ->where('numbers.perDay', intdiv(830_000, 17)));
 });
