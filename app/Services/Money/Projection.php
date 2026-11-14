@@ -498,12 +498,12 @@ class Projection
         $start = CarbonImmutable::instance($today)->startOfDay();
         $days = (int) $start->diffInDays($start->endOfMonth()->startOfDay());
 
-        return collect($this->events($debts, $bills, collect(), $start, $days))
+        $due = collect($this->events($debts, $bills, collect(), $start, $days))
             ->where('received', false)
             ->sortBy(fn (array $event): string => $event['date'].$event['name'])
-            ->map(fn (array $event): array => ['kind' => $event['kind'], 'name' => $event['name'], 'amount' => $event['amount'], 'date' => $event['date']])
-            ->values()
-            ->all();
+            ->map(fn (array $event): array => ['kind' => $event['kind'], 'name' => $event['name'], 'amount' => $event['amount'], 'date' => $event['date']]);
+
+        return array_values($due->all());
     }
 
     /**
@@ -530,11 +530,10 @@ class Projection
      */
     public function setAsideItems(Collection $bills, int $sinkingContribution): array
     {
-        $items = $bills
+        $items = array_values($bills
             ->filter(fn (Bill $bill): bool => $bill->frequency->isSetAside())
             ->map(fn (Bill $bill): array => ['name' => $bill->name, 'amount' => (int) ceil($bill->amount / $bill->frequency->months())])
-            ->values()
-            ->all();
+            ->all());
 
         if ($sinkingContribution > 0) {
             $items[] = ['name' => 'Goals and funds', 'amount' => $sinkingContribution];
