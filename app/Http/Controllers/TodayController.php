@@ -92,11 +92,12 @@ class TodayController extends Controller
         $debts = $user->debts()->with(['cardDetail', 'paymentPlans.debt', 'payments'])->get();
         $bills = $user->bills()->get();
         $sources = $user->incomeSources()->with('receipts')->get();
+        $accounts = $user->accounts()->get();
         $contributions = $projection->goalContributions($user->goals()->with('account')->get(), $debts, $bills, $today);
         $moneySummary = null;
 
         if ($sources->isNotEmpty() || $bills->isNotEmpty()) {
-            $numbers = $projection->overview($debts, $bills, $sources, $today, $contributions['buffer'], $user->setting?->recovery_months, $contributions['sinking'], $projection->spentThisMonth($user, $today));
+            $numbers = $projection->overview($debts, $bills, $sources, $today, $contributions['buffer'], $user->setting?->recovery_months, $contributions['sinking'], $projection->spentThisMonth($user, $today), $accounts->isEmpty() ? null : $projection->cashAvailable($accounts));
             $dueSoon = collect($projection->upcoming($debts, $bills, $sources, $today))
                 ->where('kind', '!=', 'income')
                 ->where('received', false)

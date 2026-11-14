@@ -66,6 +66,7 @@ const props = defineProps<{
         safeToSpend: number;
         spent: number;
         perDay: number;
+        dueRestOfMonth: number | null;
     };
     carryAlerts: CarryAlert[];
     limitAlerts: LimitRow[];
@@ -520,7 +521,13 @@ const addRowClass =
                         >{{ formatPeso(numbers.perDay) }}</span
                     >
                     <span class="text-[13px] text-[var(--bp-muted)]">
-                        <template v-if="isShort"
+                        <template v-if="numbers.dueRestOfMonth !== null"
+                            >From {{ formatPeso(cashAvailable) }} on hand, less
+                            {{ formatPeso(numbers.dueRestOfMonth) }} of bills
+                            and debt still due, over the {{ daysLeft }}
+                            {{ daysLeft === 1 ? 'day' : 'days' }} left</template
+                        >
+                        <template v-else-if="isShort"
                             >Nothing to spend day to day until the plan
                             fits</template
                         >

@@ -1,5 +1,6 @@
 <?php
 
+use App\Models\Money\Account;
 use App\Models\Money\Bill;
 use App\Models\Money\Debt;
 use App\Models\Money\IncomeSource;
@@ -142,4 +143,17 @@ test('the daily amount takes off what was spent this month, leaving out bill pay
             ->where('numbers.safeToSpend', 1_700_000)
             ->where('numbers.spent', 170_000)
             ->where('numbers.perDay', 90_000));
+});
+
+test('with an account the daily amount comes from cash on hand less the bills still due this month', function (): void {
+    Account::factory()->for($this->user)->create(['balance' => 1_000_000]);
+    Account::factory()->for($this->user)->notSpendable()->create(['balance' => 9_000_000]);
+    Bill::factory()->for($this->user)->create(['amount' => 170_000, 'due_day' => 25]);
+    Bill::factory()->for($this->user)->create(['amount' => 250_000, 'due_day' => 5]);
+
+    $this->actingAs($this->user)
+        ->get('/money')
+        ->assertInertia(fn ($page) => $page
+            ->where('numbers.dueRestOfMonth', 170_000)
+            ->where('numbers.perDay', intdiv(830_000, 17)));
 });

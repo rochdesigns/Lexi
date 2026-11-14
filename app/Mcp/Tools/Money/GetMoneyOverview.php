@@ -28,7 +28,7 @@ class GetMoneyOverview extends MoneyTool
         $recoveryMonths = $user->setting?->recovery_months;
         $contributions = $projection->goalContributions($user->goals()->with('account')->get(), $debts, $bills, $today);
 
-        $numbers = $projection->overview($debts, $bills, $sources, $today, $contributions['buffer'], $recoveryMonths, $contributions['sinking'], $projection->spentThisMonth($user, $today));
+        $numbers = $projection->overview($debts, $bills, $sources, $today, $contributions['buffer'], $recoveryMonths, $contributions['sinking'], $projection->spentThisMonth($user, $today), $accounts->isEmpty() ? null : $projection->cashAvailable($accounts));
         $carryover = $projection->recoveryPlan($debts, RecoveryRequest::MONTH_OPTIONS[0], $today)['carryover'];
 
         return $this->respond(
