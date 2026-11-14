@@ -894,7 +894,11 @@ function deleteEvent() {
                                         borderColor: tagFill(event.tag).bd,
                                     }"
                                     aria-hidden="true"
-                                    >{{ event.is_all_day ? '' : shortTime(event.time) }}
+                                    >{{
+                                        event.is_all_day
+                                            ? ''
+                                            : shortTime(event.time)
+                                    }}
                                     {{ event.title }}</span
                                 >
                                 <span
