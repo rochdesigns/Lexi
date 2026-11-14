@@ -3,6 +3,7 @@
 namespace App\Models\Money;
 
 use App\Models\User;
+use Carbon\CarbonImmutable;
 use Carbon\CarbonInterface;
 use Database\Factories\Money\BillFactory;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
@@ -71,12 +72,26 @@ class Bill extends Model
     }
 
     /**
-     * Whether a payment is logged for the due on $due: anything dated after the
-     * previous due up to the due itself, so a payment made early counts.
+     * Whether a payment is logged for the due on $due: anything dated in the
+     * second half of the gap since the previous due, up to the due itself, so a
+     * payment made early counts but one made a day late for the last due does not.
      */
     public function isPaidForDue(CarbonInterface $due, CarbonInterface $previousDue): bool
     {
-        return $this->payments->contains(fn (Transaction $payment): bool => $payment->date->greaterThan($previousDue) && $payment->date->lessThanOrEqualTo($due));
+        $from = self::paymentWindowStart($previousDue, $due);
+
+        return $this->payments->contains(fn (Transaction $payment): bool => $payment->date->greaterThan($from) && $payment->date->lessThanOrEqualTo($due));
+    }
+
+    /**
+     * The date after which a payment counts for the due on $due: halfway between
+     * the previous due and this one. Earlier payments belong to the previous due.
+     */
+    public static function paymentWindowStart(CarbonInterface $previousDue, CarbonInterface $due): CarbonImmutable
+    {
+        $previous = CarbonImmutable::instance($previousDue)->startOfDay();
+
+        return $previous->addDays(intdiv((int) abs($previous->diffInDays(CarbonImmutable::instance($due)->startOfDay())), 2));
     }
 
     /**

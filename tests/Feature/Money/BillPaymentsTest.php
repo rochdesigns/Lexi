@@ -203,11 +203,11 @@ test('a bill paid early, in the month before it falls due, shows as paid', funct
 
 test('a debt paid early, in the month before it falls due, shows as paid', function (): void {
     $loan = loanDueOn20th($this->user);
-    $upcoming = fn (): array => app(Projection::class)->upcoming($this->user->debts()->with(['paymentPlans.debt', 'payments'])->get(), collect(), collect(), Carbon::parse('2026-10-25'), 30);
+    $upcoming = fn (): array => app(Projection::class)->upcoming($this->user->debts()->with(['paymentPlans.debt', 'payments'])->get(), collect(), collect(), Carbon::parse('2026-11-10'), 30);
 
     expect($upcoming()[0]['date'])->toBe('2026-11-20');
 
-    DebtPayment::factory()->for($loan)->create(['date' => '2026-10-22', 'amount' => 100_000]);
+    DebtPayment::factory()->for($loan)->create(['date' => '2026-11-08', 'amount' => 100_000]);
 
     expect($upcoming()[0]['received'])->toBeTrue();
 });
@@ -219,4 +219,26 @@ test('an early payment settles only the due it is ahead of', function (): void {
     $items = app(Projection::class)->upcoming($this->user->debts()->with(['paymentPlans.debt', 'payments'])->get(), collect(), collect(), Carbon::today(), 40);
 
     expect($items[0]['received'])->toBeTrue()->and($items[1]['received'])->toBeFalse();
+});
+
+test('a bill paid a day late for the last due does not count for the next one', function (): void {
+    $bill = Bill::factory()->for($this->user)->create(['due_day' => 15]);
+    $upcoming = fn (): array => app(Projection::class)->upcoming(collect(), $this->user->bills()->get(), collect(), Carbon::parse('2026-11-14'), 5);
+
+    Transaction::factory()->for($this->user)->create(['date' => '2026-10-16', 'account_id' => $this->account->id, 'bill_id' => $bill->id]);
+    expect($upcoming()[0]['date'])->toBe('2026-11-15')->and($upcoming()[0]['received'])->toBeFalse();
+
+    Transaction::factory()->for($this->user)->create(['date' => '2026-11-10', 'account_id' => $this->account->id, 'bill_id' => $bill->id]);
+    expect($upcoming()[0]['received'])->toBeTrue();
+});
+
+test('a debt paid a day late for the last due does not count for the next one', function (): void {
+    $loan = loanDueOn20th($this->user);
+    $upcoming = fn (): array => app(Projection::class)->upcoming($this->user->debts()->with(['paymentPlans.debt', 'payments'])->get(), collect(), collect(), Carbon::parse('2026-11-19'), 5);
+
+    DebtPayment::factory()->for($loan)->create(['date' => '2026-10-21', 'amount' => 100_000]);
+    expect($upcoming()[0]['date'])->toBe('2026-11-20')->and($upcoming()[0]['received'])->toBeFalse();
+
+    DebtPayment::factory()->for($loan)->create(['date' => '2026-11-18', 'amount' => 100_000]);
+    expect($upcoming()[0]['received'])->toBeTrue();
 });

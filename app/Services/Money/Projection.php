@@ -284,11 +284,13 @@ class Projection
             ->sum('amount');
     }
 
-    /** Payments dated after $after up to and including $until, so an early payment counts for the due it is ahead of. */
+    /** Payments dated in the second half of the gap before $until, up to and including it, so an early payment counts for the due it is ahead of but a late one for the last due does not. */
     private function paidBetween(Debt $debt, string $after, string $until): int
     {
+        $from = Bill::paymentWindowStart(CarbonImmutable::parse($after), CarbonImmutable::parse($until))->toDateString();
+
         return $debt->payments
-            ->filter(fn (DebtPayment $payment): bool => $payment->date->toDateString() > $after && $payment->date->toDateString() <= $until)
+            ->filter(fn (DebtPayment $payment): bool => $payment->date->toDateString() > $from && $payment->date->toDateString() <= $until)
             ->sum('amount');
     }
 
