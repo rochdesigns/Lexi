@@ -160,3 +160,19 @@ test('with an account the daily amount comes from cash on hand less the bills st
             ->where('numbers.safeToSpend', 830_000)
             ->where('numbers.perDay', intdiv(830_000, 17)));
 });
+
+test('the overview lists what is still due this month and what makes up the set-aside', function (): void {
+    Account::factory()->for($this->user)->create(['balance' => 1_000_000]);
+    Bill::factory()->for($this->user)->create(['name' => 'Rent', 'amount' => 170_000, 'due_day' => 25]);
+    Bill::factory()->for($this->user)->create(['name' => 'Internet', 'amount' => 250_000, 'due_day' => 5]);
+    Bill::factory()->for($this->user)->annual(3)->create(['name' => 'Insurance', 'amount' => 600_000]);
+
+    $this->actingAs($this->user)
+        ->get('/money')
+        ->assertInertia(fn ($page) => $page
+            ->has('breakdown.due', 1)
+            ->where('breakdown.due.0.name', 'Rent')
+            ->where('breakdown.due.0.amount', 170_000)
+            ->where('breakdown.setAside.0.name', 'Insurance')
+            ->where('breakdown.setAside.0.amount', 50_000));
+});

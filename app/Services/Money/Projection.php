@@ -488,23 +488,60 @@ class Projection
     }
 
     /**
-     * Bills and debt payments still unpaid from today to the end of the month.
-     * Taken off the cash on hand to work out what is safe to spend.
+     * Bills and debt payments still unpaid from today to the end of the month,
+     * soonest first. Taken off the cash on hand to work out what is safe to spend.
      *
+     * @param  Collection<int, Debt>  $debts
+     * @param  Collection<int, Bill>  $bills
+     * @return list<array{kind: string, name: string, amount: int, date: string}>
+     */
+    public function dueItemsRestOfMonth(Collection $debts, Collection $bills, CarbonInterface $today): array
+    {
+        $start = CarbonImmutable::instance($today)->startOfDay();
+        $days = (int) $start->diffInDays($start->endOfMonth()->startOfDay());
+
+        $due = collect($this->events($debts, $bills, collect(), $start, $days))
+            ->where('received', false)
+            ->sortBy(fn (array $event): string => $event['date'].$event['name'])
+            ->map(fn (array $event): array => ['kind' => $event['kind'], 'name' => $event['name'], 'amount' => $event['amount'], 'date' => $event['date']]);
+
+        return array_values($due->all());
+    }
+
+    /**
      * @param  Collection<int, Debt>  $debts
      * @param  Collection<int, Bill>  $bills
      * @return array{bills: int, debt: int}
      */
     public function dueRestOfMonth(Collection $debts, Collection $bills, CarbonInterface $today): array
     {
-        $start = CarbonImmutable::instance($today)->startOfDay();
-        $days = (int) $start->diffInDays($start->endOfMonth()->startOfDay());
-        $unpaid = collect($this->events($debts, $bills, collect(), $start, $days))->where('received', false);
+        $items = collect($this->dueItemsRestOfMonth($debts, $bills, $today));
 
         return [
-            'bills' => (int) $unpaid->where('kind', 'bill')->sum('amount'),
-            'debt' => (int) $unpaid->where('kind', 'debt')->sum('amount'),
+            'bills' => (int) $items->where('kind', 'bill')->sum('amount'),
+            'debt' => (int) $items->where('kind', 'debt')->sum('amount'),
         ];
+    }
+
+    /**
+     * What makes up the month's set-aside: each yearly or quarterly bill's share,
+     * then the contributions to sinking funds.
+     *
+     * @param  Collection<int, Bill>  $bills
+     * @return list<array{name: string, amount: int}>
+     */
+    public function setAsideItems(Collection $bills, int $sinkingContribution): array
+    {
+        $items = array_values($bills
+            ->filter(fn (Bill $bill): bool => $bill->frequency->isSetAside())
+            ->map(fn (Bill $bill): array => ['name' => $bill->name, 'amount' => (int) ceil($bill->amount / $bill->frequency->months())])
+            ->all());
+
+        if ($sinkingContribution > 0) {
+            $items[] = ['name' => 'Goals and funds', 'amount' => $sinkingContribution];
+        }
+
+        return $items;
     }
 
     /**

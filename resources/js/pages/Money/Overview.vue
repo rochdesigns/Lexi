@@ -71,6 +71,10 @@ const props = defineProps<{
         debtDue: number;
         dueRestOfMonth: number | null;
     };
+    breakdown: {
+        due: { kind: string; name: string; amount: number; date: string }[];
+        setAside: { name: string; amount: number }[];
+    };
     carryAlerts: CarryAlert[];
     limitAlerts: LimitRow[];
     recovery: Recovery | null;
@@ -115,36 +119,64 @@ function openBill(bill: BillRow | null): void {
     billOpen.value = true;
 }
 
+type StatementItem = { name: string; amount: number };
+type StatementLine = {
+    label: string;
+    value: number;
+    sign: string;
+    items: StatementItem[];
+};
+
 /** The lines of the month's statement, ending in safe to spend. Recovery only shows while it is on. */
 const statement = computed(() => {
     const onHand = props.numbers.cashOnHand !== null;
-    const lines = [
+    const dueItems = (kind: string): StatementItem[] =>
+        props.breakdown.due
+            .filter((item) => item.kind === kind)
+            .map(({ name, amount }) => ({ name, amount }));
+
+    const lines: StatementLine[] = [
         onHand
             ? {
                   label: 'Cash on hand',
                   value: props.numbers.cashOnHand ?? 0,
                   sign: '+',
+                  items: props.accounts
+                      .filter((account) => account.isSpendable)
+                      .map(({ name, balance }) => ({
+                          name,
+                          amount: balance,
+                      })),
               }
-            : { label: 'Income', value: props.numbers.income, sign: '+' },
+            : {
+                  label: 'Income',
+                  value: props.numbers.income,
+                  sign: '+',
+                  items: [],
+              },
         {
             label: onHand ? 'Bills still due this month' : 'Bills',
             value: onHand ? props.numbers.billsDue : props.numbers.expenses,
             sign: '−',
+            items: onHand ? dueItems('bill') : [],
         },
         {
             label: 'Set aside for yearly bills and goals',
             value: props.numbers.setAside,
             sign: '−',
+            items: props.breakdown.setAside,
         },
         {
             label: onHand ? 'Debt payments still due' : 'Debt payments',
             value: onHand ? props.numbers.debtDue : props.numbers.debtPayment,
             sign: '−',
+            items: onHand ? dueItems('debt') : [],
         },
         {
             label: 'Buffer',
             value: props.numbers.bufferContribution,
             sign: '−',
+            items: [],
         },
     ];
 
@@ -153,11 +185,20 @@ const statement = computed(() => {
             label: 'Recovery payment',
             value: props.numbers.recoveryContribution,
             sign: '−',
+            items: [],
         });
     }
 
     return lines;
 });
+
+const openLines = ref<string[]>([]);
+
+function toggleLine(label: string): void {
+    openLines.value = openLines.value.includes(label)
+        ? openLines.value.filter((open) => open !== label)
+        : [...openLines.value, label];
+}
 
 const today = new Date();
 const dayOfMonth = today.getDate();
@@ -512,14 +553,60 @@ const addRowClass =
                     <div
                         v-for="line in statement"
                         :key="line.label"
-                        class="flex justify-between gap-4 border-b border-[var(--bp-hair)] py-[7px] text-[13.5px]"
+                        class="border-b border-[var(--bp-hair)] py-[7px] text-[13.5px]"
                     >
-                        <span class="text-[var(--bp-ink-2)]">{{
-                            line.label
-                        }}</span>
-                        <span class="bp-mono text-[13px] whitespace-nowrap"
-                            >{{ line.sign }} {{ formatPeso(line.value) }}</span
+                        <component
+                            :is="line.items.length > 0 ? 'button' : 'div'"
+                            :type="line.items.length > 0 ? 'button' : undefined"
+                            class="flex w-full items-center justify-between gap-4 text-left"
+                            :aria-expanded="
+                                line.items.length > 0
+                                    ? openLines.includes(line.label)
+                                    : undefined
+                            "
+                            @click="
+                                line.items.length > 0 && toggleLine(line.label)
+                            "
                         >
+                            <span
+                                class="flex items-center gap-1 text-[var(--bp-ink-2)]"
+                            >
+                                <span
+                                    v-if="line.items.length > 0"
+                                    class="ms text-[var(--bp-muted)] transition-transform"
+                                    :class="{
+                                        'rotate-90': openLines.includes(
+                                            line.label,
+                                        ),
+                                    }"
+                                    style="font-size: 16px"
+                                    aria-hidden="true"
+                                    >chevron_right</span
+                                >
+                                {{ line.label }}
+                            </span>
+                            <span class="bp-mono text-[13px] whitespace-nowrap"
+                                >{{ line.sign }}
+                                {{ formatPeso(line.value) }}</span
+                            >
+                        </component>
+                        <ul
+                            v-if="openLines.includes(line.label)"
+                            class="mt-2 ml-5 space-y-1 text-[12.5px] text-[var(--bp-muted)]"
+                        >
+                            <li
+                                v-for="(item, index) in line.items"
+                                :key="`${item.name}-${index}`"
+                                class="flex items-baseline justify-between gap-3"
+                            >
+                                <span class="min-w-0 truncate">{{
+                                    item.name
+                                }}</span>
+                                <span class="bp-mono tabular-nums">{{
+                                    formatPeso(item.amount)
+                                }}</span>
+                            </li>
+                        </ul>
                     </div>
                     <div
                         class="mt-[3px] flex flex-wrap items-baseline justify-between gap-x-4 border-t-[3px] border-double border-[var(--bp-ink)] pt-3"
