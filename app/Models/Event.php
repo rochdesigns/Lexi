@@ -8,6 +8,7 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\SoftDeletes;
+use Illuminate\Support\Facades\DB;
 
 /**
  * @property int $id
@@ -16,6 +17,8 @@ use Illuminate\Database\Eloquent\SoftDeletes;
  * @property Carbon $date
  * @property string $time
  * @property string|null $end_time
+ * @property bool $is_all_day
+ * @property Carbon|null $end_date
  * @property string $tag
  * @property string $color
  * @property string|null $source
@@ -31,11 +34,17 @@ use Illuminate\Database\Eloquent\SoftDeletes;
  *     date: string,
  *     time: string,
  *     end_time: string|null,
+ *     is_all_day: bool,
+ *     start_date: string,
+ *     end_date: string|null,
  *     tag: string,
  *     color: string,
  *     bg: string,
  *     is_recurring: bool,
  *     recurrence_type: string|null,
+ *     recurrence_interval: int,
+ *     recurrence_days: list<string>|null,
+ *     recurrence_ends_on: string|null,
  * }
  */
 class Event extends Model
@@ -44,13 +53,15 @@ class Event extends Model
     use HasFactory, SoftDeletes;
 
     protected $fillable = [
-        'user_id', 'title', 'date', 'time', 'end_time', 'tag', 'color', 'source',
+        'user_id', 'title', 'date', 'time', 'end_time', 'is_all_day', 'end_date', 'tag', 'color', 'source',
         'recurrence_type', 'recurrence_interval', 'recurrence_days', 'recurrence_ends_on',
     ];
 
     protected $casts = [
         'recurrence_days' => 'array',
         'date' => 'date',
+        'end_date' => 'date',
+        'is_all_day' => 'boolean',
         'recurrence_ends_on' => 'date',
     ];
 
@@ -82,8 +93,8 @@ class Event extends Model
         $events = static::where('user_id', $userId)
             ->where(function ($q) use ($rangeStart, $rangeEnd): void {
                 $q->whereNull('recurrence_type')
-                    ->whereDate('date', '>=', $rangeStart->toDateString())
                     ->whereDate('date', '<=', $rangeEnd->toDateString())
+                    ->whereDate(DB::raw('COALESCE(end_date, date)'), '>=', $rangeStart->toDateString())
                     ->orWhere(function ($q2) use ($rangeStart, $rangeEnd): void {
                         $q2->whereNotNull('recurrence_type')
                             ->whereDate('date', '<=', $rangeEnd->toDateString())
@@ -99,13 +110,24 @@ class Event extends Model
 
         foreach ($events as $event) {
             if ($event->recurrence_type === null) {
-                $occurrences[] = self::toOccurrence($event, $event->date->toDateString());
+                $last = $event->end_date ?? $event->date;
+
+                $day = Carbon::parse($event->date->toDateString());
+                $lastDay = Carbon::parse($last->toDateString());
+
+                while ($day->lte($lastDay)) {
+                    if ($day->gte($rangeStart->copy()->startOfDay()) && $day->lte($rangeEnd)) {
+                        $occurrences[] = self::toOccurrence($event, $day->toDateString());
+                    }
+
+                    $day->addDay();
+                }
             } else {
                 $occurrences = array_merge($occurrences, self::expandEvent($event, $rangeStart, $rangeEnd));
             }
         }
 
-        usort($occurrences, fn ($a, $b) => strcmp($a['date'].$a['time'], $b['date'].$b['time']));
+        usort($occurrences, fn ($a, $b) => strcmp($a['date'].($a['is_all_day'] ? '0' : '1').$a['time'], $b['date'].($b['is_all_day'] ? '0' : '1').$b['time']));
 
         return $occurrences;
     }
@@ -192,11 +214,17 @@ class Event extends Model
             'date' => $date,
             'time' => $event->time,
             'end_time' => $event->end_time,
+            'is_all_day' => $event->is_all_day,
+            'start_date' => $event->date->toDateString(),
+            'end_date' => $event->end_date?->toDateString(),
             'tag' => $event->tag,
             'color' => $event->color,
             'bg' => $event->bg,
             'is_recurring' => $event->recurrence_type !== null,
             'recurrence_type' => $event->recurrence_type,
+            'recurrence_interval' => $event->recurrence_interval,
+            'recurrence_days' => $event->recurrence_days,
+            'recurrence_ends_on' => $event->recurrence_ends_on?->toDateString(),
         ];
     }
 }

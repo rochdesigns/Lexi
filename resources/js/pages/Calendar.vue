@@ -32,11 +32,17 @@ type Occurrence = {
     date: string;
     time: string;
     end_time: string | null;
+    is_all_day: boolean;
+    start_date: string;
+    end_date: string | null;
     tag: string;
     color: string;
     bg: string;
     is_recurring: boolean;
     recurrence_type: string | null;
+    recurrence_interval: number;
+    recurrence_days: string[] | null;
+    recurrence_ends_on: string | null;
 };
 
 const props = defineProps<{
@@ -82,6 +88,55 @@ function eventHeight(time: string, endTime: string | null): number {
     return Math.max(bottom - top, 30);
 }
 
+type Placed = { event: Occurrence; lane: number; lanes: number };
+
+/**
+ * Side-by-side layout for overlapping timed events in one day column:
+ * events that touch form a cluster and share its width in lanes.
+ */
+function layoutDay(events: Occurrence[]): Placed[] {
+    const sorted = events
+        .filter((e) => !e.is_all_day)
+        .sort((a, b) => a.time.localeCompare(b.time));
+    const placed: Placed[] = [];
+    let cluster: Placed[] = [];
+    let laneEnds: number[] = [];
+    let clusterEnd = -1;
+
+    const flush = () => {
+        cluster.forEach((p) => (p.lanes = laneEnds.length));
+        placed.push(...cluster);
+        cluster = [];
+        laneEnds = [];
+    };
+
+    for (const event of sorted) {
+        const start = eventTop(event.time);
+        const end = start + eventHeight(event.time, event.end_time);
+
+        if (cluster.length && start >= clusterEnd) {
+            flush();
+            clusterEnd = -1;
+        }
+
+        let lane = laneEnds.findIndex((laneEnd) => laneEnd <= start);
+
+        if (lane === -1) {
+            lane = laneEnds.length;
+            laneEnds.push(end);
+        } else {
+            laneEnds[lane] = end;
+        }
+
+        clusterEnd = Math.max(clusterEnd, end);
+        cluster.push({ event, lane, lanes: 1 });
+    }
+
+    flush();
+
+    return placed;
+}
+
 // ── state ──────────────────────────────────────────────────────────────────
 
 const today = new Date();
@@ -115,6 +170,8 @@ const form = ref({
     date: todayStr,
     time: '09:00',
     end_time: '10:00',
+    is_all_day: false,
+    end_date: '',
     tag: 'Work' as string,
     color: TAG_COLORS['Work'],
     recurrence_enabled: false,
@@ -195,7 +252,11 @@ const gridCells = computed(() => {
 const agendaEvents = computed(() =>
     props.events
         .filter((e) => e.date === selectedDate.value)
-        .sort((a, b) => a.time.localeCompare(b.time)),
+        .sort(
+            (a, b) =>
+                Number(b.is_all_day) - Number(a.is_all_day) ||
+                a.time.localeCompare(b.time),
+        ),
 );
 
 const agendaLabel = computed(() => {
@@ -230,9 +291,10 @@ const weekColumns = computed(() => {
             dateNum: d.getDate(),
             dateStr,
             isToday: dateStr === todayStr,
-            events: props.events
-                .filter((e) => e.date === dateStr)
-                .sort((a, b) => a.time.localeCompare(b.time)),
+            allDay: props.events.filter(
+                (e) => e.date === dateStr && e.is_all_day,
+            ),
+            events: layoutDay(props.events.filter((e) => e.date === dateStr)),
         };
     });
 });
@@ -267,6 +329,10 @@ function shortTime(time: string): string {
 }
 
 function timeRange(event: Occurrence): string {
+    if (event.is_all_day) {
+        return 'All day';
+    }
+
     return event.end_time
         ? `${shortTime(event.time)}–${shortTime(event.end_time)}`
         : shortTime(event.time);
@@ -339,7 +405,11 @@ const monthCells = computed(() =>
             ? []
             : props.events
                   .filter((event) => event.date === cell.dateStr)
-                  .sort((a, b) => a.time.localeCompare(b.time)),
+                  .sort(
+                      (a, b) =>
+                          Number(b.is_all_day) - Number(a.is_all_day) ||
+                          a.time.localeCompare(b.time),
+                  ),
     })),
 );
 
@@ -399,6 +469,8 @@ function openNew() {
         date: selectedDate.value,
         time: '09:00',
         end_time: '10:00',
+        is_all_day: false,
+        end_date: '',
         tag: 'Work',
         color: TAG_COLORS['Work'],
         recurrence_enabled: false,
@@ -414,16 +486,18 @@ function openEdit(event: Occurrence) {
     editingEvent.value = event;
     form.value = {
         title: event.title,
-        date: event.date,
-        time: event.time,
+        date: event.start_date,
+        time: event.is_all_day ? '09:00' : event.time,
         end_time: event.end_time ?? '',
+        is_all_day: event.is_all_day,
+        end_date: event.end_date ?? '',
         tag: event.tag,
         color: event.color,
         recurrence_enabled: event.is_recurring,
         recurrence_type: event.recurrence_type ?? 'weekly',
-        recurrence_interval: 1,
-        recurrence_days: [],
-        recurrence_ends_on: '',
+        recurrence_interval: event.recurrence_interval,
+        recurrence_days: [...(event.recurrence_days ?? [])],
+        recurrence_ends_on: event.recurrence_ends_on ?? '',
     };
     showModal.value = true;
 }
@@ -455,8 +529,15 @@ function submitForm() {
     const payload: Record<string, FormDataConvertible> = {
         title: form.value.title,
         date: form.value.date,
-        time: form.value.time,
-        end_time: form.value.end_time || null,
+        is_all_day: form.value.is_all_day,
+        time: form.value.is_all_day ? '00:00' : form.value.time,
+        end_time: form.value.is_all_day ? null : form.value.end_time || null,
+        end_date:
+            form.value.is_all_day &&
+            !form.value.recurrence_enabled &&
+            form.value.end_date
+                ? form.value.end_date
+                : null,
         tag: form.value.tag,
         color: form.value.color,
     };
@@ -652,6 +733,30 @@ function deleteEvent() {
                                     >{{ col.dateNum }}</span
                                 >
                             </button>
+                            <span
+                                class="bp-mono self-center px-1 text-right text-[9px] text-[var(--bp-faint)]"
+                                >ALL DAY</span
+                            >
+                            <div
+                                v-for="col in weekColumns"
+                                :key="`allday-${col.dateStr}`"
+                                class="flex min-h-7 flex-col gap-0.5 border-t border-l border-[var(--bp-hair)] p-0.5"
+                            >
+                                <button
+                                    v-for="event in col.allDay"
+                                    :key="`allday-${event.id}-${event.date}`"
+                                    type="button"
+                                    class="truncate border px-1.5 py-px text-left text-[11px] font-semibold hover:border-[var(--bp-ink)]"
+                                    :style="{
+                                        background: tagFill(event.tag).bg,
+                                        borderColor: tagFill(event.tag).bd,
+                                    }"
+                                    :title="event.title"
+                                    @click="openEdit(event)"
+                                >
+                                    {{ event.title }}
+                                </button>
+                            </div>
                         </div>
 
                         <div
@@ -678,10 +783,10 @@ function deleteEvent() {
                                 }"
                             >
                                 <button
-                                    v-for="event in col.events"
+                                    v-for="{ event, lane, lanes } in col.events"
                                     :key="event.id + event.date"
                                     type="button"
-                                    class="absolute inset-x-[3px] z-[1] box-border overflow-hidden border text-left hover:border-[var(--bp-ink)]"
+                                    class="absolute z-[1] box-border overflow-hidden border text-left hover:border-[var(--bp-ink)]"
                                     :class="
                                         eventHeight(
                                             event.time,
@@ -691,6 +796,8 @@ function deleteEvent() {
                                             : 'px-1.5 py-0.5'
                                     "
                                     :style="{
+                                        left: `calc(${(lane / lanes) * 100}% + 3px)`,
+                                        width: `calc(${100 / lanes}% - 6px)`,
                                         top: `${eventTop(event.time) + 1}px`,
                                         height: `${eventHeight(event.time, event.end_time) - 2}px`,
                                         background: tagFill(event.tag).bg,
@@ -787,7 +894,7 @@ function deleteEvent() {
                                         borderColor: tagFill(event.tag).bd,
                                     }"
                                     aria-hidden="true"
-                                    >{{ shortTime(event.time) }}
+                                    >{{ event.is_all_day ? '' : shortTime(event.time) }}
                                     {{ event.title }}</span
                                 >
                                 <span
@@ -1010,6 +1117,32 @@ function deleteEvent() {
                         />
                     </div>
 
+                    <label
+                        class="flex cursor-pointer items-center gap-2.5 text-[13.5px] font-semibold"
+                    >
+                        <input
+                            v-model="form.is_all_day"
+                            type="checkbox"
+                            class="peer sr-only"
+                        />
+                        <span
+                            :class="
+                                form.is_all_day
+                                    ? 'msf text-[var(--bp-accent)]'
+                                    : 'ms text-[var(--bp-muted)]'
+                            "
+                            class="rounded-sm peer-focus-visible:outline-2 peer-focus-visible:outline-[var(--bp-accent)]"
+                            style="font-size: 20px"
+                            aria-hidden="true"
+                            >{{
+                                form.is_all_day
+                                    ? 'check_box'
+                                    : 'check_box_outline_blank'
+                            }}</span
+                        >
+                        All day
+                    </label>
+
                     <div class="grid grid-cols-1 gap-2.5 sm:grid-cols-3">
                         <div>
                             <label for="event-date" :class="formLabel"
@@ -1022,7 +1155,19 @@ function deleteEvent() {
                                 :class="[formField, 'bp-mono']"
                             />
                         </div>
-                        <div>
+                        <div v-if="form.is_all_day && !form.recurrence_enabled">
+                            <label for="event-end-date" :class="formLabel"
+                                >Through (optional)</label
+                            >
+                            <input
+                                id="event-end-date"
+                                v-model="form.end_date"
+                                type="date"
+                                :min="form.date"
+                                :class="[formField, 'bp-mono']"
+                            />
+                        </div>
+                        <div v-if="!form.is_all_day">
                             <label for="event-start" :class="formLabel"
                                 >Start</label
                             >
@@ -1033,7 +1178,7 @@ function deleteEvent() {
                                 :class="[formField, 'bp-mono']"
                             />
                         </div>
-                        <div>
+                        <div v-if="!form.is_all_day">
                             <label for="event-end" :class="formLabel"
                                 >End</label
                             >

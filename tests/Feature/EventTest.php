@@ -301,3 +301,93 @@ test('user cannot delete another users event', function (): void {
         ->delete("/events/{$event->id}")
         ->assertForbidden();
 });
+
+// ── all-day and multi-day ──────────────────────────────────────────────────
+
+test('user can create a multi-day all-day event without a time', function (): void {
+    $this->actingAs($this->user)
+        ->post('/events', [
+            'title' => 'Conference',
+            'date' => '2026-08-03',
+            'end_date' => '2026-08-05',
+            'is_all_day' => true,
+            'time' => '14:00',
+            'end_time' => '15:00',
+            'tag' => 'Work',
+            'color' => '#3f7fb0',
+        ])
+        ->assertRedirect()
+        ->assertSessionHasNoErrors();
+
+    $event = Event::where('title', 'Conference')->firstOrFail();
+
+    expect($event->is_all_day)->toBeTrue()
+        ->and($event->time)->toBe('00:00')
+        ->and($event->end_time)->toBeNull()
+        ->and($event->end_date->toDateString())->toBe('2026-08-05');
+});
+
+test('time is required unless the event is all day', function (): void {
+    $this->actingAs($this->user)
+        ->post('/events', ['title' => 'X', 'date' => '2026-08-03', 'tag' => 'Work', 'color' => '#3f7fb0'])
+        ->assertSessionHasErrors('time');
+});
+
+test('end date cannot be combined with recurrence or precede the start', function (): void {
+    $base = ['title' => 'X', 'date' => '2026-08-03', 'is_all_day' => true, 'tag' => 'Work', 'color' => '#3f7fb0'];
+
+    $this->actingAs($this->user)
+        ->post('/events', [...$base, 'end_date' => '2026-08-05', 'recurrence_type' => 'daily'])
+        ->assertSessionHasErrors('recurrence_type');
+
+    $this->actingAs($this->user)
+        ->post('/events', [...$base, 'end_date' => '2026-08-01'])
+        ->assertSessionHasErrors('end_date');
+});
+
+test('unchecking all day clears the end date', function (): void {
+    $event = Event::factory()->for($this->user)->create([
+        'date' => '2026-08-03', 'end_date' => '2026-08-05', 'is_all_day' => true, 'time' => '00:00',
+    ]);
+
+    $this->actingAs($this->user)
+        ->patch("/events/{$event->id}", ['is_all_day' => false, 'time' => '10:00', 'end_date' => null])
+        ->assertSessionHasNoErrors();
+
+    expect($event->fresh()->end_date)->toBeNull()->and($event->fresh()->time)->toBe('10:00');
+});
+
+test('expandRecurring spreads a multi-day event across each day in range', function (): void {
+    Event::factory()->for($this->user)->create([
+        'date' => '2026-07-30', 'end_date' => '2026-08-02', 'is_all_day' => true, 'time' => '00:00',
+    ]);
+
+    $result = Event::expandRecurring(Carbon::parse('2026-08-01'), Carbon::parse('2026-08-31'), $this->user->id);
+
+    expect(array_column($result, 'date'))->toBe(['2026-08-01', '2026-08-02'])
+        ->and($result[0]['start_date'])->toBe('2026-07-30')
+        ->and($result[0]['end_date'])->toBe('2026-08-02')
+        ->and($result[0]['is_all_day'])->toBeTrue();
+});
+
+test('all-day events sort before timed events on the same day', function (): void {
+    Event::factory()->for($this->user)->create(['title' => 'Timed', 'date' => '2026-08-03', 'time' => '00:00']);
+    Event::factory()->for($this->user)->create(['title' => 'Holiday', 'date' => '2026-08-03', 'time' => '00:00', 'is_all_day' => true]);
+
+    $result = Event::expandRecurring(Carbon::parse('2026-08-01'), Carbon::parse('2026-08-31'), $this->user->id);
+
+    expect($result[0]['title'])->toBe('Holiday');
+});
+
+test('occurrences expose the series start date and recurrence rule for editing', function (): void {
+    Event::factory()->for($this->user)->weekly(['Mon', 'Wed'], 2)->create([
+        'date' => '2026-08-03', 'recurrence_ends_on' => '2026-12-01',
+    ]);
+
+    $result = Event::expandRecurring(Carbon::parse('2026-08-15'), Carbon::parse('2026-08-31'), $this->user->id);
+
+    expect($result[0]['start_date'])->toBe('2026-08-03')
+        ->and($result[0]['recurrence_interval'])->toBe(2)
+        ->and($result[0]['recurrence_days'])->toBe(['Mon', 'Wed'])
+        ->and($result[0]['recurrence_ends_on'])->toBe('2026-12-01');
+});
