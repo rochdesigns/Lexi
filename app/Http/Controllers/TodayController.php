@@ -93,11 +93,13 @@ class TodayController extends Controller
         $bills = $user->bills()->get();
         $sources = $user->incomeSources()->with('receipts')->get();
         $accounts = $user->accounts()->get();
-        $contributions = $projection->goalContributions($user->goals()->with('account')->get(), $debts, $bills, $today);
+        $goals = $user->goals()->with('account')->get();
+        $contributions = $projection->goalContributions($goals, $debts, $bills, $today);
+        $moved = $accounts->isEmpty() ? ['setAside' => 0, 'buffer' => 0] : $projection->movedThisMonth($user, $goals, $debts, $bills, $today);
         $moneySummary = null;
 
         if ($sources->isNotEmpty() || $bills->isNotEmpty()) {
-            $numbers = $projection->overview($debts, $bills, $sources, $today, $contributions['buffer'], $user->setting?->recovery_months, $contributions['sinking'], $projection->spentThisMonth($user, $today), $accounts->isEmpty() ? null : $projection->cashAvailable($accounts));
+            $numbers = $projection->overview($debts, $bills, $sources, $today, $contributions['buffer'], $user->setting?->recovery_months, $contributions['sinking'], $projection->spentThisMonth($user, $today), $accounts->isEmpty() ? null : $projection->cashAvailable($accounts), $moved['setAside'], $moved['buffer']);
             $dueSoon = collect($projection->upcoming($debts, $bills, $sources, $today))
                 ->where('kind', '!=', 'income')
                 ->where('received', false)

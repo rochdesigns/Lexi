@@ -31,13 +31,19 @@ class OverviewController extends Controller
         $sources = $user->incomeSources()->with('receipts')->orderBy('name')->get();
         $accounts = $user->accounts()->orderBy('name')->get();
         $recoveryMonths = $user->setting?->recovery_months;
-        $contributions = $this->projection->goalContributions($user->goals()->with('account')->get(), $debts, $bills, $today);
+        $goals = $user->goals()->with('account')->get();
+        $contributions = $this->projection->goalContributions($goals, $debts, $bills, $today);
+        $moved = $accounts->isEmpty() ? ['setAside' => 0, 'buffer' => 0] : $this->projection->movedThisMonth($user, $goals, $debts, $bills, $today);
 
         return Inertia::render('Money/Overview', [
-            'numbers' => $this->projection->overview($debts, $bills, $sources, $today, $contributions['buffer'], $recoveryMonths, $contributions['sinking'], $this->projection->spentThisMonth($user, $today), $accounts->isEmpty() ? null : $this->projection->cashAvailable($accounts)),
+            'numbers' => $this->projection->overview($debts, $bills, $sources, $today, $contributions['buffer'], $recoveryMonths, $contributions['sinking'], $this->projection->spentThisMonth($user, $today), $accounts->isEmpty() ? null : $this->projection->cashAvailable($accounts), $moved['setAside'], $moved['buffer']),
             'breakdown' => [
                 'due' => $this->projection->dueItemsRestOfMonth($debts, $bills, $today),
-                'setAside' => $this->projection->setAsideItems($bills, $contributions['sinking']),
+                'setAside' => $this->projection->setAsideItems($bills, $contributions['sinking'], $moved['setAside']),
+                'buffer' => $moved['buffer'] > 0 ? [
+                    ['name' => 'Buffer', 'amount' => $contributions['buffer']],
+                    ['name' => 'Already moved this month', 'amount' => -$moved['buffer']],
+                ] : [],
             ],
             'carryAlerts' => $this->projection->carriedBalanceAlerts($debts, $today),
             'limitAlerts' => $this->limitAlerts($user, $today),

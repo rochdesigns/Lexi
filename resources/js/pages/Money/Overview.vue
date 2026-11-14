@@ -74,6 +74,7 @@ const props = defineProps<{
     breakdown: {
         due: { kind: string; name: string; amount: number; date: string }[];
         setAside: { name: string; amount: number }[];
+        buffer: { name: string; amount: number }[];
     };
     carryAlerts: CarryAlert[];
     limitAlerts: LimitRow[];
@@ -161,7 +162,9 @@ const statement = computed(() => {
             items: onHand ? dueItems('bill') : [],
         },
         {
-            label: 'Set aside for yearly bills and goals',
+            label: onHand
+                ? 'Still to set aside for yearly bills and goals'
+                : 'Set aside for yearly bills and goals',
             value: props.numbers.setAside,
             sign: '−',
             items: props.breakdown.setAside,
@@ -176,7 +179,7 @@ const statement = computed(() => {
             label: 'Buffer',
             value: props.numbers.bufferContribution,
             sign: '−',
-            items: [],
+            items: props.breakdown.buffer,
         },
     ];
 
@@ -603,7 +606,9 @@ const addRowClass =
                                     item.name
                                 }}</span>
                                 <span class="bp-mono tabular-nums">{{
-                                    formatPeso(item.amount)
+                                    item.amount < 0
+                                        ? `− ${formatPeso(-item.amount)}`
+                                        : formatPeso(item.amount)
                                 }}</span>
                             </li>
                         </ul>

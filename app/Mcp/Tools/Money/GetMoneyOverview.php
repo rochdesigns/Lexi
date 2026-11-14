@@ -26,9 +26,11 @@ class GetMoneyOverview extends MoneyTool
         $sources = $user->incomeSources()->with('receipts')->orderBy('name')->get();
         $accounts = $user->accounts()->orderBy('name')->get();
         $recoveryMonths = $user->setting?->recovery_months;
-        $contributions = $projection->goalContributions($user->goals()->with('account')->get(), $debts, $bills, $today);
+        $goals = $user->goals()->with('account')->get();
+        $contributions = $projection->goalContributions($goals, $debts, $bills, $today);
+        $moved = $accounts->isEmpty() ? ['setAside' => 0, 'buffer' => 0] : $projection->movedThisMonth($user, $goals, $debts, $bills, $today);
 
-        $numbers = $projection->overview($debts, $bills, $sources, $today, $contributions['buffer'], $recoveryMonths, $contributions['sinking'], $projection->spentThisMonth($user, $today), $accounts->isEmpty() ? null : $projection->cashAvailable($accounts));
+        $numbers = $projection->overview($debts, $bills, $sources, $today, $contributions['buffer'], $recoveryMonths, $contributions['sinking'], $projection->spentThisMonth($user, $today), $accounts->isEmpty() ? null : $projection->cashAvailable($accounts), $moved['setAside'], $moved['buffer']);
         $carryover = $projection->recoveryPlan($debts, RecoveryRequest::MONTH_OPTIONS[0], $today)['carryover'];
 
         return $this->respond(
