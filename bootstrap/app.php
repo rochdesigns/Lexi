@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Middleware\FlashSavedToast;
 use App\Http\Middleware\HandleAppearance;
 use App\Http\Middleware\HandleInertiaRequests;
 use Illuminate\Foundation\Application;
@@ -24,6 +25,7 @@ return Application::configure(basePath: dirname(__DIR__))
         $middleware->web(append: [
             HandleAppearance::class,
             HandleInertiaRequests::class,
+            FlashSavedToast::class,
             AddLinkHeadersForPreloadedAssets::class,
         ]);
     })
