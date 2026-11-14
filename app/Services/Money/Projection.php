@@ -452,11 +452,17 @@ class Projection
      * @param  Collection<int, IncomeSource>  $sources
      * @return array{income: int, expenses: int, setAside: int, debtPayment: int, bufferContribution: int, recoveryContribution: int, safeToSpend: int, spent: int, perDay: int, cashOnHand: int|null, billsDue: int, debtDue: int, dueRestOfMonth: int|null}
      */
-    public function overview(Collection $debts, Collection $bills, Collection $sources, CarbonInterface $today, int $bufferContribution = 0, ?int $recoveryMonths = null, int $sinkingContribution = 0, int $spentThisMonth = 0, ?int $cashAvailable = null): array
+    public function overview(Collection $debts, Collection $bills, Collection $sources, CarbonInterface $today, int $bufferContribution = 0, ?int $recoveryMonths = null, int $sinkingContribution = 0, int $spentThisMonth = 0, ?int $cashAvailable = null, int $movedToSetAside = 0, int $movedToBuffer = 0): array
     {
         $income = $this->monthlyIncome($sources);
         $expenses = $this->monthlyBills($bills);
         $setAside = $this->annualSetAside($bills) + $sinkingContribution;
+
+        if ($cashAvailable !== null) {
+            $setAside = max(0, $setAside - $movedToSetAside);
+            $bufferContribution = max(0, $bufferContribution - $movedToBuffer);
+        }
+
         $debtPayment = $this->totalMonthlyPayment($debts, $today);
         $recoveryContribution = $recoveryMonths === null ? 0 : $this->recoveryPlan($debts, $recoveryMonths, $today)['extra'];
         $safeToSpend = $income - $expenses - $setAside - $debtPayment - $bufferContribution - $recoveryContribution;
@@ -524,13 +530,67 @@ class Projection
     }
 
     /**
+     * Money already moved this month into the accounts the set-aside and the
+     * buffer go to: the yearly bills account and each goal's account. Only
+     * transfers into accounts that are not spendable count, as cash in a
+     * spendable account is still counted as on hand. Each account's transfers
+     * cover its own share and no more, and a goal that is already full is skipped.
+     *
+     * @param  Collection<int, Goal>  $goals
+     * @param  Collection<int, Debt>  $debts
+     * @param  Collection<int, Bill>  $bills
+     * @return array{setAside: int, buffer: int}
+     */
+    public function movedThisMonth(User $user, Collection $goals, Collection $debts, Collection $bills, CarbonInterface $today): array
+    {
+        $today = CarbonImmutable::instance($today);
+        $savingsIds = $user->accounts()->where('is_spendable', false)->pluck('id');
+
+        /** @var Collection<int, int> $pool */
+        $pool = $user->transactions()
+            ->counted()
+            ->where('kind', TransactionKind::Transfer)
+            ->whereIn('to_account_id', $savingsIds)
+            ->whereDate('date', '>=', $today->startOfMonth()->toDateString())
+            ->whereDate('date', '<=', $today->toDateString())
+            ->selectRaw('to_account_id, sum(amount) as total')
+            ->groupBy('to_account_id')
+            ->pluck('total', 'to_account_id')
+            ->map(fn (mixed $total): int => (int) $total);
+
+        $take = function (?int $accountId, int $share) use (&$pool): int {
+            if ($accountId === null) {
+                return 0;
+            }
+
+            $credit = min($pool->get($accountId, 0), $share);
+            $pool->put($accountId, $pool->get($accountId, 0) - $credit);
+
+            return $credit;
+        };
+
+        $moved = ['setAside' => $take($user->setting?->yearly_bills_account_id, $this->annualSetAside($bills)), 'buffer' => 0];
+        $obligations = $this->monthlyObligations($debts, $bills, $today);
+
+        foreach ($goals as $goal) {
+            if ($this->goalSaved($goal) >= $this->goalTarget($goal, $obligations)) {
+                continue;
+            }
+
+            $moved[$goal->kind === GoalKind::Buffer ? 'buffer' : 'setAside'] += $take($goal->account_id, $goal->monthly_contribution);
+        }
+
+        return $moved;
+    }
+
+    /**
      * What makes up the month's set-aside: each yearly or quarterly bill's share,
-     * then the contributions to sinking funds.
+     * then the contributions to sinking funds, less what has already been moved this month.
      *
      * @param  Collection<int, Bill>  $bills
      * @return list<array{name: string, amount: int}>
      */
-    public function setAsideItems(Collection $bills, int $sinkingContribution): array
+    public function setAsideItems(Collection $bills, int $sinkingContribution, int $moved = 0): array
     {
         $items = array_values($bills
             ->filter(fn (Bill $bill): bool => $bill->frequency->isSetAside())
@@ -539,6 +599,10 @@ class Projection
 
         if ($sinkingContribution > 0) {
             $items[] = ['name' => 'Goals and funds', 'amount' => $sinkingContribution];
+        }
+
+        if ($moved > 0) {
+            $items[] = ['name' => 'Already moved this month', 'amount' => -$moved];
         }
 
         return $items;

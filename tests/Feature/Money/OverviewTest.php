@@ -3,6 +3,7 @@
 use App\Models\Money\Account;
 use App\Models\Money\Bill;
 use App\Models\Money\Debt;
+use App\Models\Money\Goal;
 use App\Models\Money\IncomeSource;
 use App\Models\Money\PaymentPlan;
 use App\Models\Money\Transaction;
@@ -175,4 +176,39 @@ test('the overview lists what is still due this month and what makes up the set-
             ->where('breakdown.due.0.amount', 170_000)
             ->where('breakdown.setAside.0.name', 'Insurance')
             ->where('breakdown.setAside.0.amount', 50_000));
+});
+
+test('money already moved this month into the yearly bills and goal accounts comes off the set-aside and buffer', function (): void {
+    $spending = Account::factory()->for($this->user)->create(['balance' => 10_000_000]);
+    $yearly = Account::factory()->for($this->user)->notSpendable()->create();
+    $buffer = Account::factory()->for($this->user)->notSpendable()->create(['balance' => 0]);
+    $this->user->setting()->updateOrCreate([], ['yearly_bills_account_id' => $yearly->id]);
+    Bill::factory()->for($this->user)->annual(3)->create(['name' => 'Insurance', 'amount' => 600_000]);
+    Goal::factory()->for($this->user)->buffer(3)->create(['monthly_contribution' => 200_000, 'account_id' => $buffer->id]);
+
+    $page = fn () => $this->actingAs($this->user)->get('/money');
+
+    $page()->assertInertia(fn ($page) => $page
+        ->where('numbers.setAside', 50_000)
+        ->where('numbers.bufferContribution', 200_000));
+
+    Transaction::factory()->transfer($spending, $yearly)->for($this->user)->create(['amount' => 30_000, 'date' => '2026-10-10']);
+    Transaction::factory()->transfer($spending, $buffer)->for($this->user)->create(['amount' => 500_000, 'date' => '2026-10-11']);
+    Transaction::factory()->transfer($spending, $yearly)->for($this->user)->create(['amount' => 70_000, 'date' => '2026-09-30']);
+
+    $page()->assertInertia(fn ($page) => $page
+        ->where('numbers.setAside', 20_000)
+        ->where('numbers.bufferContribution', 0)
+        ->where('breakdown.setAside.1.name', 'Already moved this month')
+        ->where('breakdown.setAside.1.amount', -30_000));
+});
+
+test('a transfer into a spendable account does not count as set aside', function (): void {
+    $spending = Account::factory()->for($this->user)->create(['balance' => 10_000_000]);
+    $other = Account::factory()->for($this->user)->create();
+    $this->user->setting()->updateOrCreate([], ['yearly_bills_account_id' => $other->id]);
+    Bill::factory()->for($this->user)->annual(3)->create(['amount' => 600_000]);
+    Transaction::factory()->transfer($spending, $other)->for($this->user)->create(['amount' => 50_000, 'date' => '2026-10-10']);
+
+    $this->actingAs($this->user)->get('/money')->assertInertia(fn ($page) => $page->where('numbers.setAside', 50_000));
 });
