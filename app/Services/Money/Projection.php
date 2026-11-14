@@ -443,12 +443,12 @@ class Projection
      * The five numbers for the month. The set-aside is the yearly bills at a twelfth a month plus the contributions to sinking funds. Safe to spend is what is left of income
      * once bills, the annual set-aside, debt payments, the buffer contribution
      * and any recovery payment are covered, and can be negative. The buffer is zero until
-     * goals exist. The daily amount is worked out from the cash on hand less the bills and debt payments still unpaid this month, or, with no accounts, from safe to spend less what has been spent so far.
+     * goals exist. With accounts, safe to spend starts from the cash on hand and takes off only the bills and debt payments still unpaid this month; without, it starts from income and the daily amount also takes off what has been spent so far.
      *
      * @param  Collection<int, Debt>  $debts
      * @param  Collection<int, Bill>  $bills
      * @param  Collection<int, IncomeSource>  $sources
-     * @return array{income: int, expenses: int, setAside: int, debtPayment: int, bufferContribution: int, recoveryContribution: int, safeToSpend: int, spent: int, perDay: int, dueRestOfMonth: int|null}
+     * @return array{income: int, expenses: int, setAside: int, debtPayment: int, bufferContribution: int, recoveryContribution: int, safeToSpend: int, spent: int, perDay: int, cashOnHand: int|null, billsDue: int, debtDue: int, dueRestOfMonth: int|null}
      */
     public function overview(Collection $debts, Collection $bills, Collection $sources, CarbonInterface $today, int $bufferContribution = 0, ?int $recoveryMonths = null, int $sinkingContribution = 0, int $spentThisMonth = 0, ?int $cashAvailable = null): array
     {
@@ -458,10 +458,15 @@ class Projection
         $debtPayment = $this->totalMonthlyPayment($debts, $today);
         $recoveryContribution = $recoveryMonths === null ? 0 : $this->recoveryPlan($debts, $recoveryMonths, $today)['extra'];
         $safeToSpend = $income - $expenses - $setAside - $debtPayment - $bufferContribution - $recoveryContribution;
-        $dueRestOfMonth = $cashAvailable === null ? null : $this->dueRestOfMonth($debts, $bills, $today);
+        $due = $this->dueRestOfMonth($debts, $bills, $today);
+
+        if ($cashAvailable !== null) {
+            $safeToSpend = $cashAvailable - $due['bills'] - $due['debt'] - $setAside - $bufferContribution - $recoveryContribution;
+        }
+
         $perDay = $cashAvailable === null
             ? $this->dailyAllowance($safeToSpend - $spentThisMonth, $today)
-            : $this->dailyAllowance($cashAvailable - (int) $dueRestOfMonth, $today);
+            : $this->dailyAllowance($safeToSpend, $today);
 
         return [
             'income' => $income,
@@ -473,25 +478,31 @@ class Projection
             'safeToSpend' => $safeToSpend,
             'spent' => $spentThisMonth,
             'perDay' => $perDay,
-            'dueRestOfMonth' => $dueRestOfMonth,
+            'cashOnHand' => $cashAvailable,
+            'billsDue' => $due['bills'],
+            'debtDue' => $due['debt'],
+            'dueRestOfMonth' => $cashAvailable === null ? null : $due['bills'] + $due['debt'],
         ];
     }
 
     /**
      * Bills and debt payments still unpaid from today to the end of the month.
-     * Taken off the cash on hand to work out what can be spent each day.
+     * Taken off the cash on hand to work out what is safe to spend.
      *
      * @param  Collection<int, Debt>  $debts
      * @param  Collection<int, Bill>  $bills
+     * @return array{bills: int, debt: int}
      */
-    public function dueRestOfMonth(Collection $debts, Collection $bills, CarbonInterface $today): int
+    public function dueRestOfMonth(Collection $debts, Collection $bills, CarbonInterface $today): array
     {
         $start = CarbonImmutable::instance($today)->startOfDay();
         $days = (int) $start->diffInDays($start->endOfMonth()->startOfDay());
+        $unpaid = collect($this->events($debts, $bills, collect(), $start, $days))->where('received', false);
 
-        return (int) collect($this->events($debts, $bills, collect(), $start, $days))
-            ->where('received', false)
-            ->sum('amount');
+        return [
+            'bills' => (int) $unpaid->where('kind', 'bill')->sum('amount'),
+            'debt' => (int) $unpaid->where('kind', 'debt')->sum('amount'),
+        ];
     }
 
     /**
